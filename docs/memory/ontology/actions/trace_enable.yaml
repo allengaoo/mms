@@ -71,4 +71,4 @@ related_actions:
 impacts:
   - "unit_runner.py 中的 LLM 调用追踪（Level ≥ 4 时生效）"
   - "ep_wizard.py 中的步骤计时（Level ≥ 1 时生效）"
-  - "unit_compare.py 中的 Gemini 评审追踪（Level ≥ 4 时生效）"
+  - "unit_compare.py 中的 qwen3-32b 语义评审追踪（Level ≥ 4 时生效）"

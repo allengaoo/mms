@@ -24,7 +24,7 @@ import pytest
 _MMS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_MMS_DIR))
 
-from providers.bailian import BailianProvider, _is_thinking_model, _strip_think_tags
+from mms.providers.bailian import BailianProvider, _is_thinking_model, _strip_think_tags
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -101,7 +101,7 @@ class TestEnableThinkingPayload:
         fake_post, captured = _patch_http_post(response)
 
         provider = BailianProvider(model="qwen3-32b", api_key="fake-key")
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             result = provider.complete("测试 prompt")
 
         assert len(captured) == 1, "应恰好发出一次 HTTP 请求"
@@ -124,7 +124,7 @@ class TestEnableThinkingPayload:
             {"role": "system", "content": "你是助手"},
             {"role": "user", "content": "测试"},
         ]
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             provider.complete_messages(messages)
 
         payload = captured[0]
@@ -138,7 +138,7 @@ class TestEnableThinkingPayload:
         fake_post, captured = _patch_http_post(response)
 
         provider = BailianProvider(model="qwen-plus", api_key="fake-key")
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             provider.complete("测试")
 
         payload = captured[0]
@@ -152,7 +152,7 @@ class TestEnableThinkingPayload:
         fake_post, captured = _patch_http_post(response)
 
         provider = BailianProvider(model="qwen3-coder-next", api_key="fake-key")
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             provider.complete("生成代码")
 
         assert captured[0].get("enable_thinking") is False
@@ -184,7 +184,7 @@ class TestStripThinkTags:
         fake_post, _ = _patch_http_post(response)
 
         provider = BailianProvider(model="qwen3-32b", api_key="fake-key")
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             result = provider.complete("测试")
 
         assert "<think>" not in result, "返回内容不应包含 <think> 标签"
@@ -204,7 +204,7 @@ class TestCompletePayloadStructure:
         fake_post, captured = _patch_http_post(response)
 
         provider = BailianProvider(model="qwen-plus", api_key="fake-key")
-        with patch("providers.bailian._http_post", side_effect=fake_post):
+        with patch("mms.providers.bailian._http_post", side_effect=fake_post):
             provider.complete("hello", max_tokens=512)
 
         payload = captured[0]
@@ -217,7 +217,7 @@ class TestCompletePayloadStructure:
 
     def test_no_api_key_raises(self):
         """API Key 未配置时应抛出 ProviderUnavailableError（强制置空绕过 .env.memory 读取）"""
-        from providers.bailian import ProviderUnavailableError
+        from mms.providers.bailian import ProviderUnavailableError
         provider = BailianProvider(model="qwen-plus", api_key="fake-placeholder")
         # 在运行时将 _api_key 置空，模拟 key 丢失
         provider._api_key = ""

@@ -1,0 +1,14 @@
+{
+  "ep_id": "EP-998",
+  "phase": "failed",
+  "resume_unit": null,
+  "failure_unit": null,
+  "failure_error": "EP 文件不存在：EP-998",
+  "started_at": "2026-04-23T16:50:11.537237+00:00",
+  "updated_at": "2026-04-23T16:50:11.537501+00:00",
+  "completed_units": [],
+  "total_units": 0,
+  "precheck_done": false,
+  "postcheck_done": false,
+  "dry_run": false
+}

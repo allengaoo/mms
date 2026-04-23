@@ -23,7 +23,7 @@ _HERE = Path(__file__).resolve().parent
 _MMS = _HERE.parent
 sys.path.insert(0, str(_MMS))
 
-from ep_runner import (
+from mms.workflow.ep_runner import (
     EpRunPipeline,
     EpRunState,
     IntentPlanSummary,
@@ -112,7 +112,7 @@ class TestEpRunState:
     def test_save_and_load_roundtrip(self, tmp_path: Path, monkeypatch):
         """EpRunState 保存后可以正确加载"""
         monkeypatch.setattr(
-            "ep_runner._EP_RUN_DIR", tmp_path / "ep_run"
+            "mms.workflow.ep_runner._EP_RUN_DIR", tmp_path / "ep_run"
         )
         state = EpRunState.new("EP-131")
         state.phase = "unit_loop"
@@ -129,7 +129,7 @@ class TestEpRunState:
     def test_load_returns_none_when_file_missing(self, tmp_path: Path, monkeypatch):
         """文件不存在时 load 返回 None"""
         monkeypatch.setattr(
-            "ep_runner._EP_RUN_DIR", tmp_path / "nonexistent"
+            "mms.workflow.ep_runner._EP_RUN_DIR", tmp_path / "nonexistent"
         )
         result = EpRunState.load("EP-999")
         assert result is None
@@ -189,8 +189,8 @@ class TestResolveExecUnits:
 class TestEpRunPipelineFailures:
     def test_returns_failure_when_ep_file_missing(self, tmp_path: Path, monkeypatch):
         """EP 文件不存在时 Pipeline 优雅失败"""
-        monkeypatch.setattr("ep_runner._EP_DIR", tmp_path / "execution_plans")
-        monkeypatch.setattr("ep_runner._EP_RUN_DIR", tmp_path / "ep_run")
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_DIR", tmp_path / "execution_plans")
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_RUN_DIR", tmp_path / "ep_run")
         (tmp_path / "execution_plans").mkdir(parents=True)
         (tmp_path / "ep_run").mkdir(parents=True)
 
@@ -210,9 +210,9 @@ class TestEpRunPipelineFailures:
         # EP 文件内容无 Scope 表格
         (ep_dir / "EP-998_Test.md").write_text("# EP-998\n\n无 Scope 节", encoding="utf-8")
 
-        monkeypatch.setattr("ep_runner._EP_DIR", ep_dir)
-        monkeypatch.setattr("ep_runner._EP_RUN_DIR", tmp_path / "ep_run")
-        monkeypatch.setattr("ep_runner._DAG_DIR", tmp_path / "dag")
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_DIR", ep_dir)
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_RUN_DIR", tmp_path / "ep_run")
+        monkeypatch.setattr("mms.workflow.ep_runner._DAG_DIR", tmp_path / "dag")
         (tmp_path / "ep_run").mkdir(parents=True)
 
         pipeline = EpRunPipeline()
@@ -330,7 +330,7 @@ class TestFindEpFile:
         ep_file = ep_dir / "EP-131_EP_Runner_Test.md"
         ep_file.write_text("# EP-131")
 
-        monkeypatch.setattr("ep_runner._EP_DIR", ep_dir)
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_DIR", ep_dir)
 
         result = _find_ep_file("EP-131")
         assert result == ep_file
@@ -340,7 +340,7 @@ class TestFindEpFile:
         ep_dir = tmp_path / "execution_plans"
         ep_dir.mkdir()
 
-        monkeypatch.setattr("ep_runner._EP_DIR", ep_dir)
+        monkeypatch.setattr("mms.workflow.ep_runner._EP_DIR", ep_dir)
 
         result = _find_ep_file("EP-999")
         assert result is None

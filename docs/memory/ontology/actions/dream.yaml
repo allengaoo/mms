@@ -72,7 +72,7 @@ outputs:
 side_effects:
   - "在 docs/memory/shared/ 对应层创建 DRAFT-*.md 草稿文件（待审核，不被 fn_rank_memories 索引）"
   - "读取 docs/memory/_system/trace.jsonl 和 feedback_stats.jsonl（只读）"
-  - "调用 LLM（qwen-plus）分析模式，消耗少量 API Token"
+  - "调用 LLM（qwen3-32b）分析模式，消耗少量 API Token"
   - "promote 模式：将 DRAFT-*.md 重命名为正式文件，更新 MEMORY_INDEX.json"
 
 cli_usage: |
@@ -98,7 +98,7 @@ related_actions:
   - action_distill
   - action_postcheck
 
-implementation_file: "scripts/mms/dream_engine.py（待实现，EP-130 规划）"
+implementation_file: "dream.py（待实现，EP-130 规划）"
 
 # ── fn_classify_intent 路由规则（当用户问 dream 相关问题时使用）────────────────
 

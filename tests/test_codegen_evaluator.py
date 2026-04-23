@@ -456,7 +456,7 @@ class TestRepairAndParseJson:
     def _repair(self, text, ep_id=""):
         # 直接导入 unit_generate 的修复函数
         sys.path.insert(0, str(_MMS_ROOT))
-        from unit_generate import _repair_and_parse_json
+        from mms.execution.unit_generate import _repair_and_parse_json
         return _repair_and_parse_json(text, ep_id=ep_id)
 
     def test_standard_json_array(self):

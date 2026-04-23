@@ -11,7 +11,7 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ep_parser import (
+from mms.workflow.ep_parser import (
     parse_ep_file, _extract_sections, _parse_scope_table,
     _parse_testing_files, _extract_ep_id, _extract_title,
 )

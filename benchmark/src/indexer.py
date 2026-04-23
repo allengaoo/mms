@@ -46,7 +46,7 @@ except ImportError:
     _MV_OK = False
 
 try:
-    from providers.bailian import BailianEmbedProvider
+    from mms.providers.bailian import BailianEmbedProvider
     _EMBED_OK = True
 except ImportError:
     _EMBED_OK = False

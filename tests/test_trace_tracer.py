@@ -24,8 +24,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from trace.event import LEVEL_BASIC, LEVEL_LLM, LEVEL_FILEOPS
-from trace.tracer import EPTracer, TraceConfig, _TRACE_BASE
+from mms.trace.event import LEVEL_BASIC, LEVEL_LLM, LEVEL_FILEOPS
+from mms.trace.tracer import EPTracer, TraceConfig, _TRACE_BASE
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
@@ -33,8 +33,8 @@ from trace.tracer import EPTracer, TraceConfig, _TRACE_BASE
 @pytest.fixture
 def tmp_trace_base(tmp_path, monkeypatch):
     """将 _TRACE_BASE 重定向到临时目录，隔离测试数据。"""
-    monkeypatch.setattr("trace.tracer._TRACE_BASE", tmp_path)
-    monkeypatch.setattr("trace.reporter._TRACE_BASE", tmp_path)
+    monkeypatch.setattr("mms.trace.tracer._TRACE_BASE", tmp_path)
+    monkeypatch.setattr("mms.trace.reporter._TRACE_BASE", tmp_path)
     return tmp_path
 
 
@@ -51,7 +51,7 @@ def _enable(ep_id: str, level: int, base: Path) -> EPTracer:
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg._config_path  # 触发属性校验
     # 手动绑定到 tmp base
-    import trace.tracer as tm
+    import mms.trace.tracer as tm
     original = tm._TRACE_BASE
     tm._TRACE_BASE = base
     try:
@@ -62,7 +62,7 @@ def _enable(ep_id: str, level: int, base: Path) -> EPTracer:
 
 
 def _load_events(base: Path, ep_id: str):
-    path = base / ep_id.upper() / "trace.jsonl"
+    path = base / ep_id.upper() / "mms.trace.jsonl"
     if not path.exists():
         return []
     return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -72,7 +72,7 @@ def _load_events(base: Path, ep_id: str):
 
 class TestTraceConfig:
     def test_save_and_load_roundtrip(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         original = tm._TRACE_BASE
         tm._TRACE_BASE = tmp_trace_base
         try:
@@ -87,7 +87,7 @@ class TestTraceConfig:
             tm._TRACE_BASE = original
 
     def test_load_nonexistent_returns_none(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         original = tm._TRACE_BASE
         tm._TRACE_BASE = tmp_trace_base
         try:
@@ -97,7 +97,7 @@ class TestTraceConfig:
             tm._TRACE_BASE = original
 
     def test_load_or_default_returns_default_for_missing(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         original = tm._TRACE_BASE
         tm._TRACE_BASE = tmp_trace_base
         try:
@@ -108,7 +108,7 @@ class TestTraceConfig:
             tm._TRACE_BASE = original
 
     def test_config_file_contains_level_name(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         original = tm._TRACE_BASE
         tm._TRACE_BASE = tmp_trace_base
         try:
@@ -124,13 +124,13 @@ class TestTraceConfig:
 
 class TestEPTracerLifecycle:
     def test_enable_creates_trace_jsonl(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC1", level=LEVEL_BASIC)
-        assert (tmp_trace_base / "EP-LC1" / "trace.jsonl").exists()
+        assert (tmp_trace_base / "EP-LC1" / "mms.trace.jsonl").exists()
 
     def test_enable_writes_ep_start_event(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC2", level=LEVEL_BASIC)
         events = _load_events(tmp_trace_base, "EP-LC2")
@@ -138,7 +138,7 @@ class TestEPTracerLifecycle:
         assert events[0]["op"] == "ep_start"
 
     def test_enable_ep_start_contains_level(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC3", level=LEVEL_LLM)
         events = _load_events(tmp_trace_base, "EP-LC3")
@@ -146,7 +146,7 @@ class TestEPTracerLifecycle:
         assert ep_start.get("level") == LEVEL_LLM or ep_start.get("extra", {}).get("level") == LEVEL_LLM or "level" in ep_start.get("extra", {}) or True  # extra 合并到顶层
 
     def test_disable_marks_config_disabled(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC4", level=LEVEL_BASIC)
         EPTracer.disable("EP-LC4")
@@ -155,7 +155,7 @@ class TestEPTracerLifecycle:
         assert cfg.enabled is False
 
     def test_disable_writes_ep_end_event(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC5", level=LEVEL_BASIC)
         EPTracer.disable("EP-LC5")
@@ -164,13 +164,13 @@ class TestEPTracerLifecycle:
         assert "ep_end" in ops
 
     def test_from_ep_returns_none_when_not_enabled(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         result = EPTracer.from_ep("EP-NOTTHERE")
         assert result is None
 
     def test_from_ep_returns_tracer_when_enabled(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC6", level=LEVEL_LLM)
         tracer = EPTracer.from_ep("EP-LC6")
@@ -178,7 +178,7 @@ class TestEPTracerLifecycle:
         assert isinstance(tracer, EPTracer)
 
     def test_from_ep_returns_none_after_disable(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         EPTracer.enable("EP-LC7", level=LEVEL_BASIC)
         EPTracer.disable("EP-LC7")
@@ -186,7 +186,7 @@ class TestEPTracerLifecycle:
         assert result is None
 
     def test_enable_preserves_existing_trace_id(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t1 = EPTracer.enable("EP-TID", level=LEVEL_BASIC)
         tid1 = t1.trace_id
@@ -199,7 +199,7 @@ class TestEPTracerLifecycle:
 
 class TestEPTracerRecord:
     def _make_tracer(self, tmp_trace_base, ep_id="EP-REC", level=LEVEL_LLM):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         return EPTracer.enable(ep_id, level=level)
 
@@ -214,7 +214,7 @@ class TestEPTracerRecord:
 
     def test_record_step_skipped_below_level(self, tmp_trace_base):
         # Level 1 以上才记录 step，Level 1 本身也记录（LEVEL_BASIC = 1）
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-REC2", level=LEVEL_BASIC)
         before = len(_load_events(tmp_trace_base, "EP-REC2"))
@@ -237,7 +237,7 @@ class TestEPTracerRecord:
         assert evt["tokens_in"] == 512
 
     def test_record_llm_not_recorded_below_level4(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-REC3", level=LEVEL_BASIC)  # Level 1 < 4
         t.record_llm(
@@ -285,7 +285,7 @@ class TestEPTracerRecord:
         assert val_events[0]["result"] == "error"
 
     def test_record_file_ops_level8(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-FOP", level=LEVEL_FILEOPS)
         t.record_file_ops(
@@ -317,7 +317,7 @@ class TestEPTracerRecord:
 
 class TestEPTracerMaxEvents:
     def test_stops_writing_at_max(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-MAX", level=LEVEL_BASIC, max_events=3)
         for i in range(10):
@@ -330,7 +330,7 @@ class TestEPTracerMaxEvents:
 
 class TestStepTimer:
     def test_step_timer_records_start_and_end(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-TIMER", level=LEVEL_BASIC)
         with t.step_timer("dag_generate"):
@@ -341,7 +341,7 @@ class TestStepTimer:
         assert "step_end" in ops
 
     def test_step_timer_sets_result_error_on_exception(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-TIMER2", level=LEVEL_BASIC)
         with pytest.raises(ValueError):
@@ -352,7 +352,7 @@ class TestStepTimer:
         assert end_events[-1]["result"] == "error"
 
     def test_step_timer_yields_event_for_mutation(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         t = EPTracer.enable("EP-TIMER3", level=LEVEL_BASIC)
         with t.step_timer("dag_generate", unit_id="U5") as evt:
@@ -362,7 +362,7 @@ class TestStepTimer:
         assert end_events[-1].get("units_count") == 7
 
     def test_step_timer_noop_when_disabled(self, tmp_trace_base):
-        import trace.tracer as tm
+        import mms.trace.tracer as tm
         tm._TRACE_BASE = tmp_trace_base
         # 创建追踪后关闭
         t = EPTracer.enable("EP-TIMER4", level=LEVEL_BASIC)

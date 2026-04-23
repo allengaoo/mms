@@ -1,0 +1,17 @@
+{
+  "ep_id": "EP-131",
+  "phase": "unit_loop",
+  "resume_unit": null,
+  "failure_unit": null,
+  "failure_error": null,
+  "started_at": "2026-04-23T16:50:11.532180+00:00",
+  "updated_at": "2026-04-23T16:50:11.532244+00:00",
+  "completed_units": [
+    "U1",
+    "U2"
+  ],
+  "total_units": 6,
+  "precheck_done": false,
+  "postcheck_done": false,
+  "dry_run": false
+}

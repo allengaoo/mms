@@ -7,7 +7,7 @@ test_harness_hardening.py — EP-123 MMS Harness 加固验证测试
   P3: unit_compare.apply Scope Guard 拒绝超出 unit.files 的路径
   P4: unit_runner._run_arch_check 异常时返回 (False, ...) 而非 (True, ...)
   P4b: postcheck.run_arch_check_post 异常时返回 (False, -1, [...]) 而非 (True, 0, [])
-  P5: GeminiProvider.complete 成功后调用 model_tracker.record
+  P5: BailianProvider.complete 成功/失败时均应调用 model_tracker.record
   P6: unit_context.py testing 层别名不含 "前端层"
 """
 
@@ -112,9 +112,9 @@ class TestUnitGenerateNoHardcodedModel:
     """P2: unit_generate.py 模型名称不应硬编码 qwen3-32b"""
 
     def test_no_qwen3_32b_in_print_or_variable(self):
-        """unit_generate.py 中不应出现 qwen3-32b 字符串"""
-        unit_generate_path = _MMS_DIR / "unit_generate.py"
-        assert unit_generate_path.exists(), "unit_generate.py 不存在"
+        """mms.execution.unit_generate.py 中不应出现 qwen3-32b 字符串"""
+        unit_generate_path = _MMS_DIR / "src/mms/execution/unit_generate.py"
+        assert unit_generate_path.exists(), "mms.execution.unit_generate.py 不存在"
         content = unit_generate_path.read_text(encoding="utf-8")
         occurrences = [
             (i + 1, line.strip())
@@ -122,19 +122,19 @@ class TestUnitGenerateNoHardcodedModel:
             if "qwen3-32b" in line and not line.strip().startswith("#")
         ]
         assert not occurrences, (
-            f"unit_generate.py 仍含 qwen3-32b 硬编码（非注释行）：{occurrences}"
+            f"mms.execution.unit_generate.py 仍含 qwen3-32b 硬编码（非注释行）：{occurrences}"
         )
 
     def test_orchestrator_model_is_dynamic(self):
         """EP-132：orchestrator_model 应由 _get_dag_orchestration_model_name() 动态获取，不再硬编码"""
-        unit_generate_path = _MMS_DIR / "unit_generate.py"
+        unit_generate_path = _MMS_DIR / "src/mms/execution/unit_generate.py"
         content = unit_generate_path.read_text(encoding="utf-8")
         # EP-132：硬编码已去除，改为动态函数
         assert 'orchestrator_model="gemini-2.5-pro"' not in content, (
-            "unit_generate.py 仍含 gemini-2.5-pro 硬编码 orchestrator_model，EP-132 已要求动态获取"
+            "mms.execution.unit_generate.py 仍含 gemini-2.5-pro 硬编码 orchestrator_model，EP-132 已要求动态获取"
         )
         assert "_get_dag_orchestration_model_name" in content, (
-            "unit_generate.py 缺少 _get_dag_orchestration_model_name() 动态模型名函数（EP-132）"
+            "mms.execution.unit_generate.py 缺少 _get_dag_orchestration_model_name() 动态模型名函数（EP-132）"
         )
 
 
@@ -153,7 +153,7 @@ class TestScopeGuard:
         dag_dir = tmp_path / "docs" / "memory" / "_system" / "dag"
         dag_dir.mkdir(parents=True)
 
-        from dag_model import make_dag_state
+        from mms.dag.dag_model import make_dag_state
         unit_data = {
             "id": "U1",
             "title": "测试 Unit",
@@ -176,7 +176,7 @@ class TestScopeGuard:
         compare_dir = tmp_path / "EP-TEST" / "U1"
         compare_dir.mkdir(parents=True)
 
-        from file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
+        from mms.execution.file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
         malicious_content = (
             f"{BEGIN_MARKER}\n"
             f"FILE: malicious.py\nACTION: create\nCONTENT:\nprint('pwned')\n"
@@ -188,7 +188,7 @@ class TestScopeGuard:
         with (
             patch.object(_uc, "_COMPARE_ROOT", tmp_path),
             patch.object(_uc, "_ROOT", tmp_path),
-            patch("dag_model.DagState.load", return_value=state),
+            patch("mms.dag.dag_model.DagState.load", return_value=state),
         ):
             result = _uc.apply("EP-TEST", "U1", source="qwen")
 
@@ -201,7 +201,7 @@ class TestScopeGuard:
         import json
 
         # 创建 DAG（unit.files 允许 target.py）
-        from dag_model import make_dag_state
+        from mms.dag.dag_model import make_dag_state
         unit_data = {
             "id": "U1",
             "title": "测试 Unit",
@@ -221,7 +221,7 @@ class TestScopeGuard:
         compare_dir = tmp_path / "EP-SCOPE" / "U1"
         compare_dir.mkdir(parents=True)
 
-        from file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
+        from mms.execution.file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
         valid_content = (
             f"{BEGIN_MARKER}\n"
             f"FILE: target.py\nACTION: create\nCONTENT:\nprint('ok')\n"
@@ -233,8 +233,8 @@ class TestScopeGuard:
         with (
             patch.object(_uc, "_COMPARE_ROOT", tmp_path),
             patch.object(_uc, "_ROOT", tmp_path),
-            patch("dag_model.DagState.load", return_value=state),
-            patch("unit_compare.subprocess") as mock_subprocess,
+            patch("mms.dag.dag_model.DagState.load", return_value=state),
+            patch("mms.execution.unit_compare.subprocess") as mock_subprocess,
         ):
             mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             result = _uc.apply("EP-SCOPE", "U1", source="qwen")
@@ -251,7 +251,7 @@ class TestArchCheckExceptionPath:
     """P4: arch_check 在执行异常时应返回失败而非静默通过"""
 
     def test_unit_runner_arch_check_exception_returns_false(self):
-        """unit_runner._run_arch_check: subprocess 异常 → (False, ...)"""
+        """mms.execution.unit_runner._run_arch_check: subprocess 异常 → (False, ...)"""
         import unit_runner as _ur
 
         with (
@@ -265,9 +265,9 @@ class TestArchCheckExceptionPath:
                 },
             ),
         ):
-            arch_check_path = _MMS_DIR / "arch_check.py"
+            arch_check_path = _MMS_DIR / "src/mms/analysis/arch_check.py"
             if not arch_check_path.exists():
-                pytest.skip("arch_check.py 不存在，跳过")
+                pytest.skip("mms.analysis.arch_check.py 不存在，跳过")
 
             passed, output = _ur._run_arch_check(["some_file.py"])
 
@@ -277,14 +277,14 @@ class TestArchCheckExceptionPath:
         )
 
     def test_postcheck_arch_check_exception_returns_false(self):
-        """postcheck.run_arch_check_post: subprocess 异常 → (False, -1, [msg])"""
+        """mms.workflow.postcheck.run_arch_check_post: subprocess 异常 → (False, -1, [msg])"""
         import postcheck as _pc
 
-        arch_check_path = _MMS_DIR / "arch_check.py"
+        arch_check_path = _MMS_DIR / "src/mms/analysis/arch_check.py"
         if not arch_check_path.exists():
-            pytest.skip("arch_check.py 不存在，跳过")
+            pytest.skip("mms.analysis.arch_check.py 不存在，跳过")
 
-        with patch("postcheck.subprocess") as mock_sub:
+        with patch("mms.workflow.postcheck.subprocess") as mock_sub:
             mock_sub.run.side_effect = OSError("模拟：subprocess 异常")
             no_new, new_count, violations = _pc.run_arch_check_post([])
 
@@ -297,49 +297,51 @@ class TestArchCheckExceptionPath:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# P5: GeminiProvider 集成 model_tracker
+# P5: BailianProvider 集成 model_tracker
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestGeminiModelTracker:
-    """P5: GeminiProvider.complete 成功/失败时均应调用 model_tracker.record"""
+class TestBailianModelTracker:
+    """P5: BailianProvider.complete 成功/失败时均应调用 model_tracker.record"""
 
-    def _make_gemini_response(self, text: str, prompt_tokens: int = 10, output_tokens: int = 20):
-        """构造 Gemini API 成功响应 body"""
+    def _make_bailian_response(self, text: str, prompt_tokens: int = 10, output_tokens: int = 20):
+        """构造百炼 OpenAI 兼容 API 成功响应 body"""
         return {
-            "candidates": [
+            "choices": [
                 {
-                    "content": {"parts": [{"text": text}], "role": "model"},
-                    "finishReason": "STOP",
+                    "message": {"role": "assistant", "content": text},
+                    "finish_reason": "stop",
                 }
             ],
-            "usageMetadata": {
-                "promptTokenCount": prompt_tokens,
-                "candidatesTokenCount": output_tokens,
-                "totalTokenCount": prompt_tokens + output_tokens,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": prompt_tokens + output_tokens,
             },
+            "model": "qwen3-32b",
         }
 
     def test_success_calls_model_tracker(self):
         """complete 成功时应调用 model_tracker.record(success=True)"""
         import json
         import urllib.request
-        from providers.gemini import GeminiProvider
+        from mms.providers.bailian import BailianProvider
 
-        mock_response_body = json.dumps(
-            self._make_gemini_response("测试响应内容")
-        ).encode("utf-8")
+        mock_body = json.dumps({
+            "choices": [{"message": {"role": "assistant", "content": "测试响应内容"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        }).encode("utf-8")
 
         mock_resp = MagicMock()
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_resp.read.return_value = mock_response_body
+        mock_resp.read.return_value = mock_body
 
         tracker_calls = []
 
         def fake_track(**kwargs):
             tracker_calls.append(kwargs)
 
-        provider = GeminiProvider(model="gemini-2.5-pro", api_key="fake-key-for-test")
+        provider = BailianProvider(model="qwen3-32b", api_key="fake-key-for-test")
 
         with (
             patch("urllib.request.urlopen", return_value=mock_resp),
@@ -351,26 +353,23 @@ class TestGeminiModelTracker:
         assert len(tracker_calls) == 1, f"应调用 model_tracker 1 次，实际：{len(tracker_calls)}"
         call = tracker_calls[0]
         assert call["success"] is True
-        assert call["provider"] == "gemini"
-        assert call["model"] == "gemini-2.5-pro"
+        assert call["provider"] == "bailian"
+        assert call["model"] == "qwen3-32b"
 
     def test_failure_calls_model_tracker(self):
         """complete 失败时应调用 model_tracker.record(success=False)"""
-        import urllib.error
-        from providers.gemini import GeminiProvider, ProviderUnavailableError
+        from mms.providers.bailian import BailianProvider
+        from mms.providers.base import ProviderUnavailableError
 
         tracker_calls = []
 
         def fake_track(**kwargs):
             tracker_calls.append(kwargs)
 
-        provider = GeminiProvider(model="gemini-2.5-pro", api_key="fake-key-for-test")
+        provider = BailianProvider(model="qwen3-32b", api_key="fake-key-for-test")
 
         with (
-            patch(
-                "urllib.request.urlopen",
-                side_effect=OSError("网络错误"),
-            ),
+            patch("urllib.request.urlopen", side_effect=OSError("网络错误")),
             patch("mms.model_tracker.record", side_effect=fake_track),
         ):
             with pytest.raises(ProviderUnavailableError):
@@ -379,7 +378,7 @@ class TestGeminiModelTracker:
         assert len(tracker_calls) == 1, f"失败路径也应调用 model_tracker，实际：{len(tracker_calls)}"
         call = tracker_calls[0]
         assert call["success"] is False
-        assert call["provider"] == "gemini"
+        assert call["provider"] == "bailian"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -400,7 +399,7 @@ class TestUnitContextLayerAlias:
         for line in source.splitlines():
             if '"testing"' in line and "前端层" in line:
                 pytest.fail(
-                    f"unit_context.py testing 层别名仍包含'前端层'：{line.strip()}"
+                    f"mms.execution.unit_context.py testing 层别名仍包含'前端层'：{line.strip()}"
                 )
 
     def test_testing_layer_alias_contains_l5(self):

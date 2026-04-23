@@ -263,8 +263,8 @@ class TestApply:
         # GitSandbox/FileApplier 在函数内用 try/except lazy import，
         # 需要 patch 到 sandbox / file_applier 模块，而非 unit_compare 模块
         with (
-            patch("sandbox.GitSandbox", mock_sandbox_cls),
-            patch("file_applier.FileApplier", mock_applier_cls),
+            patch("mms.execution.sandbox.GitSandbox", mock_sandbox_cls),
+            patch("mms.execution.file_applier.FileApplier", mock_applier_cls),
         ):
             # patch DagState 使其抛出 ImportError（测试 except 分支）
             import dag_model as _dm

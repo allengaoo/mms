@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from file_applier import (
+from mms.execution.file_applier import (
     parse_llm_output, parse_and_validate,
     validate_scope, pre_validate,
     FileApplier, FileChange, ParseError, ScopeViolationError,

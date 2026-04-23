@@ -28,7 +28,7 @@ import pytest
 _MMS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_MMS_DIR))
 try:
-    from _paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
+    from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
 except ImportError:
     _ROOT = _MMS_DIR.parent.parent
 
@@ -260,7 +260,7 @@ class TestEpParserScopeAndTestingPlan:
 
     def test_parses_scope_units_from_devops_ep(self, tmp_path):
         """ep_parser 应能从运维类 EP 的 Scope 表格中解析出 Unit 列表"""
-        from ep_parser import parse_ep_file
+        from mms.workflow.ep_parser import parse_ep_file
         ep_file = tmp_path / "EP-124_test.md"
         ep_file.write_text(self._DEVOPS_EP, encoding="utf-8")
         parsed = parse_ep_file(ep_file)
@@ -275,7 +275,7 @@ class TestEpParserScopeAndTestingPlan:
 
     def test_parses_testing_plan_section_exists(self, tmp_path):
         """ep_parser 解析后 testing_files 即使为空，Testing Plan 节也应被识别"""
-        from ep_parser import parse_ep_file, _extract_sections
+        from mms.workflow.ep_parser import parse_ep_file, _extract_sections
         ep_file = tmp_path / "EP-124_test.md"
         ep_file.write_text(self._DEVOPS_EP, encoding="utf-8")
         content = ep_file.read_text(encoding="utf-8")
@@ -303,7 +303,7 @@ class TestEpParserScopeAndTestingPlan:
             - `backend/tests/unit/services/test_svc.py` — Service 单元测试
             - `backend/tests/unit/api/test_api_endpoint.py` — API 单元测试
         """)
-        from ep_parser import parse_ep_file
+        from mms.workflow.ep_parser import parse_ep_file
         ep_file = tmp_path / "EP-999_full.md"
         ep_file.write_text(full_ep, encoding="utf-8")
         parsed = parse_ep_file(ep_file)

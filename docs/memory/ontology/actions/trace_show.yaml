@@ -109,5 +109,5 @@ example_output: |
 
   🤖 LLM 调用明细（3 次）
   U1  qwen3-coder    in=1,024  out=512   8.2s  ✅ success
-  U1  gemini-2.5-pro in=2,048  out=320   9.8s  ✅ success
+  U1  qwen3-32b      in=2,048  out=320   9.8s  ✅ success
   U2  qwen3-coder    in=896    out=448   6.3s  ⚠️ retry×1

@@ -25,9 +25,9 @@ class TestBootstrapFlow:
         req = tmp_path / "backend" / "requirements.txt"
         req.write_text("fastapi>=0.100\nsqlmodel\n")
 
-        from dep_sniffer import DependencySniffer
+        from mms.analysis.dep_sniffer import DependencySniffer
         from seed_packs import list_packs, get_pack_dir
-        from ast_skeleton import AstSkeletonBuilder
+        from mms.analysis.ast_skeleton import AstSkeletonBuilder
 
         # 嗅探
         profile = DependencySniffer(root=tmp_path).scan()
@@ -79,7 +79,7 @@ class TestBootstrapFlow:
                     pass
         """))
 
-        from ast_skeleton import AstSkeletonBuilder, build_ast_index
+        from mms.analysis.ast_skeleton import AstSkeletonBuilder, build_ast_index
         # 直接用 AstSkeletonBuilder 并指定 scan_dirs
         builder = AstSkeletonBuilder(
             root=tmp_path,

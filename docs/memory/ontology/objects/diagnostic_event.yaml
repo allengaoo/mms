@@ -136,7 +136,7 @@ properties:
     type: string
     required: false
     visibility_level: 4
-    description: "LLM 模型名称（如 qwen3-coder / gemini-2.5-pro）"
+    description: "LLM 模型名称（如 qwen3-coder-next / qwen3-32b）"
 
   tokens_in:
     type: integer

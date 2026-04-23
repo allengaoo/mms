@@ -256,21 +256,21 @@ class MmsConfig:
         val = _get(self._raw, "llm", "bailian", "embed_timeout_seconds", default=None)
         return int(val) if val is not None else 30
 
-    # ── llm.ollama ────────────────────────────────────────────────────────
+    # ── llm.ollama (deprecated, 保留以兼容旧 config.yaml，当前不使用) ────
 
     @property
     def llm_ollama_connect_timeout(self) -> int:
-        # fallback: config.yaml → llm.ollama.connect_timeout_seconds (default=3)
+        """Deprecated: Ollama 已移除，保留属性以防旧 config.yaml 报错。"""
         return int(_get(self._raw, "llm", "ollama", "connect_timeout_seconds", default=3))
 
     @property
     def llm_ollama_generate_timeout(self) -> int:
-        # fallback: config.yaml → llm.ollama.generate_timeout_seconds (default=120)
+        """Deprecated."""
         return int(_get(self._raw, "llm", "ollama", "generate_timeout_seconds", default=120))
 
     @property
     def llm_ollama_embed_timeout(self) -> int:
-        # fallback: config.yaml → llm.ollama.embed_timeout_seconds (default=30)
+        """Deprecated."""
         return int(_get(self._raw, "llm", "ollama", "embed_timeout_seconds", default=30))
 
     # ── trace（诊断追踪，EP-127） ─────────────────────────────────────────────

@@ -13,7 +13,7 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))
 
-from dep_sniffer import (
+from mms.analysis.dep_sniffer import (
     _parse_requirements, _parse_package_json,
     _parse_toml_dependencies, _match_stacks,
     DependencySniffer,

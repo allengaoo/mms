@@ -10,7 +10,7 @@
                      OPEN（重置计时器）
 
 状态持久化到 _system/circuit_state.json，跨进程生效。
-这意味着：Ollama 服务宕机后，下一次脚本启动也不会重试直到恢复时间到达。
+这意味着：LLM Provider 不可用后，下一次脚本启动也不会重试直到恢复时间到达。
 
 配置（来自 config.yaml::resilience.circuit_breaker）：
   failure_threshold:        3   连续失败 N 次后开路
@@ -67,7 +67,7 @@ class CircuitBreaker:
 
     def __init__(
         self,
-        model_name: str = "ollama",
+        model_name: str = "bailian",
         failure_threshold: int = 3,
         recovery_timeout: int = 60,
         state_file: Optional[Path] = None,

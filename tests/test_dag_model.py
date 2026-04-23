@@ -12,7 +12,7 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dag_model import DagUnit, DagState, make_dag_state, LAYER_ORDER
+from mms.dag.dag_model import DagUnit, DagState, make_dag_state, LAYER_ORDER
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────

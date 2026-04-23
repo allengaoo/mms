@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sandbox import GitSandbox, is_git_clean, get_tracked_status
+from mms.execution.sandbox import GitSandbox, is_git_clean, get_tracked_status
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ class TestCommit:
             r.stderr = ""
             return r
 
-        with patch("sandbox.subprocess.run", side_effect=mock_run):
+        with patch("mms.execution.sandbox.subprocess.run", side_effect=mock_run):
             h = sb.commit("test commit")
 
         assert h == "abcdef1"
@@ -164,7 +164,7 @@ class TestCommit:
             r.stderr = "nothing to commit"
             return r
 
-        with patch("sandbox.subprocess.run", side_effect=mock_run):
+        with patch("mms.execution.sandbox.subprocess.run", side_effect=mock_run):
             h = sb.commit("empty commit")
         assert h is None
 
@@ -203,7 +203,7 @@ class TestHelperFunctions:
             r.stdout = ""
             return r
 
-        with patch("sandbox.subprocess.run", side_effect=mock_run):
+        with patch("mms.execution.sandbox.subprocess.run", side_effect=mock_run):
             assert is_git_clean() is True
 
     def test_is_git_clean_false(self):
@@ -213,7 +213,7 @@ class TestHelperFunctions:
             r.stdout = " M some_file.py\n"
             return r
 
-        with patch("sandbox.subprocess.run", side_effect=mock_run):
+        with patch("mms.execution.sandbox.subprocess.run", side_effect=mock_run):
             assert is_git_clean() is False
 
     def test_get_tracked_status(self, tmp_root):
@@ -227,7 +227,7 @@ class TestHelperFunctions:
             r.stdout = "tracked.py\n"
             return r
 
-        with patch("sandbox.subprocess.run", side_effect=mock_run):
+        with patch("mms.execution.sandbox.subprocess.run", side_effect=mock_run):
             status = get_tracked_status(["tracked.py", "not_exist.py"], root=tmp_root)
 
         assert status["tracked.py"] == "tracked"

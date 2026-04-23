@@ -1,0 +1,68 @@
+{
+  "ep_id": "EP-TEST",
+  "generated_at": "2026-04-23T16:51:06.346760+00:00",
+  "orchestrator_model": "claude-sonnet-4-6",
+  "overall_status": "in_progress",
+  "units": [
+    {
+      "id": "U1",
+      "title": "数据模型",
+      "layer": "L3_domain",
+      "files": [
+        "backend/app/domain/foo.py"
+      ],
+      "depends_on": [],
+      "order": 1,
+      "status": "done",
+      "model_hint": "capable",
+      "atomicity_score": 0.0,
+      "git_commit": "abc123",
+      "completed_at": "2026-04-23T16:51:06.346768+00:00",
+      "test_files": [
+        "backend/tests/unit/test_foo.py"
+      ],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U2",
+      "title": "服务方法",
+      "layer": "L4_application",
+      "files": [
+        "backend/app/services/control/foo_service.py"
+      ],
+      "depends_on": [
+        "U1"
+      ],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "capable",
+      "atomicity_score": 0.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U3",
+      "title": "API Endpoint",
+      "layer": "L5_interface",
+      "files": [
+        "backend/app/api/v1/endpoints/foo.py"
+      ],
+      "depends_on": [
+        "U2"
+      ],
+      "order": 3,
+      "status": "pending",
+      "model_hint": "capable",
+      "atomicity_score": 0.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    }
+  ]
+}

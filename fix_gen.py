@@ -1,12 +1,12 @@
 """
-fix_gen.py — Ollama 辅助架构违反修复补丁生成器
+fix_gen.py — LLM 辅助架构违反修复补丁生成器
 
 使用 deepseek-coder-v2:16b 生成最小代码补丁，修复 arch_check 发现的架构违反。
 
 工作流：
 1. 读取目标源文件（+ 关键上下文行）
 2. 注入 MMS 记忆规则（AC-2 / AC-3 记忆片段）
-3. 调用 Ollama deepseek-coder-v2:16b 生成修复建议
+3. 调用 qwen3-coder-next 生成修复建议
 4. 输出到 stdout 供审查；通过 --apply 直接写入文件
 
 用法：
@@ -35,7 +35,6 @@ try:
     from mms_config import cfg as _cfg  # type: ignore[import]
 except Exception:
     _cfg = None  # type: ignore[assignment]
-# 降级 Ollama 模型名从环境变量读取（与 factory.py 保持一致）
 _OLLAMA_CODER_MODEL = os.environ.get("OLLAMA_CODER_MODEL", "deepseek-coder-v2:16b")
 
 # ── 规则记忆片段（从 MMS 注入） ────────────────────────────────────────────────
@@ -141,7 +140,7 @@ def _build_prompt(
 def run_llm(prompt: str, model: str = _CODER_MODEL) -> str:
     """
     调用 LLM 生成修复补丁。
-    优先级：百炼 qwen-coder-plus → Ollama deepseek-coder-v2:16b（降级）。
+    调用 qwen3-coder-next 生成修复建议。
     """
     sys.path.insert(0, str(_ROOT / "scripts"))
     sys.path.insert(0, str(_ROOT / "scripts" / "mms"))
@@ -154,15 +153,8 @@ def run_llm(prompt: str, model: str = _CODER_MODEL) -> str:
     provider = auto_detect("code_generation_simple")
 
     if not provider.is_available():
-        # 降级到 Ollama
-        try:
-            from mms.providers.ollama import OllamaProvider
-        except ImportError:
-            from providers.ollama import OllamaProvider  # type: ignore[no-redef]
-        provider = OllamaProvider(model=_OLLAMA_CODER_MODEL)
-        if not provider.is_available():
-            print("[fix_gen] 百炼和 Ollama 均不可用，请检查网络或服务状态", file=sys.stderr)
-            sys.exit(1)
+        print("[fix_gen] 百炼 Provider 不可用，请检查 DASHSCOPE_API_KEY 配置", file=sys.stderr)
+        sys.exit(1)
 
     print(f"[fix_gen] 正在调用 {provider.model_name}，请稍候...", file=sys.stderr)
     # fallback: config.yaml → runner.max_tokens.fix_gen (default=2048)
@@ -172,7 +164,7 @@ def run_llm(prompt: str, model: str = _CODER_MODEL) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="fix_gen.py — LLM 辅助架构违反补丁生成器（百炼/Ollama）",
+        description="fix_gen.py — LLM 辅助架构违反补丁生成器（百炼）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

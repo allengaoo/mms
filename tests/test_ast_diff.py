@@ -10,7 +10,7 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))
 
-from ast_diff import (
+from mms.analysis.ast_diff import (
     diff_ast, ChangeKind, ContractChange, AstDiffResult,
 )
 

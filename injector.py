@@ -6,7 +6,7 @@
   2. 多层检索：跨 L1~L5 + CC 层检索最相关的记忆，按分数排序
   3. 上下文压缩：对超长记忆文件提取关键段落（HOW + WHEN），降低 token 消耗
   4. Prompt 前缀生成：格式化为结构化的 Markdown 块，可直接粘贴到 Cursor
-  5. 本地优先：优先使用 Ollama deepseek-r1:8b 进行任务分类；无法连接时降级为规则匹配
+  5. 意图分类：规则匹配优先，低置信度时触发百炼 qwen3-32b LLM fallback
 
 用法（CLI）：
   mms inject "新增对象类型 API，需要 ProTable 和 Zustand Store"
@@ -180,7 +180,7 @@ class MemoryInjector:
     def _classify_task(self, task: str) -> List[str]:
         """
         从任务描述中提取相关节点 ID 列表（如 ["L5", "L5-D8", "L3", "L3-ontology"]）。
-        策略：先用规则匹配，如果 Ollama 可用则用 LLM 二次增强。
+        策略：先用规则匹配，如果 LLM 可用则用 qwen3-32b 二次增强。
         """
         task_lower = task.lower()
         matched_nodes: List[str] = []
@@ -201,7 +201,7 @@ class MemoryInjector:
         if not unique_nodes:
             unique_nodes = ["L1", "L2", "L5"]
 
-        # 可选：尝试用 Ollama 增强分类（快速 prompt，不阻塞）
+        # 可选：尝试用百炼 LLM 增强分类（快速 prompt，不阻塞）
         try:
             self._enhance_with_llm(task, unique_nodes)
         except Exception:
@@ -211,16 +211,14 @@ class MemoryInjector:
 
     def _enhance_with_llm(self, task: str, current_nodes: List[str]) -> None:
         """
-        可选 LLM 增强：用 deepseek-r1:8b 分析任务，补充可能遗漏的节点。
+        可选 LLM 增强：用 qwen3-32b 分析任务，补充可能遗漏的节点。
         结果直接修改 current_nodes（in-place）。
         """
         try:
-            from providers.factory import get  # type: ignore[import]
-            provider = get("ollama_r1")
+            from providers.factory import auto_detect  # type: ignore[import]
+            provider = auto_detect("intent_classification")
         except Exception:
-            from mms.providers.ollama import OllamaProvider
-            import os as _os
-            provider = OllamaProvider(model=_os.environ.get("OLLAMA_R1_MODEL", "deepseek-r1:8b"))
+            return  # LLM 不可用时静默跳过
         if not provider.is_available():
             return
 

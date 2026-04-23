@@ -27,11 +27,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import trace.tracer as _tm
-import trace.collector as _col
-import trace.reporter as _rpt
-from trace.tracer import EPTracer, TraceConfig
-from trace.event import LEVEL_BASIC, LEVEL_LLM, LEVEL_FILEOPS
+import mms.trace.tracer as _tm
+import mms.trace.collector as _col
+import mms.trace.reporter as _rpt
+from mms.trace.tracer import EPTracer, TraceConfig
+from mms.trace.event import LEVEL_BASIC, LEVEL_LLM, LEVEL_FILEOPS
 
 _MMS_CLI = str(Path(__file__).resolve().parents[1] / "cli.py")
 _ROOT = Path(__file__).resolve().parents[3]  # 项目根
@@ -54,7 +54,6 @@ def _run_cli(*args, env_extra=None) -> subprocess.CompletedProcess:
     import os
     env = os.environ.copy()
     env["DASHSCOPE_API_KEY"] = ""
-    env["GOOGLE_API_KEY"] = ""
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
@@ -64,7 +63,7 @@ def _run_cli(*args, env_extra=None) -> subprocess.CompletedProcess:
 
 
 def _load_events(base: Path, ep_id: str) -> list:
-    path = base / ep_id.upper() / "trace.jsonl"
+    path = base / ep_id.upper() / "mms.trace.jsonl"
     if not path.exists():
         return []
     return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -78,7 +77,7 @@ class TestTracerLifecycle:
     def test_enable_creates_config_and_jsonl(self, tmp_path):
         t = EPTracer.enable("EP-INT1", level=LEVEL_LLM)
         assert (tmp_path / "EP-INT1" / "trace_config.json").exists()
-        assert (tmp_path / "EP-INT1" / "trace.jsonl").exists()
+        assert (tmp_path / "EP-INT1" / "mms.trace.jsonl").exists()
 
     def test_full_cycle_level4(self, tmp_path):
         t = EPTracer.enable("EP-INT2", level=LEVEL_LLM)
@@ -144,7 +143,7 @@ class TestTracerLifecycle:
     def test_json_report_token_totals(self, tmp_path):
         t = EPTracer.enable("EP-INT6", level=LEVEL_LLM)
         t.record_llm(step="unit_run", model="qwen3", tokens_in=300, tokens_out=150, elapsed_ms=3000.0)
-        t.record_llm(step="compare", model="gemini", tokens_in=500, tokens_out=200, elapsed_ms=5000.0)
+        t.record_llm(step="compare", model="qwen3-32b", tokens_in=500, tokens_out=200, elapsed_ms=5000.0)
         EPTracer.disable("EP-INT6")
 
         report_str = _rpt.generate_report("EP-INT6", fmt="json", save=False)
@@ -198,9 +197,9 @@ class TestTracerLifecycle:
 class TestMmsConfigTraceAttrs:
     def test_trace_default_level_readable(self):
         try:
-            from mms_config import cfg
+            from mms.utils.mms_config import cfg
         except ImportError:
-            from mms.mms_config import cfg  # type: ignore[no-redef]
+            from mms.utils.mms_config import cfg  # type: ignore[no-redef]
         # 默认值应为 4（config.yaml 中 trace.default_level = 4）
         level = cfg.trace_default_level
         assert isinstance(level, int)
@@ -208,17 +207,17 @@ class TestMmsConfigTraceAttrs:
 
     def test_trace_max_events_readable(self):
         try:
-            from mms_config import cfg
+            from mms.utils.mms_config import cfg
         except ImportError:
-            from mms.mms_config import cfg  # type: ignore[no-redef]
+            from mms.utils.mms_config import cfg  # type: ignore[no-redef]
         assert isinstance(cfg.trace_max_events, int)
         assert cfg.trace_max_events >= 100
 
     def test_trace_preview_chars_readable(self):
         try:
-            from mms_config import cfg
+            from mms.utils.mms_config import cfg
         except ImportError:
-            from mms.mms_config import cfg  # type: ignore[no-redef]
+            from mms.utils.mms_config import cfg  # type: ignore[no-redef]
         assert isinstance(cfg.trace_preview_chars, int)
         assert cfg.trace_preview_chars >= 50
 

@@ -21,9 +21,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
-from unit_runner import UnitRunner, BatchRunner, RunResult
-import dag_model
+from mms.execution.file_applier import BEGIN_MARKER, END_MARKER, FILE_END_MARKER
+from mms.execution.unit_runner import UnitRunner, BatchRunner, RunResult
+import mms.dag.dag_model as dag_model
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -100,10 +100,10 @@ class TestUnitRunnerDryRun:
         llm_response = _build_llm_response(("backend/app/foo.py", "x = 1\n"))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(True, "passed")):
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(True, "passed")):
 
             runner = UnitRunner()
             result = runner.run("EP-TEST", "U1", model="capable", dry_run=True)
@@ -120,10 +120,10 @@ class TestUnitRunnerDryRun:
         llm_response = _build_llm_response(("backend/app/foo.py", "x = 1\n"))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(True, "passed")):
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(True, "passed")):
 
             runner = UnitRunner()
             result = runner.run("EP-TEST", "U1", dry_run=True)
@@ -141,11 +141,11 @@ class TestUnitRunnerSuccess:
         llm_response = _build_llm_response(("backend/app/foo.py", "x = 1\n"))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(True, "1 passed")), \
-             patch("sandbox.subprocess.run") as mock_run:
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(True, "1 passed")), \
+             patch("mms.execution.sandbox.subprocess.run") as mock_run:
 
             mock_run.return_value = MagicMock(returncode=0, stdout="abcdef1\n", stderr="")
 
@@ -164,7 +164,7 @@ class TestUnitRunnerSuccess:
         dag_file.write_text(json.dumps(data))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path):
+             patch("mms.execution.unit_runner._ROOT", tmp_path):
             runner = UnitRunner()
             result = runner.run("EP-TEST", "U1")
 
@@ -183,10 +183,10 @@ class TestUnitRunnerFailure:
         dag_dir, _ = _make_dag_state(tmp_path, unit_files=["backend/app/foo.py"])
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", return_value=("", "mock-model")), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(True, "passed")):
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", return_value=("", "mock-model")), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(True, "passed")):
 
             runner = UnitRunner(max_retries=1)
             result = runner.run("EP-TEST", "U1")
@@ -209,11 +209,11 @@ class TestUnitRunnerFailure:
             return (_build_llm_response(("backend/app/foo.py", "x = 1\n")), "mock-model")
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", side_effect=mock_llm), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(True, "1 passed")), \
-             patch("sandbox.subprocess.run") as mock_run:
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", side_effect=mock_llm), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(True, "1 passed")), \
+             patch("mms.execution.sandbox.subprocess.run") as mock_run:
 
             mock_run.return_value = MagicMock(returncode=0, stdout="abcdef1\n", stderr="")
 
@@ -228,7 +228,7 @@ class TestUnitRunnerFailure:
         dag_dir, _ = _make_dag_state(tmp_path, unit_files=["a.py"])
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path):
+             patch("mms.execution.unit_runner._ROOT", tmp_path):
             runner = UnitRunner()
             result = runner.run("EP-TEST", "U999")
 
@@ -241,7 +241,7 @@ class TestUnitRunnerFailure:
         empty_dag_dir.mkdir(parents=True, exist_ok=True)
 
         with _patch_dag_dir(empty_dag_dir), \
-             patch("unit_runner._ROOT", tmp_path):
+             patch("mms.execution.unit_runner._ROOT", tmp_path):
             runner = UnitRunner()
             result = runner.run("EP-NOTEXIST", "U1")
 
@@ -264,10 +264,10 @@ class TestUnitRunnerRollback:
         llm_response = _build_llm_response(("backend/app/foo.py", "broken = True\n"))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path), \
-             patch("unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
-             patch("unit_runner._run_arch_check", return_value=(True, "OK")), \
-             patch("unit_runner._run_tests", return_value=(False, "1 failed")):
+             patch("mms.execution.unit_runner._ROOT", tmp_path), \
+             patch("mms.execution.unit_runner._call_llm", return_value=(llm_response, "mock-model")), \
+             patch("mms.execution.unit_runner._run_arch_check", return_value=(True, "OK")), \
+             patch("mms.execution.unit_runner._run_tests", return_value=(False, "1 failed")):
 
             runner = UnitRunner(max_retries=0)
             result = runner.run("EP-TEST", "U1")
@@ -285,7 +285,7 @@ class TestBatchRunner:
         empty_dag_dir = tmp_path / "docs" / "memory" / "_system" / "dag"
         empty_dag_dir.mkdir(parents=True, exist_ok=True)
         with _patch_dag_dir(empty_dag_dir), \
-             patch("unit_runner._ROOT", tmp_path):
+             patch("mms.execution.unit_runner._ROOT", tmp_path):
             runner = BatchRunner()
             results = runner.run_next("EP-NOTEXIST")
         assert results == []
@@ -297,7 +297,7 @@ class TestBatchRunner:
         dag_file.write_text(json.dumps(data))
 
         with _patch_dag_dir(dag_dir), \
-             patch("unit_runner._ROOT", tmp_path):
+             patch("mms.execution.unit_runner._ROOT", tmp_path):
             runner = BatchRunner()
             results = runner.run_next("EP-TEST")
         assert results == []

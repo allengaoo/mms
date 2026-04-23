@@ -24,7 +24,7 @@ def _import_template_lib():
     """动态 import template_lib.py"""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
-        "template_lib", _MMS_ROOT / "template_lib.py"
+        "template_lib", _MMS_ROOT / "src/mms/memory/template_lib.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

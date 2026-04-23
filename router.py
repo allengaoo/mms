@@ -4,7 +4,7 @@ MMS 多模型路由器
 职责：按任务类型选择合适的 Provider，并写入审计日志。
 是 memory_distill.py 和其他工具的统一入口。
 
-模型分工（本地 Ollama 优先，Claude 兜底）：
+模型分工（百炼 qwen3-32b/qwen3-coder-next 主力，Claude 人工兜底）：
   推理类任务  → deepseek-r1:8b     蒸馏/路由/压缩/质量门
   代码类任务  → deepseek-coder-v2:16b  简单代码生成
   复杂架构    → Claude Sonnet 4.6  跨层变更（Pending 模式，人工处理）

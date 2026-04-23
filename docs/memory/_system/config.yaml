@@ -112,31 +112,12 @@ distillation:
 # ── LLM Provider 配置 ─────────────────────────────────────────────────────────
 llm:
   # 自动探测顺序：按 fallback_chain 依次尝试，第一个可用的生效
-  provider: auto                   # auto | ollama_r1 | ollama_coder | bailian | claude
+  provider: auto                   # auto | bailian_plus | bailian_coder | claude
 
   fallback_chain:
-    - bailian                      # 百炼（DashScope）qwen3-32b，首选（稳定、可联网）
-    - ollama_r1                    # deepseek-r1:8b，本地推理（离线可用）
-    - ollama_coder                 # deepseek-coder-v2:16b，本地代码生成
+    - bailian_plus                 # 百炼 qwen3-32b — 意图识别 / 代码评审 / DAG 编排 / 蒸馏
+    - bailian_coder                # 百炼 qwen3-coder-next — 代码生成
     - claude                       # Claude Sonnet（Pending 模式，需人工处理）
-
-  ollama:
-    base_url: "${OLLAMA_BASE_URL:-http://localhost:11434}"
-    connect_timeout_seconds: 3     # 连接超时：超出则跳过 Ollama，使用下一个 Provider
-    generate_timeout_seconds: 120  # 生成超时：120 秒内未完成则失败
-    models:
-      reasoning:  "${OLLAMA_MODEL_REASONING:-deepseek-r1:8b}"
-      coding:     "${OLLAMA_MODEL_CODING:-deepseek-coder-v2:16b}"
-      embedding:  "${OLLAMA_MODEL_EMBEDDING:-nomic-embed-text}"
-
-  google:
-    base_url: "https://generativelanguage.googleapis.com/v1beta"
-    connect_timeout_seconds: 8     # 健康检查超时
-    generate_timeout_seconds: 180  # 生成请求超时
-    min_output_tokens: 8192        # gemini-2.5-pro thinking 模式：max_tokens 最小保障值（防 thinking 吞尽 token）
-    models:
-      orchestration: "${GOOGLE_MODEL_ORCHESTRATION:-gemini-2.5-pro}"  # DAG 编排
-      code_review:   "${GOOGLE_MODEL_CODE_REVIEW:-gemini-2.5-pro}"    # 代码语义评审
 
   claude:
     model: "claude-sonnet-4-6"     # 标签仅用于审计，实际为 Pending 模式（人工粘贴提示词）
@@ -160,21 +141,21 @@ model_router:
       max_input_tokens: 3000
       desc: "判断任务 Layer/Dimension，选 prompt 模板"
     code_review:
-      model: gemini                # 代码语义评审：gemini-2.5-pro（1M 上下文，强推理）
+      model: bailian_plus          # 代码语义评审：qwen3-32b
       max_input_tokens: 50000
-      desc: "双模型对比语义评审，对照 18 条红线分析 qwen vs sonnet 差异"
+      desc: "双模型对比语义评审，对照架构红线分析 qwen vs sonnet 差异"
     dag_orchestration:
-      model: gemini                # DAG 编排：gemini-2.5-pro（理解完整 EP 架构）
+      model: bailian_plus          # DAG 编排：qwen3-32b（理解完整 EP 架构）
       max_input_tokens: 50000
-      desc: "将 EP 分解为原子 Unit DAG，由 Gemini 2.5 Pro 规划"
+      desc: "将 EP 分解为原子 Unit DAG，由 qwen3-32b 规划"
     code_generation_simple:
       model: bailian_coder         # 单文件/简单代码生成，qwen3-coder-next 效率更高
       max_input_tokens: 4000
       desc: "单文件/简单代码生成（有记忆辅助）"
     complex_architecture:
-      model: gemini                # 复杂架构变更：gemini-2.5-pro（1M 上下文）
-      max_input_tokens: 100000
-      desc: "跨层架构变更，Gemini 2.5 Pro 分析（B 路径仍可在 Cursor 中手动 Sonnet）"
+      model: bailian_plus          # 复杂架构变更：qwen3-32b
+      max_input_tokens: 50000
+      desc: "跨层架构变更，qwen3-32b 分析（B 路径仍可在 Cursor 中手动 Sonnet）"
 
   duplicate_detection:
     enabled: true
@@ -331,7 +312,7 @@ synthesize:
 dag:
   enabled: true                    # EP-117 实现完成，mms unit 命令已可用
 
-  orchestrator_model: gemini        # DAG 生成使用 gemini-2.5-pro（EP-122，1M 上下文强推理）
+  orchestrator_model: bailian_plus  # DAG 生成使用 qwen3-32b
   executor_model: bailian_coder     # 原子 Unit 执行使用 qwen3-coder-next（或本地小模型）
 
   # ── 原子化阈值（判断 Unit 是否适合小模型执行）─────────────────────────
@@ -348,7 +329,7 @@ dag:
 
   # ── DAG 生成 LLM 配置 ──────────────────────────────────────────────────
   generation:
-    max_tokens: 8192                # DAG 生成 LLM 调用的 max_tokens（gemini thinking 需要足够空间）
+    max_tokens: 8192                # DAG 生成 LLM 调用的 max_tokens
     max_tokens_retry_multiplier: 2  # MAX_TOKENS 错误时自动翻倍重试（翻倍上限：max_tokens × 此值）
 
   # ── 状态传递协议 ───────────────────────────────────────────────────────
@@ -489,7 +470,7 @@ runner:
   # ── max_tokens 配置（按任务类型）──────────────────────────────────────────
   max_tokens:
     code_generation: 4096       # unit_runner：代码生成 LLM 调用 max_tokens
-    code_review: 4096           # unit_compare：Gemini 语义评审 max_tokens
+    code_review: 4096           # unit_compare：qwen3-32b 语义评审 max_tokens
     distillation: 3000          # dream/synthesizer：蒸馏类任务 max_tokens
     intent_routing: 200         # intent_classifier：意图分类（极短输出）
     context_injection: 100      # injector：节点补充选择（极短输出）
@@ -528,14 +509,14 @@ compare:
   models:
     # EP 规划 / 意图识别：使用推理模型
     planning_model: "qwen3-32b"
-    # DAG 编排：Gemini 2.5 Pro（1M 上下文，EP-122）
-    orchestration_model: "gemini-2.5-pro"
+    # DAG 编排：qwen3-32b
+    orchestration_model: "qwen3-32b"
     # Unit 代码生成（A 路径）：使用 coder 模型
     generation_model: "qwen3-coder-next"
     # Unit 代码生成（B 路径）：Cursor Sonnet 4.6（在 Cursor 对话中手动执行）
     sonnet_model: "cursor-sonnet-4.6"
-    # 语义评审（自动，EP-122）：Gemini 2.5 Pro
-    review_model: "gemini-2.5-pro"
+    # 语义评审（自动）：qwen3-32b
+    review_model: "qwen3-32b"
 
   # ── diff 报告配置 ─────────────────────────────────────────────────────────
   report:

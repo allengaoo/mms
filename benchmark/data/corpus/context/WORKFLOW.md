@@ -41,4 +41,4 @@ This will:
 | Code generation | `bailian_coder` (qwen3-coder-next) |
 | Reasoning / DAG | `bailian_plus` (qwen3-32b) |
 | Code review | `bailian_plus` (qwen3-32b) |
-| Offline fallback | `ollama_coder` (deepseek-coder-v2:16b) |
+| Code generation  | `bailian_coder` (qwen3-coder-next) |

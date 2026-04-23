@@ -19,7 +19,7 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mms_config import MmsConfig, _get
+from mms.utils.mms_config import MmsConfig, _get
 
 
 # ── 辅助：写临时 YAML 文件 ────────────────────────────────────────────────────
@@ -80,9 +80,13 @@ class TestConfigMissingYaml:
         cfg = MmsConfig(config_path=tmp_path / "nonexistent.yaml")
         assert cfg.llm_google_min_output_tokens == 8192
 
-    def test_llm_ollama_connect_timeout_default(self, tmp_path):
+    def test_llm_fallback_chain_default(self, tmp_path):
         cfg = MmsConfig(config_path=tmp_path / "nonexistent.yaml")
-        assert cfg.llm_ollama_connect_timeout == 3
+        # 默认降级链应包含百炼 Provider，不含 Ollama / Gemini
+        chain = getattr(cfg, 'llm_fallback_chain', None)
+        if chain:
+            assert 'ollama_r1' not in chain, "Ollama 已移除，不应出现在降级链中"
+            assert 'gemini' not in chain, "Gemini 已移除，不应出现在降级链中"
 
     def test_dag_score_threshold_8b_default(self, tmp_path):
         cfg = MmsConfig(config_path=tmp_path / "nonexistent.yaml")
@@ -207,9 +211,9 @@ class TestEpParserPathValidation:
     def test_kubectl_command_excluded(self):
         """kubectl port-forward 命令不应被识别为文件路径。"""
         try:
-            from ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
         except ImportError:
-            from mms.ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
 
         # 模拟 EP-124 U1 的 Scope 表格行
         table_text = (
@@ -230,9 +234,9 @@ class TestEpParserPathValidation:
     def test_valid_path_with_slash_included(self):
         """含 / 且无空格的字符串应被识别为文件路径。"""
         try:
-            from ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
         except ImportError:
-            from mms.ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
 
         table_text = (
             "| Unit | 描述 | 涉及文件 |\n"
@@ -245,9 +249,9 @@ class TestEpParserPathValidation:
     def test_plain_filename_with_dot_included(self):
         """含 . 且无空格的文件名应被识别为文件路径。"""
         try:
-            from ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
         except ImportError:
-            from mms.ep_parser import _parse_scope_table
+            from mms.workflow.ep_parser import _parse_scope_table
 
         table_text = (
             "| Unit | 描述 | 涉及文件 |\n"

@@ -22,7 +22,7 @@ description: |
   3. 记忆图谱遍历（graph_resolver.py）— 从文件关联找到相关的开发经验和约束
   4. 历史任务匹配（task_matcher.py）— 查找类似历史任务的已验证路径
   5. 记忆关键词检索（injector.py）— 补充相关约束记忆
-  6. 生成起手提示词（qwen-plus LLM）— 综合以上信息生成结构化输出
+  6. 生成起手提示词（qwen3-32b）— 综合以上信息生成结构化输出
 
 inputs:
   - name: task_description
@@ -67,7 +67,7 @@ outputs:
 
 side_effects:
   - "在 task_history.jsonl 记录本次任务（供下次相似任务快速命中）"
-  - "可能调用 LLM（qwen-plus），消耗 API Token"
+  - "调用 LLM（qwen3-32b），消耗 API Token"
 
 cli_usage: |
   # 基础用法

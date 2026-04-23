@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from atomicity_check import (
+from mms.dag.atomicity_check import (
     check_a1_file_count,
     check_a2_token_budget,
     check_a3_layer_consistency,
@@ -169,7 +169,7 @@ class TestA4Verifiability:
 
 class TestComputeAtomicityScore:
     def test_all_pass_full_score(self):
-        from atomicity_check import CheckResult
+        from mms.dag.atomicity_check import CheckResult
         results = [
             CheckResult(True, "A1", ""),
             CheckResult(True, "A2", ""),
@@ -180,7 +180,7 @@ class TestComputeAtomicityScore:
         assert score == 1.0
 
     def test_all_fail_zero_score(self):
-        from atomicity_check import CheckResult
+        from mms.dag.atomicity_check import CheckResult
         results = [
             CheckResult(False, "A1", ""),
             CheckResult(False, "A2", ""),
@@ -191,7 +191,7 @@ class TestComputeAtomicityScore:
         assert score == 0.0
 
     def test_warning_half_score(self):
-        from atomicity_check import CheckResult
+        from mms.dag.atomicity_check import CheckResult
         results = [
             CheckResult(True, "A1", ""),
             CheckResult(True, "A2", ""),

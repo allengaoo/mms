@@ -46,7 +46,7 @@ outputs:
 side_effects:
   - "在 docs/memory/shared/ 对应层创建新的 .md 记忆文件"
   - "更新 docs/memory/MEMORY_INDEX.json"
-  - "调用 LLM（qwen-plus）分析 EP 文档，消耗 API Token"
+  - "调用 LLM（qwen3-32b）分析 EP 文档，消耗 API Token"
   - "在 docs/memory/_system/checkpoints/ 保存断点（大型 EP）"
 
 cli_usage: |

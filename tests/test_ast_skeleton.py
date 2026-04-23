@@ -13,7 +13,7 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent))
 
-from ast_skeleton import (
+from mms.analysis.ast_skeleton import (
     _parse_python, _parse_typescript, _compute_fingerprint,
     AstSkeletonBuilder, FileSkeleton,
 )

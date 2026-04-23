@@ -31,7 +31,7 @@ _BENCH_DIR = Path(__file__).parent.parent.parent   # mms/benchmark
 _MMS_DIR = _BENCH_DIR.parent                       # mms root
 try:
     sys.path.insert(0, str(_MMS_DIR))
-    from _paths import _PROJECT_ROOT               # type: ignore[import]
+    from mms.utils._paths import _PROJECT_ROOT               # type: ignore[import]
 except ImportError:
     _PROJECT_ROOT = _MMS_DIR
 sys.path.insert(0, str(_MMS_DIR))
@@ -40,8 +40,8 @@ sys.path.insert(0, str(_BENCH_DIR / "src"))
 from schema import RetrievalResult, RetrievedDoc
 from .base import BaseRetriever
 
-from intent_classifier import IntentClassifier
-from arch_resolver import ArchResolver
+from mms.memory.intent_classifier import IntentClassifier
+from mms.analysis.arch_resolver import ArchResolver
 
 # 延迟导入 EmbedIndex（避免 numpy 未安装时崩溃）
 _EmbedIndex = None

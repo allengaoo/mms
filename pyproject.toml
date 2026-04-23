@@ -70,13 +70,14 @@ Repository = "https://github.com/gaob13/mms"
 
 # ── setuptools 包发现 ──────────────────────────────────────────────────────────
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["mms*"]
 exclude = ["tests*", "benchmark*"]
 
 # ── pytest 配置 ───────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 asyncio_mode = "strict"
 addopts = [
     "--tb=short",

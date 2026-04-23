@@ -23,10 +23,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from trace.event import LEVEL_LLM, LEVEL_FILEOPS, LEVEL_FULL
-from trace.tracer import EPTracer, TraceConfig
-import trace.tracer as _tm
-import trace.reporter as _rpt
+from mms.trace.event import LEVEL_LLM, LEVEL_FILEOPS, LEVEL_FULL
+from mms.trace.tracer import EPTracer, TraceConfig
+import mms.trace.tracer as _tm
+import mms.trace.reporter as _rpt
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ def patch_trace_base(tmp_path, monkeypatch):
 def _write_events(base: Path, ep_id: str, events: list) -> None:
     ep_dir = base / ep_id.upper()
     ep_dir.mkdir(parents=True, exist_ok=True)
-    path = ep_dir / "trace.jsonl"
+    path = ep_dir / "mms.trace.jsonl"
     with path.open("w", encoding="utf-8") as f:
         for evt in events:
             f.write(json.dumps(evt, ensure_ascii=False) + "\n")
@@ -107,7 +107,7 @@ class TestLoadEvents:
     def test_skips_invalid_json_lines(self, tmp_path):
         ep_dir = tmp_path / "EP-BAD"
         ep_dir.mkdir()
-        (ep_dir / "trace.jsonl").write_text(
+        (ep_dir / "mms.trace.jsonl").write_text(
             '{"op":"ok"}\nNOT_JSON\n{"op":"ok2"}\n', encoding="utf-8"
         )
         events = _rpt.load_events("EP-BAD")
@@ -116,7 +116,7 @@ class TestLoadEvents:
     def test_skips_empty_lines(self, tmp_path):
         ep_dir = tmp_path / "EP-EMPTY"
         ep_dir.mkdir()
-        (ep_dir / "trace.jsonl").write_text(
+        (ep_dir / "mms.trace.jsonl").write_text(
             '\n\n{"op":"ep_start","ep_id":"EP-EMPTY","trace_id":"T"}\n\n',
             encoding="utf-8"
         )

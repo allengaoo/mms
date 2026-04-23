@@ -48,7 +48,7 @@ sys.path.insert(0, str(_BENCH_DIR / "src"))
 sys.path.insert(0, str(_MMS_DIR))
 
 try:
-    from mms_config import cfg as _cfg  # type: ignore[import]
+    from mms.utils.mms_config import cfg as _cfg  # type: ignore[import]
 except ImportError:
     _cfg = None  # type: ignore[assignment]
 
@@ -185,7 +185,7 @@ def _generate_code(
     t0 = time.monotonic()
 
     try:
-        from providers.factory import auto_detect  # type: ignore[import]
+        from mms.providers.factory import auto_detect  # type: ignore[import]
         provider = auto_detect("code_generation")
 
         # 上下文截断（防止超出 token 窗口，从 cfg 读取，默认 12000 字符约 3000 tokens）

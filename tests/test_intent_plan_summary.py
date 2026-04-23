@@ -23,12 +23,12 @@ _HERE = Path(__file__).resolve().parent
 _MMS = _HERE.parent
 sys.path.insert(0, str(_MMS))
 
-from intent_classifier import (
+from mms.memory.intent_classifier import (
     IntentResult,
     disk_validate_confidence,
     build_intent_plan_line,
 )
-from unit_runner import _quick_syntax_check, AiuOutputCarry, _extract_signature_snippet
+from mms.execution.unit_runner import _quick_syntax_check, AiuOutputCarry, _extract_signature_snippet
 from benchmark.src.metrics.aiu_quality import (
     calc_aiu_decomp_precision,
     calc_aiu_decomp_recall,

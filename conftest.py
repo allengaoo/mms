@@ -21,8 +21,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # ── 路径注入（最高优先级）────────────────────────────────────────────────────────
-# 确保 `import cli`, `import intent_classifier` 等均能找到 mms 根目录下的模块
 _MMS_ROOT = Path(__file__).resolve().parent
+_SRC_DIR = _MMS_ROOT / "src"
+
+# src/ 目录加入 sys.path，使 `from mms.X import Y` 生效
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+# 项目根也加入（兼容老式 `import cli` 等入口脚本）
 if str(_MMS_ROOT) not in sys.path:
     sys.path.insert(0, str(_MMS_ROOT))
 

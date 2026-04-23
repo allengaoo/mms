@@ -8,8 +8,8 @@ MMS CLI — MDP Memory System 统一命令行工具
   3. 自描述：每个命令有清晰的帮助信息和示例
 
 子命令：
-  status          — 系统状态总览（Ollama / 熔断器 / 记忆统计）
-  distill         — EP 知识蒸馏（调用 qwen-plus）
+  status          — 系统状态总览（百炼 / 熔断器 / 记忆统计）
+  distill         — EP 知识蒸馏（调用 qwen3-32b）
   gc              — 垃圾回收（LFU tier 重计算 + 索引更新）
   validate        — 记忆文件 Schema 校验
   search          — 关键词检索记忆（推理式，无向量）
@@ -105,7 +105,7 @@ def info(msg: str) -> None:
 _COMMAND_DOCS: dict = {
     "ep": {
         "title": "EP 工作流向导",
-        "models": "qwen3-32b（意图） · gemini-2.5-pro（DAG/评审） · qwen3-coder-next（代码）",
+        "models": "qwen3-32b（意图/评审/DAG） · qwen3-coder-next（代码）",
         "desc": "将完整 EP 生命周期串为 7 步交互式向导，支持断点续跑。",
         "usage": [
             ("mms ep start EP-122",                  "启动 EP-122 工作流向导（从 Step 1）"),
@@ -116,22 +116,22 @@ _COMMAND_DOCS: dict = {
             "Step 1  意图合成     mms synthesize → qwen3-32b",
             "Step 2  确认 EP 文件 Cursor 中生成 EP 文件后按 Enter",
             "Step 3  建立基线     mms precheck",
-            "Step 4  生成 DAG    mms unit generate → gemini-2.5-pro",
-            "Step 5  Unit 循环   qwen run + sonnet-save + compare(Gemini 评审) + apply",
+            "Step 4  生成 DAG    mms unit generate → qwen3-32b",
+            "Step 5  Unit 循环   qwen run + sonnet-save + compare(qwen3-32b 评审) + apply",
             "Step 6  后校验      mms postcheck",
             "Step 7  知识沉淀    mms dream + mms distill",
         ],
     },
     "unit": {
         "title": "DAG 任务编排",
-        "models": "gemini-2.5-pro（generate） · qwen3-coder-next（run）",
+        "models": "qwen3-32b（generate） · qwen3-coder-next（run）",
         "desc": "将 EP 分解为原子 Unit 并执行，支持双模型对比工作流。",
         "usage": [
-            ("mms unit generate --ep EP-122",                         "生成 DAG（Gemini 2.5 Pro）"),
+            ("mms unit generate --ep EP-122",                         "生成 DAG（qwen3-32b）"),
             ("mms unit status --ep EP-122",                          "查看执行进度"),
             ("mms unit run --ep EP-122 --unit U1 --save-output",     "qwen 生成代码（存盘，不写业务文件）"),
             ("mms unit sonnet-save --ep EP-122 --unit U1",           "保存 Sonnet 输出（stdin 粘贴）"),
-            ("mms unit compare --ep EP-122 --unit U1",               "Diff + Gemini 语义评审 → report.md"),
+            ("mms unit compare --ep EP-122 --unit U1",               "Diff + qwen3-32b 评审 → report.md"),
             ("mms unit compare --apply qwen --ep EP-122 --unit U1",  "应用 qwen 版本到业务文件"),
             ("mms unit compare --apply sonnet --ep EP-122 --unit U1","应用 sonnet 版本到业务文件"),
             ("mms unit done --ep EP-122 --unit U1",                  "手动标记 Unit 完成"),
@@ -314,10 +314,10 @@ def _print_full_help() -> None:
     print(f"\n{c('【模型分工】', _CYAN)}")
     model_table = [
         ("意图识别",    "mms synthesize",           "qwen3-32b（百炼）"),
-        ("DAG 生成",   "mms unit generate",         "gemini-2.5-pro（Google）"),
+        ("DAG 生成",   "mms unit generate",         "qwen3-32b（百炼）"),
         ("代码生成 A", "mms unit run --save-output", "qwen3-coder-next（百炼）"),
         ("代码生成 B", "mms unit sonnet-save",       "Cursor Sonnet（手动）"),
-        ("语义评审",   "mms unit compare",           "gemini-2.5-pro（Google，自动）"),
+        ("语义评审",   "mms unit compare",           "qwen3-32b（百炼，自动）"),
         ("知识蒸馏",   "mms distill / dream",        "qwen3-32b（百炼）"),
     ]
     for role, cmd_str, model in model_table:
@@ -354,7 +354,7 @@ def _print_full_help() -> None:
             ("mms unit status --ep EP-NNN",                 "查看 DAG 进度"),
             ("mms unit run --ep EP-NNN --unit U1 --save-output", "qwen 生成并存盘"),
             ("mms unit sonnet-save --ep EP-NNN --unit U1",  "存盘 Sonnet 输出"),
-            ("mms unit compare --ep EP-NNN --unit U1",      "Diff + Gemini 语义评审"),
+            ("mms unit compare --ep EP-NNN --unit U1",      "Diff + qwen3-32b 评审"),
             ("mms unit compare --apply qwen/sonnet ...",    "应用选定版本"),
             ("mms unit done --ep EP-NNN --unit U1",         "手动标记完成"),
         ]),
@@ -392,7 +392,7 @@ def _print_full_help() -> None:
 
 def cmd_status(args: argparse.Namespace) -> int:
     from mms.providers.bailian import BailianProvider, BailianEmbedProvider
-    from mms.providers.ollama import OllamaProvider
+
     from mms.resilience.circuit_breaker import CircuitBreaker
 
     header("MMS 系统状态")
@@ -432,17 +432,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             else:
                 warn(f"{model:<28} 不可达，请检查网络或 API Key 权限")
 
-    # Ollama 检查（降级备用）
-    print(f"\n{c('【Ollama 本地服务（降级备用）】', _CYAN)}")
-    for model, label in [
-        ("deepseek-r1:8b",        "推理降级"),
-        ("deepseek-coder-v2:16b", "代码降级"),
-    ]:
-        p = OllamaProvider(model=model)
-        if p.is_available():
-            ok(f"{model:<28} {c(label, _DIM)}")
-        else:
-            info(f"{model:<28} 未启动 (百炼可用时无影响)")
+
 
     # 熔断器状态
     print(f"\n{c('【熔断器状态】', _CYAN)}")
@@ -486,9 +476,9 @@ def cmd_status(args: argparse.Namespace) -> int:
         info("运行 `mms usage` 查看详细统计")
     else:
         try:
-            from mms.model_tracker import load_records, compute_stats
+            from mms.utils.model_tracker import load_records, compute_stats
         except ImportError:
-            from model_tracker import load_records, compute_stats  # type: ignore[no-redef]
+            from mms.utils.model_tracker import load_records, compute_stats  # type: ignore[no-redef]
         recs = load_records(since_days=7)
         if not recs:
             info("近 7 天暂无记录")
@@ -499,7 +489,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             for model_name, bm in sorted(
                 stats["by_model"].items(), key=lambda x: -x[1]["calls"]
             ):
-                provider_tag = f" {c('(降级)', _DIM)}" if bm["provider"] == "ollama" else ""
+                provider_tag = ""
                 ok(
                     f"{model_name:<28}"
                     f" {bm['calls']} 次  "
@@ -730,7 +720,7 @@ def cmd_incomplete(args: argparse.Namespace) -> int:
 # ─── private 命令组 ───────────────────────────────────────────────────────────
 
 def cmd_private(args: argparse.Namespace) -> int:
-    from mms.private import init_ep, add_note, list_eps, promote_note, close_ep
+    from mms.memory.private import init_ep, add_note, list_eps, promote_note, close_ep
 
     action = getattr(args, "private_action", None)
 
@@ -793,7 +783,7 @@ def cmd_private(args: argparse.Namespace) -> int:
 def cmd_reset_circuit(args: argparse.Namespace) -> int:
     from mms.resilience.circuit_breaker import CircuitBreaker
 
-    models = ["deepseek-r1:8b", "deepseek-coder-v2:16b", "ollama"]
+    models = ["qwen3-32b", "qwen3-coder-next"]
     if args.model:
         models = [args.model]
 
@@ -945,7 +935,7 @@ def build_parser() -> argparse.ArgumentParser:
     # usage — 模型使用统计
     p_usage = sub.add_parser(
         "usage",
-        help="模型调用统计：查看 qwen-plus/qwen-coder-plus 等模型的使用量、Token 消耗和场景分布",
+        help="模型调用统计：查看 qwen3-32b / qwen3-coder-next 等模型的使用量、Token 消耗和场景分布",
     )
     p_usage.add_argument(
         "--since", type=int, default=7, metavar="DAYS",
@@ -953,7 +943,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_usage.add_argument(
         "--model", metavar="MODEL_NAME",
-        help="仅显示指定模型的记录，如 qwen-plus",
+        help="仅显示指定模型的记录，如 qwen3-32b",
     )
     p_usage.add_argument(
         "--format", choices=["table", "json"], default="table",
@@ -1383,10 +1373,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
 
     try:
         sys.path.insert(0, str(_SCRIPTS_DIR))
-        from dep_sniffer import sniff  # type: ignore[import]
+        from mms.analysis.dep_sniffer import sniff  # type: ignore[import]
         from seed_packs import install_packs  # type: ignore[import]
-        from ast_skeleton import build_ast_index  # type: ignore[import]
-        from repo_map import RepoMap, invalidate_cache  # type: ignore[import]
+        from mms.analysis.ast_skeleton import build_ast_index  # type: ignore[import]
+        from mms.memory.repo_map import RepoMap, invalidate_cache  # type: ignore[import]
     except ImportError as e:
         print(f"❌ EP-130 模块未找到（{e}），请确认已实施 EP-130 U1/U2")
         return 1
@@ -1449,7 +1439,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print("\n▶ Step 4/4 · 绑定 AST 入口点...")
     try:
         if not skip_ast and not dry_run:
-            from arch_resolver import ArchResolver  # type: ignore[import]
+            from mms.analysis.arch_resolver import ArchResolver  # type: ignore[import]
             resolver = ArchResolver()
             rm = RepoMap()
 
@@ -1480,7 +1470,7 @@ def cmd_ast_diff(args: argparse.Namespace) -> int:
     """ast-diff 子命令：比对 AST 快照检测契约变更。"""
     try:
         sys.path.insert(0, str(_SCRIPTS_DIR))
-        from ast_diff import diff_ast_files, load_ast_index  # type: ignore[import]
+        from mms.analysis.ast_diff import diff_ast_files, load_ast_index  # type: ignore[import]
     except ImportError as e:
         print(f"❌ ast_diff 模块未找到（{e}）")
         return 1
@@ -1527,11 +1517,11 @@ def cmd_ast_diff(args: argparse.Namespace) -> int:
 def cmd_verify(args: argparse.Namespace) -> int:
     """verify 子命令：调用 verify.py 主逻辑"""
     try:
-        from mms.verify import (
+        from mms.utils.verify import (
             check_schema, check_index, check_docs, check_frontend
         )
     except ImportError:
-        from verify import (  # type: ignore[no-redef]
+        from mms.utils.verify import (  # type: ignore[no-redef]
             check_schema, check_index, check_docs, check_frontend
         )
 
@@ -1578,9 +1568,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def cmd_codemap(args: argparse.Namespace) -> int:
     """codemap 子命令：生成代码目录快照"""
     try:
-        from mms.codemap import generate_codemap
+        from mms.memory.codemap import generate_codemap
     except ImportError:
-        from codemap import generate_codemap  # type: ignore[no-redef]
+        from mms.memory.codemap import generate_codemap  # type: ignore[no-redef]
 
     output = _MEMORY_ROOT / "_system" / "codemap.md"
 
@@ -1603,9 +1593,9 @@ def cmd_codemap(args: argparse.Namespace) -> int:
 def cmd_funcmap(args: argparse.Namespace) -> int:
     """funcmap 子命令：生成函数签名索引"""
     try:
-        from mms.funcmap import generate_funcmap
+        from mms.memory.funcmap import generate_funcmap
     except ImportError:
-        from funcmap import generate_funcmap  # type: ignore[no-redef]
+        from mms.memory.funcmap import generate_funcmap  # type: ignore[no-redef]
 
     output = _MEMORY_ROOT / "_system" / "funcmap.md"
 
@@ -1628,9 +1618,9 @@ def cmd_funcmap(args: argparse.Namespace) -> int:
 def cmd_usage(args: argparse.Namespace) -> int:
     """usage 子命令：展示模型调用统计报告"""
     try:
-        from mms.model_tracker import print_report
+        from mms.utils.model_tracker import print_report
     except ImportError:
-        from model_tracker import print_report  # type: ignore[no-redef]
+        from mms.utils.model_tracker import print_report  # type: ignore[no-redef]
 
     since = getattr(args, "since", 7)
     model = getattr(args, "model", None)
@@ -1642,9 +1632,9 @@ def cmd_usage(args: argparse.Namespace) -> int:
 def cmd_synthesize(args: argparse.Namespace) -> int:
     """synthesize 子命令：LLM 意图合成，生成结构化 Cursor 起手提示词"""
     try:
-        from mms.synthesizer import synthesize, list_templates, interactive_extra_requirements
+        from mms.workflow.synthesizer import synthesize, list_templates, interactive_extra_requirements
     except ImportError:
-        from synthesizer import synthesize, list_templates, interactive_extra_requirements  # type: ignore[no-redef]
+        from mms.workflow.synthesizer import synthesize, list_templates, interactive_extra_requirements  # type: ignore[no-redef]
 
     if getattr(args, "list_templates", False):
         list_templates()
@@ -1669,7 +1659,7 @@ def cmd_synthesize(args: argparse.Namespace) -> int:
     if refresh_maps:
         info("--refresh-maps：合成前自动刷新 codemap + funcmap 快照")
 
-    print(f"\n{_CYAN}⏳ 正在调用 qwen-plus 生成起手提示词...{_RESET}\n")
+    print(f"\n{_CYAN}⏳ 正在调用 qwen3-32b 生成起手提示词...{_RESET}\n")
     result = synthesize(
         task_description=task_desc,
         template_name=template,
@@ -1690,9 +1680,9 @@ def cmd_synthesize(args: argparse.Namespace) -> int:
 def cmd_precheck(args: argparse.Namespace) -> int:
     """precheck 子命令：代码修改前检查门控"""
     try:
-        from mms.precheck import run_precheck
+        from mms.workflow.precheck import run_precheck
     except ImportError:
-        from precheck import run_precheck  # type: ignore[no-redef]
+        from mms.workflow.precheck import run_precheck  # type: ignore[no-redef]
 
     ep_id = args.ep
     strict = getattr(args, "strict", False)
@@ -1702,9 +1692,9 @@ def cmd_precheck(args: argparse.Namespace) -> int:
 def cmd_postcheck(args: argparse.Namespace) -> int:
     """postcheck 子命令：代码修改后测试与后校验"""
     try:
-        from mms.postcheck import run_postcheck
+        from mms.workflow.postcheck import run_postcheck
     except ImportError:
-        from postcheck import run_postcheck  # type: ignore[no-redef]
+        from mms.workflow.postcheck import run_postcheck  # type: ignore[no-redef]
 
     ep_id = args.ep
     skip_tests = getattr(args, "skip_tests", False)
@@ -1794,9 +1784,9 @@ def cmd_graph(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(Path(__file__).parent))
 
     try:
-        from mms.graph_resolver import MemoryGraph
+        from mms.memory.graph_resolver import MemoryGraph
     except ImportError:
-        from graph_resolver import MemoryGraph  # type: ignore[no-redef]
+        from mms.memory.graph_resolver import MemoryGraph  # type: ignore[no-redef]
 
     graph = MemoryGraph()
     stats = graph.stats()
@@ -1856,17 +1846,17 @@ def cmd_unit(args: argparse.Namespace) -> int:
     subcommand = getattr(args, "subcommand", None)
 
     try:
-        from unit_cmd import (  # type: ignore[import]
+        from mms.execution.unit_cmd import (  # type: ignore[import]
             cmd_unit_status, cmd_unit_next, cmd_unit_done,
             cmd_unit_context, cmd_unit_reset, cmd_unit_skip,
         )
-        from unit_generate import run_unit_generate  # type: ignore[import]
+        from mms.execution.unit_generate import run_unit_generate  # type: ignore[import]
     except ImportError:
-        from mms.unit_cmd import (  # type: ignore[import]
+        from mms.execution.unit_cmd import (  # type: ignore[import]
             cmd_unit_status, cmd_unit_next, cmd_unit_done,
             cmd_unit_context, cmd_unit_reset, cmd_unit_skip,
         )
-        from mms.unit_generate import run_unit_generate  # type: ignore[import]
+        from mms.execution.unit_generate import run_unit_generate  # type: ignore[import]
 
     if subcommand == "generate":
         return run_unit_generate(
@@ -1895,9 +1885,9 @@ def cmd_unit(args: argparse.Namespace) -> int:
     # ── EP-119 新增：LLM 自动执行命令 ─────────────────────────────────────────
     if subcommand in ("run", "run-next", "run-all"):
         try:
-            from unit_runner import UnitRunner, BatchRunner  # type: ignore[import]
+            from mms.execution.unit_runner import UnitRunner, BatchRunner  # type: ignore[import]
         except ImportError:
-            from mms.unit_runner import UnitRunner, BatchRunner  # type: ignore[import]
+            from mms.execution.unit_runner import UnitRunner, BatchRunner  # type: ignore[import]
 
         model = getattr(args, "model", "capable")
         dry_run = getattr(args, "dry_run", False)
@@ -1943,9 +1933,9 @@ def cmd_unit(args: argparse.Namespace) -> int:
     # ── EP-120 新增：双模型对比命令 ───────────────────────────────────────────
     if subcommand in ("compare", "sonnet-save"):
         try:
-            from unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
+            from mms.execution.unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
         except ImportError:
-            from mms.unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
+            from mms.execution.unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
 
         if subcommand == "sonnet-save":
             # 从 stdin 或 --file 读取 Sonnet 输出
@@ -1991,9 +1981,9 @@ def _load_inject_manifest() -> dict:
 def _cmd_inject_dispatch(args: argparse.Namespace) -> int:
     """inject 命令分发，支持 --mode 分层注入"""
     try:
-        from mms.injector import MemoryInjector
+        from mms.memory.injector import MemoryInjector
     except ImportError:
-        from injector import MemoryInjector  # type: ignore[no-redef]
+        from mms.memory.injector import MemoryInjector  # type: ignore[no-redef]
 
     task_desc = " ".join(args.task)
 
@@ -2049,9 +2039,9 @@ def cmd_ep(args: argparse.Namespace) -> int:
     # EP-131：ep run — 一键自动执行 Pipeline
     if subcommand == "run":
         try:
-            from mms.ep_runner import EpRunPipeline  # type: ignore[import]
+            from mms.workflow.ep_runner import EpRunPipeline  # type: ignore[import]
         except ImportError:
-            from ep_runner import EpRunPipeline  # type: ignore[no-redef]
+            from mms.workflow.ep_runner import EpRunPipeline  # type: ignore[no-redef]
 
         pipeline = EpRunPipeline()
         result = pipeline.run(
@@ -2068,9 +2058,9 @@ def cmd_ep(args: argparse.Namespace) -> int:
 
     # 原有：ep start / ep status（向导模式）
     try:
-        from mms.ep_wizard import run_ep_wizard, show_ep_status
+        from mms.workflow.ep_wizard import run_ep_wizard, show_ep_status
     except ImportError:
-        from ep_wizard import run_ep_wizard, show_ep_status  # type: ignore[no-redef]
+        from mms.workflow.ep_wizard import run_ep_wizard, show_ep_status  # type: ignore[no-redef]
 
     if subcommand == "start":
         return run_ep_wizard(
@@ -2088,9 +2078,9 @@ def cmd_dream(args: argparse.Namespace) -> int:
     """dream 子命令：autoDream 知识萃取"""
     sys.path.insert(0, str(Path(__file__).parent))
     try:
-        from mms.dream import run_dream
+        from mms.memory.dream import run_dream
     except ImportError:
-        from dream import run_dream  # type: ignore[no-redef]
+        from mms.memory.dream import run_dream  # type: ignore[no-redef]
 
     return run_dream(
         ep_id=getattr(args, "ep", None),
@@ -2105,9 +2095,9 @@ def cmd_template(args: argparse.Namespace) -> int:
     """template 子命令：代码模板库"""
     sys.path.insert(0, str(Path(__file__).parent))
     try:
-        from mms.template_lib import cmd_template_list, cmd_template_info, cmd_template_use
+        from mms.memory.template_lib import cmd_template_list, cmd_template_info, cmd_template_use
     except ImportError:
-        from template_lib import cmd_template_list, cmd_template_info, cmd_template_use  # type: ignore[no-redef]
+        from mms.memory.template_lib import cmd_template_list, cmd_template_info, cmd_template_use  # type: ignore[no-redef]
 
     subcommand = getattr(args, "subcommand", None)
 
@@ -2148,11 +2138,11 @@ def cmd_trace(args: argparse.Namespace) -> int:
         from mms.trace.tracer import TraceConfig  # type: ignore[import]
     except ImportError:
         try:
-            from trace.tracer import EPTracer  # type: ignore[import,no-redef]
-            from trace.reporter import (  # type: ignore[import,no-redef]
+            from mms.trace.tracer import EPTracer  # type: ignore[import,no-redef]
+            from mms.trace.reporter import (  # type: ignore[import,no-redef]
                 generate_report, generate_summary_text, list_traced_eps
             )
-            from trace.tracer import TraceConfig  # type: ignore[import,no-redef]
+            from mms.trace.tracer import TraceConfig  # type: ignore[import,no-redef]
         except ImportError as e:
             err(f"无法导入 trace 模块：{e}")
             return 1
@@ -2166,7 +2156,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
         tracer = EPTracer.enable(ep_id, level=level)
         # 注册到全局 collector
         try:
-            from trace.collector import register_tracer  # type: ignore[import]
+            from mms.trace.collector import register_tracer  # type: ignore[import]
             register_tracer(ep_id, tracer)
         except ImportError:
             pass
@@ -2181,7 +2171,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
         ep_id = args.ep_id.upper()
         EPTracer.disable(ep_id)
         try:
-            from trace.collector import invalidate  # type: ignore[import]
+            from mms.trace.collector import invalidate  # type: ignore[import]
             invalidate(ep_id)
         except ImportError:
             pass
@@ -2250,7 +2240,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
         else:
             print(f"  （{ep_id} 无追踪数据，跳过）")
         try:
-            from trace.collector import invalidate  # type: ignore[import]
+            from mms.trace.collector import invalidate  # type: ignore[import]
             invalidate(ep_id)
         except ImportError:
             pass
@@ -2269,7 +2259,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
             cfg_obj.save()
             print(f"  ✅ [{ep_id}] 追踪配置已更新：level={cfg_obj.level}")
         else:
-            from trace.event import LEVEL_NAMES  # type: ignore[import]
+            from mms.trace.event import LEVEL_NAMES  # type: ignore[import]
             print(f"  [{ep_id}] 当前配置：")
             print(f"    enabled   : {cfg_obj.enabled}")
             print(f"    level     : {cfg_obj.level} ({LEVEL_NAMES.get(cfg_obj.level, '?')})")

@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from trace.event import (
+from mms.trace.event import (
     TraceEvent,
     LEVEL_BASIC, LEVEL_LLM, LEVEL_FILEOPS, LEVEL_FULL,
     LEVEL_NAMES,

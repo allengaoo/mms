@@ -8,7 +8,7 @@ ep_wizard.py — mms ep 交互式工作流向导
   Step 1  意图合成        mms synthesize "任务" --template <类型>
   Step 2  EP 文件确认     [用户在 Cursor 中生成 EP 文件后按 Enter 继续]
   Step 3  建立基线        mms precheck --ep EP-NNN
-  Step 4  生成 DAG        mms unit generate --ep EP-NNN  (Gemini 2.5 Pro)
+  Step 4  生成 DAG        mms unit generate --ep EP-NNN  (qwen3-32b)
   Step 5  Unit 循环       每个 Unit：qwen run + sonnet-save + compare + apply
   Step 6  后校验          mms postcheck --ep EP-NNN
   Step 7  知识沉淀        mms distill --ep EP-NNN / mms dream --ep EP-NNN
@@ -322,7 +322,7 @@ def _step3_precheck(state: WizardState) -> bool:
 def _step4_dag_generate(state: WizardState) -> bool:
     """Step 4: 生成 DAG（EP-131 改造：自动执行，去掉强制确认）"""
     _step_header(4, 7, "生成 DAG 执行计划（mms unit generate）")
-    print(f"  模型：{_c('gemini-2.5-pro（Google）', _C)}")
+    print(f"  模型：{_c('qwen3-32b（百炼）', _C)}")
     print(f"  将 EP 分解为原子 Unit，生成有向无环图执行计划。\n")
 
     cmd = [sys.executable, str(_HERE / "cli.py"), "unit", "generate", "--ep", state.ep_id]
@@ -433,14 +433,14 @@ def _step5_unit_loop(state: WizardState) -> bool:
         else:
             print(f"    {_c('✅', _G)} sonnet.txt 已存在：{sonnet_file}")
 
-        # D：Diff + Gemini 评审
+        # D：Diff + qwen3-32b 评审
         compare_ok = False
         report_file = compare_dir / "report.md"
-        print(f"\n  {_c('D. Diff 对比 + Gemini 语义评审', _C)}  [{_c('gemini-2.5-pro', _D)}]")
+        print(f"\n  {_c('D. Diff 对比 + qwen3-32b 语义评审', _C)}  [{_c('qwen3-32b', _D)}]")
         if _ask(f"执行 mms unit compare ({unit_id})？"):
             cmd = [sys.executable, str(_HERE / "cli.py"), "unit", "compare",
                    "--ep", state.ep_id, "--unit", unit_id]
-            rc = _run_cmd(cmd, f"对比报告 + Gemini 评审 {unit_id}",
+            rc = _run_cmd(cmd, f"对比报告 + qwen3-32b 评审 {unit_id}",
                           ep_id=state.ep_id, step="compare", unit_id=unit_id)
             compare_ok = rc == 0
             if report_file.exists():
@@ -565,10 +565,10 @@ def run_ep_wizard(ep_id: str, from_step: int = 1) -> int:
     _header(f"MMS EP 工作流向导 — {ep_id}")
     print(f"\n  模型分工：")
     print(f"    意图识别  →  {_c('qwen3-32b', _C)}（百炼）")
-    print(f"    DAG 生成  →  {_c('gemini-2.5-pro', _C)}（Google）")
+    print(f"    DAG 生成  →  {_c('qwen3-32b', _C)}（百炼）")
     print(f"    代码生成  →  {_c('qwen3-coder-next', _C)}（百炼 A 路径）")
     print(f"               {_c('Cursor Sonnet', _C)}（B 路径，手动）")
-    print(f"    语义评审  →  {_c('gemini-2.5-pro', _C)}（Google，自动）")
+    print(f"    语义评审  →  {_c('qwen3-32b', _C)}（百炼，自动）")
     print(f"    知识蒸馏  →  {_c('qwen3-32b', _C)}（百炼）")
     print(f"\n  共 7 步。按 Ctrl+C 可随时中断，下次从当前步骤续跑。\n")
 

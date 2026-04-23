@@ -1,13 +1,13 @@
 """
 unit_generate.py — mms unit generate 命令实现
 
-将 EP 文件分解为 DAG（有向无环图），由 capable model（gemini-2.5-pro）作为"编排 Agent"
+将 EP 文件分解为 DAG（有向无环图），由 auto_detect("dag_orchestration") 动态选取的模型作为"编排 Agent"
 生成逻辑执行计划，small model 逐 Unit 原子执行。
 
 流程：
   1. 解析 EP 文件（ep_parser）
   2. 若 EP 有 DAG Sketch 节 → 解析为 DagUnit 列表（优先，无需 LLM）
-  3. 否则调用 LLM（gemini-2.5-pro via auto_detect("dag_orchestration")）生成 DAG JSON
+  3. 否则调用 LLM（auto_detect("dag_orchestration") 动态路由）生成 DAG JSON
   4. 原子性验证（atomicity_check）标注 model_hint + score
   5. 写入 docs/memory/_system/dag/EP-NNN.json
   6. 打印 DAG 概览
@@ -97,7 +97,7 @@ _USER_PROMPT_TEMPLATE = """请将以下 EP 分解为原子 Unit。
 def _get_dag_orchestration_model_name() -> str:
     """
     获取 dag_orchestration 任务当前实际使用的模型名（EP-132）。
-    不硬编码 "gemini-2.5-pro"，动态读取 factory 中的实际路由结果。
+    不硬编码模型名称，动态读取 factory 中的实际路由结果。
     失败时返回 "dag_orchestration_model"（中性占位符）。
     """
     try:
@@ -317,7 +317,7 @@ def _call_llm_generate_dag(
     scope_units: List[Any],
     layer_contracts_summary: str,
 ) -> Optional[List[Dict]]:
-    """调用 LLM（Gemini 2.5 Pro）生成 DAG JSON"""
+    """调用 LLM（由 auto_detect("dag_orchestration") 动态路由）生成 DAG JSON"""
     try:
         from mms.providers.factory import auto_detect  # type: ignore[import]
     except ImportError:
@@ -340,7 +340,7 @@ def _call_llm_generate_dag(
         layer_contracts_summary=layer_contracts_summary[:800],
     )
 
-    # 将 system + user 合并为单一 prompt（适配 Gemini 和 bailian 的 complete() 接口）
+    # 将 system + user 合并为单一 prompt（适配 complete() 接口）
     full_prompt = f"{_SYSTEM_PROMPT}\n\n---\n\n{user_prompt}"
 
     try:
@@ -352,7 +352,7 @@ def _call_llm_generate_dag(
         provider = auto_detect("dag_orchestration")
         print(f"  · DAG 生成使用 Provider：{provider.model_name}")
 
-        # max_tokens 从 config 读取，避免 gemini thinking 模式 token 不足
+        # max_tokens 从 config 读取
         # fallback: config.yaml → dag.generation.max_tokens (default=8192)
         max_tokens = _cfg.dag_generation_max_tokens
         retry_multiplier = _cfg.dag_generation_retry_multiplier

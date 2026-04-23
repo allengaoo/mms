@@ -419,17 +419,24 @@ layers:
       DAG 生成与执行（dag_model / unit_runner / unit_compare）、
       诊断追踪（trace/）、知识蒸馏（dream / distill）和系统配置（mms_config）。
     path_prefixes:
-      - "scripts/mms/"
+      - "cli.py"
+      - "ep_wizard.py"
+      - "synthesizer.py"
+      - "unit_runner.py"
+      - "unit_compare.py"
+      - "trace/"
+      - "dream.py"
+      - "mms_config.py"
     entry_files:
-      - "scripts/mms/cli.py"             # MMS 统一 CLI 入口
-      - "scripts/mms/ep_wizard.py"       # EP 7 步工作流向导
-      - "scripts/mms/synthesizer.py"     # 意图合成（mms synthesize）
-      - "scripts/mms/unit_runner.py"     # DAG Unit 自动执行
-      - "scripts/mms/unit_compare.py"    # 双模型对比（Qwen vs Sonnet）
-      - "scripts/mms/trace/tracer.py"    # 诊断追踪主类
-      - "scripts/mms/trace/reporter.py"  # 诊断报告生成
-      - "scripts/mms/dream.py"           # autoDream 知识萃取
-      - "scripts/mms/mms_config.py"      # 配置统一加载
+      - "cli.py"             # MMS 统一 CLI 入口
+      - "ep_wizard.py"       # EP 7 步工作流向导
+      - "synthesizer.py"     # 意图合成（mms synthesize）
+      - "unit_runner.py"     # DAG Unit 自动执行
+      - "unit_compare.py"    # 双模型对比（Qwen vs Sonnet）
+      - "trace/tracer.py"    # 诊断追踪主类
+      - "trace/reporter.py"  # 诊断报告生成
+      - "dream.py"           # autoDream 知识萃取
+      - "mms_config.py"      # 配置统一加载
     keywords:
       - "mms"
       - "synthesize"
@@ -462,7 +469,6 @@ layers:
       - "对比"
       - "qwen"
       - "sonnet"
-      - "gemini"
     hot_memories:
       - "AD-008"    # 知识索引三层架构
 

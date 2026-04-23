@@ -21,7 +21,7 @@ import pytest
 # ── 路径常量 ──────────────────────────────────────────────────────────────────
 
 _MMS_ROOT = Path(__file__).resolve().parents[1]  # scripts/mms/
-_DREAM_MODULE = _MMS_ROOT / "dream.py"
+_DREAM_MODULE = _MMS_ROOT / "src/mms/memory/dream.py"
 
 
 def _import_dream():

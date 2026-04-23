@@ -3,7 +3,7 @@
 MMS Synthesizer — LLM 意图合成器（v2.2，三级检索漏斗）
 
 将用户的简短任务描述，经过三级检索漏斗提取可信上下文，
-调用 qwen-plus 生成结构化的 Cursor EP 起手提示词。
+调用 qwen3-32b 生成结构化的 Cursor EP 起手提示词。
 
 三级检索漏斗（无向量、无全文检索引擎）：
   第一级  历史任务相似匹配（Jaccard + 时间衰减）
@@ -802,7 +802,7 @@ def _load_template(template_name: Optional[str]) -> str:
 
 
 def _call_llm(user_prompt: str) -> str:
-    """调用 qwen-plus 生成合成结果"""
+    """调用 qwen3-32b 生成合成结果"""
     try:
         try:
             from mms.providers.factory import auto_detect

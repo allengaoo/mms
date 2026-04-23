@@ -5,7 +5,7 @@ Claude Sonnet 4.6 适配器（Pending Prompt 模式）
 docs/memory/_system/pending_claude_prompts/ 目录，
 由用户在 Cursor 中手动执行后，通过 --resume 参数继续流程。
 
-触发场景：complex_architecture 任务 或 所有本地 Ollama Provider 均不可用时。
+触发场景：complex_architecture 任务 或 百炼 Provider 均不可用时的人工介入兜底。
 """
 import datetime
 import hashlib

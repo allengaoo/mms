@@ -6,7 +6,7 @@ unit_compare.py — EP-120 双模型代码对比工具
   1. compare(ep_id, unit_id)
      读取 qwen.txt 和 sonnet.txt，生成机械 diff 报告 report.md，
      并运行 arch_check / pytest 摘要（不写业务文件）。
-     完成后自动调用 Gemini 2.5 Pro 进行语义评审，写入 report.md 末尾。
+     完成后自动调用 qwen3-32b 进行语义评审，写入 report.md 末尾。
 
   2. apply(ep_id, unit_id, source)
      将 qwen 或 sonnet 的 ===BEGIN-CHANGES=== 格式输出应用到业务文件，
@@ -17,11 +17,11 @@ unit_compare.py — EP-120 双模型代码对比工具
         context.md   — 发送给双模型的上下文（由 mms unit run --save-output 生成）
         qwen.txt     — qwen 原始输出（===BEGIN-CHANGES=== 格式）
         sonnet.txt   — Cursor Sonnet 输出（同格式，由 mms unit sonnet-save 写入）
-        report.md    — 机械 diff + Gemini 语义评审报告（由 compare() 生成）
+        report.md    — 机械 diff + qwen3-32b 语义评审报告（由 compare() 生成）
 
 用法：
     from unit_compare import compare, apply, save_sonnet_output
-    compare("EP-120", "U1")   # 生成 report.md（含 Gemini 评审）
+    compare("EP-120", "U1")   # 生成 report.md（含 qwen3-32b 评审）
     apply("EP-120", "U1", source="qwen")   # 应用 qwen 版本
 """
 
@@ -347,7 +347,7 @@ def compare(ep_id: str, unit_id: str) -> int:
 
     # ── LLM 语义评审（EP-132：自动路由，默认 qwen3-32b）─────────────────────────
     print(f"\n{_C}▶ 调用 LLM 进行语义评审（code_review → bailian_plus）…{_X}")
-    review_result = _run_gemini_review(
+    review_result = _run_qwen_review(
         ep_id=ep_id,
         unit_id=unit_id,
         report_so_far="\n".join(report_lines),
@@ -376,14 +376,14 @@ def compare(ep_id: str, unit_id: str) -> int:
 
     print(f"\n  {_G}✅{_X} 报告已生成：{report_path}")
     print(f"  {_D}总计差异：+{total_added} / -{total_removed} 行，涉及 {len(all_files)} 个文件{_X}")
-    if "Gemini 评审失败" in review_result or "不可用" in review_result:
-        print(f"  {_Y}⚠️  Gemini 评审未完成，请在 Cursor 对话中手动读取 report.md{_X}")
+    if "评审失败" in review_result or "不可用" in review_result:
+        print(f"  {_Y}⚠️  qwen3-32b 评审未完成，请在 Cursor 对话中手动读取 report.md{_X}")
     else:
-        print(f"  {_G}✅{_X} Gemini 语义评审已完成，建议已写入 report.md")
+        print(f"  {_G}✅{_X} qwen3-32b 语义评审已完成，建议已写入 report.md")
     return 0
 
 
-# ── Gemini 语义评审实现 ────────────────────────────────────────────────────────
+# ── qwen3-32b 语义评审实现 ──────────────────────────────────────────────────────
 
 _REVIEW_PROMPT_TEMPLATE = """你是 MDP 平台的高级代码审查员。请对以下两个模型生成的代码版本进行语义评审。
 
@@ -423,14 +423,14 @@ EP: {ep_id}  Unit: {unit_id}
 请用简洁的中文回答，重点突出差异和违规，不需要逐行复述代码。"""
 
 
-def _run_gemini_review(
+def _run_qwen_review(
     ep_id: str,
     unit_id: str,
     report_so_far: str,
     qwen_raw: str,
     sonnet_raw: str,
 ) -> str:
-    """调用 LLM 进行语义评审，返回评审文本（EP-132：auto_detect code_review → bailian_plus/qwen3-32b）"""
+    """调用 qwen3-32b 进行语义评审，返回评审文本。"""
     try:
         try:
             from mms.providers.factory import auto_detect  # type: ignore[import]
@@ -462,7 +462,7 @@ def _run_gemini_review(
         review_text = provider.complete(prompt, max_tokens=review_max_tok)
         _elapsed = round((_time.monotonic() - _t0) * 1000, 1)
 
-        # Level 4 诊断：记录 Gemini 评审调用
+        # Level 4 诊断：记录 qwen3-32b 评审调用
         try:
             import sys as _sys
             _sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -486,7 +486,7 @@ def _run_gemini_review(
 
     except Exception as e:
         return (
-            f"⚠️  Gemini 评审失败（{type(e).__name__}）：{e}\n\n"
+            f"⚠️  qwen3-32b 评审失败（{type(e).__name__}）：{e}\n\n"
             "请在 Cursor 对话中手动读取此报告并进行语义评审。"
         )
 

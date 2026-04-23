@@ -22,8 +22,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import trace.collector as _col
-import trace.tracer as _tm
+import mms.trace.collector as _col
+import mms.trace.tracer as _tm
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ class TestGetTracer:
 
     def test_import_error_returns_none(self):
         """当 trace.tracer 模块不可用时，get_tracer 应安全返回 None。"""
-        with patch.dict("sys.modules", {"trace.tracer": None}):
+        with patch.dict("sys.modules", {"mms.trace.tracer": None}):
             # 清空缓存让它重新尝试导入
             _col.invalidate("EP-IMPORT-ERR")
             result = _col.get_tracer("EP-IMPORT-ERR")
