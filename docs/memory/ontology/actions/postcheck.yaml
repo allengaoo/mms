@@ -1,0 +1,51 @@
+# ActionDef: postcheck — EP 后置校验动作
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: action_postcheck
+label: "后置校验"
+type: action
+version: "3.0"
+
+description: |
+  代码修改完成后，对比基线快照验证 EP 的正确性：
+  - 运行 EP 声明的测试文件（pytest），检查测试是否通过
+  - 重新运行架构约束检查，确认没有引入新的架构违规
+  - 检测文档漂移（doc_drift.py），确认 API/页面变更已同步到文档
+  - 汇总 PASS / WARN / FAIL 状态并输出报告
+  - PASS 后自动输出 distill 命令
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    example: "EP-116"
+
+  - name: skip_tests
+    type: boolean
+    required: false
+    default: false
+    description: "跳过测试运行（仅做架构检查和文档漂移检测）"
+
+outputs:
+  - name: report
+    type: text
+    description: "后置校验报告，包含：测试结果、架构违规 diff、文档漂移列表、总体状态"
+
+  - name: status
+    type: enum
+    options: [PASS, WARN, FAIL]
+    description: "整体校验状态"
+
+side_effects:
+  - "在 docs/memory/_system/checkpoints/ 保存 postcheck-{ep_id}.json"
+  - "PASS 时输出 distill 命令提示"
+
+cli_usage: |
+  python3 scripts/mms/cli.py postcheck --ep EP-116
+  python3 scripts/mms/cli.py postcheck --ep EP-116 --skip-tests
+
+trigger_condition: "EP 所有 Unit 代码完成后执行"
+
+related_actions:
+  - action_precheck
+  - action_distill

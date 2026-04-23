@@ -1,0 +1,98 @@
+# ActionDef: synthesize — 意图合成动作
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   把你的一句话任务描述，变成 Cursor AI 能理解的详细执行计划起手提示词。
+#   系统会自动分析你想做什么，找到项目中真实存在的相关文件，
+#   检索相关的开发经验和约束，最终生成结构化的提示词。
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: action_synthesize
+label: "意图合成"
+type: action
+version: "3.0"
+
+description: |
+  输入：用户的一句话任务描述（自然语言）
+  输出：结构化的 Cursor 执行计划起手提示词
+
+  工作流程（v3.0 架构图谱版）：
+  1. 本地意图分类（intent_classifier.py）— 理解你要做什么、影响哪一层代码
+  2. 确定性路径解析（arch_resolver.py）— 找到项目中真实存在的相关文件（零幻觉）
+  3. 记忆图谱遍历（graph_resolver.py）— 从文件关联找到相关的开发经验和约束
+  4. 历史任务匹配（task_matcher.py）— 查找类似历史任务的已验证路径
+  5. 记忆关键词检索（injector.py）— 补充相关约束记忆
+  6. 生成起手提示词（qwen-plus LLM）— 综合以上信息生成结构化输出
+
+inputs:
+  - name: task_description
+    type: text
+    required: true
+    description: "用一句话描述你想做什么"
+    example: "把导航栏精简为只保留本体管理平台"
+
+  - name: template
+    type: enum
+    required: false
+    options:
+      - ep-backend-api
+      - ep-frontend
+      - ep-ontology
+      - ep-data-pipeline
+      - ep-debug
+    description: "任务类型（不确定时可以不填，系统会自动推断）"
+
+  - name: extra
+    type: text
+    required: false
+    description: "额外要求（如：需支持分页、不允许修改 ORM 模型）"
+
+  - name: refresh_maps
+    type: boolean
+    required: false
+    default: false
+    description: "是否在生成前刷新代码目录快照（大规模重构后建议开启）"
+
+outputs:
+  - name: prompt
+    type: text
+    description: |
+      包含以下 6 个部分的结构化起手提示词：
+      1. 任务背景与目标
+      2. 涉及层次与模块（真实文件路径）
+      3. 关键约束提醒
+      4. 建议加载文件（@mention 列表）
+      5. EP 类型声明
+      6. 起手指令
+
+side_effects:
+  - "在 task_history.jsonl 记录本次任务（供下次相似任务快速命中）"
+  - "可能调用 LLM（qwen-plus），消耗 API Token"
+
+cli_usage: |
+  # 基础用法
+  python3 scripts/mms/cli.py synthesize "把导航栏精简为只保留本体管理平台"
+
+  # 指定任务类型（提升路径精度）
+  python3 scripts/mms/cli.py synthesize "新增对象类型批量导出" --template ep-backend-api
+
+  # 带额外要求
+  python3 scripts/mms/cli.py synthesize "修复登录 401" --template ep-debug \
+    --extra "只影响 auth_service，不修改前端"
+
+  # 大规模重构后先刷新文件快照
+  python3 scripts/mms/cli.py synthesize "重构 Worker 层" --refresh-maps
+
+calls_functions:
+  - fn_classify_intent
+  - fn_resolve_paths
+  - fn_rank_memories
+  - fn_extract_tags
+  # EP-129 新增：synthesize 阶段可触发 AIU 分解（当置信度 < 0.6 时）
+  - fn_decompose_task
+
+related_actions:
+  - action_precheck
+  - action_postcheck
+  - action_distill
+  - action_unit_run

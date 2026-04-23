@@ -1,0 +1,89 @@
+# FunctionDef: fn_decompose_task — 任务分解函数（AIU 序列生成）
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   类比数据库查询优化器的 Logical Plan → Physical Plan 阶段。
+#   给定一个 DagUnit 的任务描述，生成一个有序的 AIUStep 序列，
+#   让 UnitRunner 知道"先做什么，再做什么"。
+#
+# 版本：v1.0 | 创建于：2026-04-18 | EP-129
+
+id: fn_decompose_task
+label: "任务分解（AIU 序列生成）"
+type: function
+version: "1.0"
+source_ep: "EP-129"
+
+description: |
+  将 DagUnit 的任务描述分解为有序的 AIUStep 序列。
+  类比数据库查询优化器将 SQL 语句分解为算子执行计划。
+
+  两阶段分解策略（RBO 优先）：
+
+  阶段 1 — RBO（Rule-Based Optimizer，零延迟）：
+    基于 RBO_RULES 关键词规则匹配 12 种高频 AIU 类型。
+    无 LLM 调用，确定性输出，覆盖约 70% 的常见开发任务。
+    触发条件：任何需要分解的任务（作为第一选择）。
+
+  阶段 2 — LLM 兜底（仅在 RBO miss 时触发）：
+    调用 qwen3-coder-next 生成 JSON 结构的 AIU 步骤列表。
+    输入：任务描述 + 全部 28 种 AIU 类型的说明。
+    输出：[{aiu_type, description, target_files, depends_on}]。
+
+  触发条件（由调用方判断是否需要分解）：
+    - intent.confidence < 0.6（粗粒度意图识别置信度低）
+    - 任务描述包含并列连词（且/以及/另外/同时/并且）
+    - 任务描述长度 > 100 字符且涉及多个架构层
+
+implementation:
+  - "scripts/mms/task_decomposer.py :: TaskDecomposer"
+  - "scripts/mms/task_decomposer.py :: TaskDecomposer.decompose()"
+
+inputs:
+  - name: task_description
+    type: string
+    required: true
+    description: "DagUnit 的任务描述文本"
+    example: "在 ontology.py 中新增 POST /export 路由，并编写对应的单元测试"
+
+  - name: dag_unit
+    type: DagUnit
+    required: false
+    description: "完整的 DagUnit 对象（用于从 files/layer 推导目标文件）"
+
+  - name: intent_result
+    type: object
+    required: false
+    description: "fn_classify_intent 的输出（如已有则跳过重复分类）"
+
+  - name: force_llm
+    type: boolean
+    required: false
+    default: false
+    description: "强制使用 LLM 分解（忽略 RBO）"
+
+outputs:
+  - name: aiu_plan
+    type: AIUPlan
+    description: "生成的 AIU 步骤序列（含 exec_order 排序和 depends_on 依赖关系）"
+
+  - name: confidence
+    type: float
+    description: "分解置信度 0.0~1.0（RBO=1.0，LLM 兜底=0.6~0.9，失败=0.0）"
+
+  - name: decomposed_by
+    type: string
+    enum: ["rbo", "llm", "none"]
+    description: "使用哪种方式完成分解（none 表示不需要分解）"
+
+anti_patterns:
+  - "不要在 RBO 失败后直接放弃，必须回退到 LLM 兜底"
+  - "不要生成超过 8 个 AIUStep（超过 8 个意味着 DagUnit 粒度太粗，应先拆分 DagUnit）"
+  - "不要为每个文件单独生成一个 AIUStep，AIUStep 是语义单元而非文件单元"
+
+related_functions:
+  - fn_classify_intent
+  - fn_estimate_aiu_cost
+
+related_objects:
+  - DagUnit
+  - AIUStep

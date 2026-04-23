@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev", "feature/**", "cursor/**", "fix/**"]
+  pull_request:
+    branches: ["main", "dev"]
+
+# 并发控制：同分支的新 push 取消旧的 CI run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Lint（fast，不安装重依赖）
+  # ──────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install ruff
+        run: pip install ruff>=0.4
+
+      - name: Run ruff check
+        run: ruff check . --output-format=github
+
+      - name: Run ruff format check
+        run: ruff format --check . || true  # 格式检查失败不阻断 CI（渐进式引入）
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Unit Tests（核心测试，不需要 LLM API）
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyyaml>=6.0 structlog>=23.0
+          pip install pytest>=8.0 pytest-cov>=5.0 pytest-mock>=3.12 pytest-asyncio>=0.23 pytest-json-report>=1.5
+
+      - name: Run tests (no LLM API needed)
+        env:
+          # 跳过需要 LLM API 的测试，避免 CI 费用
+          MMS_CI_MODE: "1"
+          # 跳过需要 ES/Milvus 的 benchmark 测试
+          MMS_EVAL_SKIP_LEVELS: "3,4"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m pytest tests/ \
+            -v \
+            --tb=short \
+            -m "not slow and not integration and not benchmark" \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-config=pyproject.toml \
+            -q
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false  # 覆盖率上传失败不阻断
+        continue-on-error: true
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Benchmark 数据集完整性检查（快速，不运行 LLM）
+  # ──────────────────────────────────────────────────────────────────────────
+  benchmark-integrity:
+    name: Benchmark Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: pip install pyyaml>=6.0 pytest>=8.0 pytest-mock>=3.12
+
+      - name: Run benchmark dataset validation
+        env:
+          MMS_EVAL_SKIP_LEVELS: "3,4"
+        run: |
+          python -m pytest tests/test_codegen_evaluator.py \
+            -v \
+            --tb=short \
+            -k "TestLoadCodegenTasks or TestCodegenQualityMetrics or TestRepairAndParseJson" \
+            -q
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 架构约束快速扫描
+  # ──────────────────────────────────────────────────────────────────────────
+  arch-check:
+    name: Architecture Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: pip install pyyaml>=6.0
+
+      - name: Run arch_check
+        run: |
+          python arch_check.py --ci 2>&1 || true  # 非阻断（输出结果供参考）
+        working-directory: .
+        continue-on-error: true  # 渐进式：arch_check 失败不阻断 CI，只做报告

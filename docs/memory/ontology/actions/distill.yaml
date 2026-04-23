@@ -1,0 +1,66 @@
+# ActionDef: distill — EP 知识蒸馏动作
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   EP（执行计划）完成后，把这次开发过程中学到的经验、发现的陷阱、
+#   做出的技术决策，提炼成结构化的记忆文件，永久保存到记忆库中，
+#   供未来的任务参考。
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: action_distill
+label: "知识蒸馏"
+type: action
+version: "3.0"
+
+description: |
+  读取 EP 执行计划文档，提取：
+  - 新发现的经验教训（Lesson）
+  - 确立的设计模式（Pattern）
+  - 确认的反模式（Anti-Pattern）
+  - 重要的架构决策（Decision）
+  并生成符合 MEM/AD/BIZ 格式的记忆文件，写入 docs/memory/shared/ 对应层目录。
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    description: "EP 编号，如 EP-116"
+    example: "EP-116"
+
+  - name: dry_run
+    type: boolean
+    required: false
+    default: false
+    description: "预览模式：只展示将生成的记忆，不实际写入文件"
+
+  - name: resume
+    type: string
+    required: false
+    description: "断点 ID：从中断处继续蒸馏（适用于大型 EP）"
+
+outputs:
+  - name: memory_files
+    type: list[string]
+    description: "生成的记忆文件路径列表"
+
+side_effects:
+  - "在 docs/memory/shared/ 对应层创建新的 .md 记忆文件"
+  - "更新 docs/memory/MEMORY_INDEX.json"
+  - "调用 LLM（qwen-plus）分析 EP 文档，消耗 API Token"
+  - "在 docs/memory/_system/checkpoints/ 保存断点（大型 EP）"
+
+cli_usage: |
+  # 蒸馏 EP-116 的知识
+  python3 scripts/mms/cli.py distill --ep EP-116
+
+  # 预览模式（不写入文件）
+  python3 scripts/mms/cli.py distill --ep EP-116 --dry-run
+
+  # 从断点恢复
+  python3 scripts/mms/cli.py distill --ep EP-116 --resume <checkpoint-id>
+
+trigger_condition: "postcheck PASS 后执行"
+
+related_actions:
+  - action_postcheck
+  - action_synthesize

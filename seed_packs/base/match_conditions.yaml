@@ -1,0 +1,6 @@
+# base 种子包匹配条件
+# 此包始终被注入（所有项目通用约束）
+stack_id: base
+description: "通用工程约束基础种子（适用所有软件工程项目）"
+always_inject: true
+match_conditions: []

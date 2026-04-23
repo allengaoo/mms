@@ -1,0 +1,543 @@
+# Benchmark 测试数据集 v3.0 — AIU 分解质量 + 冷启动基线集
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 设计动机（基于 EP-131 系统升级）：
+#   EP-129 引入 AIU 分解，v1/v2 数据集无法评估分解质量。
+#   EP-130 引入冷启动能力，需要无项目特有记忆的基线测试。
+#
+# v3.0 新增 2 个类别：
+#   I — AIU 分解质量：测试 task_decomposer.py 的分解精度
+#       GT 定义"正确分解应产生哪些 AIU 类型，以什么顺序"
+#       注：I 类指标仅对 ontology 系统有意义（RAG 无 AIU 分解，标记 N/A）
+#   J — 冷启动基线：仅有 base 种子包，无项目特有记忆的基线性能
+#       GT 使用模式匹配而非具体路径，因冷启动下不知道项目结构
+#
+# v3.0 新增 3 个指标（详见 metrics.yaml）：
+#   aiu_decomp_precision / aiu_decomp_recall / aiu_order_similarity
+#   cost_efficiency（端侧场景核心指标）
+#
+# 评估策略：
+#   - v3.0 作为独立评估集（不合并到 v1/v2 数据中）
+#   - I 类：ontology 系统专项，RAG 系统结果标记 N/A
+#   - J 类：三个系统均运行，测试冷启动泛化能力
+#   - v1 + v2 + v3 联合评估才能得到完整的性能画像
+#
+# 版本：3.0 | 创建于：2026-04-18 | EP-131
+# GT 设计原则：客观判断，独立于任何检索系统
+
+metadata:
+  version: "3.0"
+  total: 25
+  main_eval: 25
+  adversarial: 0
+  top_k: 5
+  design_note: "AIU 分解质量 + 冷启动基线，专项测试 EP-129/130 新能力"
+  categories:
+    I: "AIU分解质量 — 测试 task_decomposer 对复杂任务的原子化分解精度"
+    J: "冷启动基线 — 仅有 base 种子包无项目特有记忆，测试三系统零经验性能"
+
+queries:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 I：AIU 分解质量（15条）
+  # 设计目的：验证 task_decomposer.py 的 RBO 规则和 LLM 兜底能否正确分解复杂任务
+  #   评估对象：ontology（有 AIU 分解），RAG 系统标记 N/A
+  #   核心指标：aiu_decomp_precision / aiu_decomp_recall / aiu_order_similarity
+  #   GT 字段：expected_aiu_types（期望 AIU 类型集合）
+  #            expected_aiu_count_range（允许 AIU 数量范围）
+  #            forbidden_aiu_types（不应出现的 AIU 类型）
+  #            aiu_order_matters（顺序是否重要）
+  # ══════════════════════════════════════════════════════════════════════════
+
+  # I-001~I-005：单层多步任务（后端 API 全链路）
+  - query_id: "I-001"
+    category: "I"
+    category_desc: "AIU分解 — 后端API全链路（Schema+Service+Route+Test）"
+    task: "新增一个 API 接口让管理员可以批量停用用户账户，需要包含接口定义、权限控制、Service 实现和数据库操作"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/user.py"
+        - "backend/app/services/control/auth_service.py"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "CONTRACT_ADD_REQUEST"
+        - "CONTRACT_ADD_RESPONSE"
+        - "MUTATION_ADD_UPDATE"
+        - "ROUTE_ADD_ENDPOINT"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [4, 6]
+      forbidden_aiu_types: ["REFACTOR_INLINE", "INFRA_ADD_CONFIG"]
+      aiu_order_matters: true
+    design_note: "经典后端 API 全链路任务，期望 RBO 正确分解为 5 个有序 AIU"
+
+  - query_id: "I-002"
+    category: "I"
+    category_desc: "AIU分解 — 字段新增全链路（Model+Migration+Schema+Test）"
+    task: "给对象类型的数据模型新增一个 description 字段，要从数据库表到 API 响应模型全链路更新，并生成数据库迁移脚本"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "create"
+      key_files:
+        - "backend/app/models/ontology.py"
+        - "backend/alembic/versions/"
+      key_memory_ids: []
+      has_executable_cmd: true
+      expected_aiu_types:
+        - "SCHEMA_ADD_FIELD"
+        - "CONTRACT_MODIFY_RESPONSE"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT"]
+      aiu_order_matters: true
+    design_note: "字段追加场景，SCHEMA_ADD_FIELD 必须最先执行，顺序关键"
+
+  - query_id: "I-003"
+    category: "I"
+    category_desc: "AIU分解 — 查询方法新增（Repository+Service+Test）"
+    task: "新增一个按标签过滤对象类型的查询接口，支持多标签 AND 过滤，要避免 N+1 查询问题"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "create"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/api/v1/endpoints/ontology.py"
+      key_memory_ids:
+        - "AD-008"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "QUERY_ADD_SELECT"
+        - "QUERY_ADD_FILTER"
+        - "ROUTE_ADD_ENDPOINT"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT", "SCHEMA_ADD_FIELD"]
+      aiu_order_matters: false
+    design_note: "查询场景，QUERY 族 AIU 为主，禁止出现 MUTATION 类"
+
+  - query_id: "I-004"
+    category: "I"
+    category_desc: "AIU分解 — 前后端联动（API+Frontend+Store）"
+    task: "在前端对象列表页新增一个导出 CSV 功能，需要后端接口和前端按钮，导出时要展示进度"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+        - "frontend/src/pages/ontology"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "ROUTE_ADD_ENDPOINT"
+        - "UI_ADD_COMPONENT"
+        - "STATE_ADD_ACTION"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [4, 6]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "INFRA_ADD_MIGRATION"]
+      aiu_order_matters: true
+    design_note: "跨前后端任务，期望 D 族（接口）和 UI 族并行出现"
+
+  - query_id: "I-005"
+    category: "I"
+    category_desc: "AIU分解 — 事件发布（Service+Kafka+Test）"
+    task: "在对象类型创建成功后，向消息队列发送一个 created 事件，消息格式用 Avro，发送前要做数据归一化"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids:
+        - "MEM-L-002"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "LOGIC_ADD_CONDITION"
+        - "INFRA_EMIT_EVENT"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "ROUTE_ADD_ENDPOINT"]
+      aiu_order_matters: true
+    design_note: "事件发布场景，INFRA_EMIT_EVENT 必须在 LOGIC 后执行"
+
+  # I-006~I-010：跨层任务（测试多层分解能力）
+  - query_id: "I-006"
+    category: "I"
+    category_desc: "AIU分解 — 权限全链路（注册+守卫+前端控制）"
+    task: "新增一个系统配置查看权限，后端注册权限常量，API 接口上加权限守卫，前端根据权限控制菜单显示"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L1_security"
+      operation: "create"
+      key_files:
+        - "backend/app/core/rbac.py"
+        - "backend/app/api/v1/endpoints/config.py"
+        - "frontend/src/layouts/MainLayout.tsx"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "CONTRACT_ADD_REQUEST"
+        - "LOGIC_ADD_GUARD"
+        - "UI_ADD_COMPONENT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "MUTATION_ADD_INSERT"]
+      aiu_order_matters: false
+    design_note: "跨 L1→L5_api→L5_frontend 的权限链，顺序不严格要求"
+
+  - query_id: "I-007"
+    category: "I"
+    category_desc: "AIU分解 — 配置项新增（Config+文档+Test）"
+    task: "新增一个系统配置项用来控制向量搜索的超时时间，要有默认值，可以通过环境变量覆盖，并更新相关文档"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "modify_config"
+      key_files:
+        - "backend/app/core/config.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "INFRA_ADD_CONFIG"
+        - "DOC_UPDATE"
+      expected_aiu_count_range: [2, 4]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT", "ROUTE_ADD_ENDPOINT"]
+      aiu_order_matters: false
+    design_note: "纯配置类任务，期望 INFRA 族为主，禁止出现 MUTATION/ROUTE"
+
+  - query_id: "I-008"
+    category: "I"
+    category_desc: "AIU分解 — 重试机制（Service+Resilience+Test）"
+    task: "给外部 API 调用增加指数退避重试机制，超时 30s，最多重试 3 次，失败时抛出平台统一的异常"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/datalink_service.py"
+        - "backend/app/core/resilience.py"
+      key_memory_ids:
+        - "MEM-L-003"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "LOGIC_ADD_CONDITION"
+        - "LOGIC_ADD_GUARD"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "ROUTE_ADD_ENDPOINT", "MUTATION_ADD_INSERT"]
+      aiu_order_matters: false
+    design_note: "容错逻辑改造，LOGIC 族为主"
+
+  - query_id: "I-009"
+    category: "I"
+    category_desc: "AIU分解 — Worker 新增（JobExecution+Kafka+Test）"
+    task: "新增一个后台 Worker 负责定期清理 30 天前的过期对象索引，要使用平台的 Job 执行框架，完成后发送清理完成事件"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "create"
+      key_files:
+        - "backend/app/workers/"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "CONTRACT_ADD_RESPONSE"
+        - "LOGIC_ADD_LOOP"
+        - "INFRA_EMIT_EVENT"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [3, 5]
+      forbidden_aiu_types: ["ROUTE_ADD_ENDPOINT", "UI_ADD_COMPONENT"]
+      aiu_order_matters: true
+    design_note: "Worker 创建场景，禁止出现 API/UI 类 AIU"
+
+  - query_id: "I-010"
+    category: "I"
+    category_desc: "AIU分解 — 缓存装饰器应用（Service+Redis+Test）"
+    task: "给元数据列表查询方法加上 Redis 缓存，缓存时间 5 分钟，使用平台的 @cached 装饰器，不要自己操作 Redis"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/infrastructure/cache/redis_decorator.py"
+      key_memory_ids:
+        - "AD-008"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "LOGIC_ADD_CONDITION"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [2, 4]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "MUTATION_ADD_INSERT", "INFRA_ADD_MIGRATION"]
+      aiu_order_matters: false
+    design_note: "装饰器应用，任务简单，不应过度分解"
+
+  # I-011~I-013：重构类任务（测试不被误分类为 MUTATION）
+  - query_id: "I-011"
+    category: "I"
+    category_desc: "AIU分解 — 方法抽取重构（不应产生 MUTATION 类）"
+    task: "ontology_service 里有三个方法都有相同的分页逻辑，想把这段代码抽取成一个私有辅助方法减少重复"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "LOGIC_EXTRACT_METHOD"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [2, 3]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT", "MUTATION_ADD_UPDATE", "SCHEMA_ADD_FIELD", "ROUTE_ADD_ENDPOINT"]
+      aiu_order_matters: false
+    design_note: "纯重构任务，核心考察：不应出现任何 MUTATION 或 SCHEMA 类 AIU"
+
+  - query_id: "I-012"
+    category: "I"
+    category_desc: "AIU分解 — 内联常量重构（不应过度分解）"
+    task: "代码里有几处超时时间写死了 30 秒，想把它们统一替换成从配置读取的常量，避免硬编码"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "modify_config"
+      key_files:
+        - "backend/app/core/config.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "INFRA_ADD_CONFIG"
+      expected_aiu_count_range: [1, 3]
+      forbidden_aiu_types: ["ROUTE_ADD_ENDPOINT", "MUTATION_ADD_INSERT", "CONTRACT_ADD_REQUEST"]
+      aiu_order_matters: false
+    design_note: "简单重构，期望 AIU 数量 ≤ 3，禁止过度分解"
+
+  - query_id: "I-013"
+    category: "I"
+    category_desc: "AIU分解 — 错误处理重构（LOGIC族为主）"
+    task: "service 层有很多地方直接 raise Exception，想统一改为抛出平台定义的 DomainException，并确保错误码规范"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids:
+        - "AD-006"
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "LOGIC_ADD_GUARD"
+        - "TEST_ADD_UNIT"
+      expected_aiu_count_range: [2, 4]
+      forbidden_aiu_types: ["SCHEMA_ADD_FIELD", "MUTATION_ADD_INSERT", "ROUTE_ADD_ENDPOINT"]
+      aiu_order_matters: false
+    design_note: "错误处理规范化，LOGIC 族为主，考察不误触发 SCHEMA/MUTATION"
+
+  # I-014~I-015：调试类任务（测试 DEBUG 族识别）
+  - query_id: "I-014"
+    category: "I"
+    category_desc: "AIU分解 — Bug 定位（不应生成 MUTATION 类）"
+    task: "列表接口返回数据偶尔少了几条，需要排查是数据库查询有问题还是过滤逻辑有问题，但暂时只需要定位问题，不修改代码"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "DEBUG_READ_ONLY"
+      expected_aiu_count_range: [1, 2]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT", "MUTATION_ADD_UPDATE", "SCHEMA_ADD_FIELD"]
+      aiu_order_matters: false
+    design_note: "只读调试，期望 DEBUG_READ_ONLY，严禁出现写操作类 AIU"
+
+  - query_id: "I-015"
+    category: "I"
+    category_desc: "AIU分解 — 性能问题诊断（不应添加新功能）"
+    task: "API 响应时间从昨天开始变慢了，需要检查是数据库查询慢还是外部依赖超时，分析一下可能的原因"
+    source: "constructed_aiu_test"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      expected_aiu_types:
+        - "DEBUG_READ_ONLY"
+        - "DEBUG_INSTRUMENT"
+      expected_aiu_count_range: [1, 3]
+      forbidden_aiu_types: ["MUTATION_ADD_INSERT", "ROUTE_ADD_ENDPOINT", "CONTRACT_ADD_REQUEST"]
+      aiu_order_matters: false
+    design_note: "性能诊断，只能有 DEBUG 族，禁止新增功能类 AIU"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 J：冷启动基线（10条）
+  # 设计目的：模拟"新项目、只有 base 种子包、无任何项目特有记忆"场景
+  #   测试三个系统在零积累知识时的基线性能差异
+  #   GT 使用模式匹配（**/*.py），因冷启动下不知道具体项目结构
+  #   cold_start: true 标记会放宽 key_files 的路径匹配为 glob 模式匹配
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "J-001"
+    category: "J"
+    category_desc: "冷启动 — 事务原子性（base 种子包测试）"
+    task: "写一个用数据库事务保证原子性的批量更新方法，要么全部成功要么全部回滚"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L4_service"
+      operation: "create"
+      key_files:
+        - "**/*service*.py"
+      key_memory_ids:
+        - "MEM-SEED-DB-001"
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "事务约束是 base 种子包的核心内容，三系统均可通过 seed 知识回答"
+
+  - query_id: "J-002"
+    category: "J"
+    category_desc: "冷启动 — 接口安全（base 种子包测试）"
+    task: "新建一个用户管理接口，需要验证调用者身份，未登录用户不能访问"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "**/*api*/*.py"
+      key_memory_ids:
+        - "MEM-SEED-SEC-001"
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "认证守卫是 base 种子包的安全知识，MEM-SEED-SEC-001"
+
+  - query_id: "J-003"
+    category: "J"
+    category_desc: "冷启动 — 异步任务（通用 SE 语言）"
+    task: "有个耗时操作用户触发后需要等很久，想改成后台异步执行，让用户可以继续使用页面，任务完成后通知用户"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "create"
+      key_files:
+        - "**/*worker*.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "通用异步任务描述，不含任何框架术语，测试泛化意图识别"
+
+  - query_id: "J-004"
+    category: "J"
+    category_desc: "冷启动 — 配置外部化（通用 SE 语言）"
+    task: "代码里有些参数写死了，每次改了都要重新部署，想从配置文件或者环境变量里读取这些参数"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "modify_config"
+      key_files:
+        - "**/*config*.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "配置外部化通用描述，无框架术语"
+
+  - query_id: "J-005"
+    category: "J"
+    category_desc: "冷启动 — 数据分页（通用 SE 语言）"
+    task: "列表接口返回了所有数据，数据量大的时候很慢，需要支持分页，每页最多返回 50 条"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L5_api"
+      operation: "modify_logic"
+      key_files:
+        - "**/*api*/*.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "数据分页通用描述"
+
+  - query_id: "J-006"
+    category: "J"
+    category_desc: "冷启动 — 字段校验（通用 SE 语言）"
+    task: "提交表单时用户可以填入任意内容，需要增加服务端的数据合法性校验，非法字段要返回友好的错误信息"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L5_api"
+      operation: "modify_logic"
+      key_files:
+        - "**/*schema*.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "服务端校验，通用描述"
+
+  - query_id: "J-007"
+    category: "J"
+    category_desc: "冷启动 — 日志记录（通用 SE 语言）"
+    task: "系统出了问题很难排查，因为代码里没有日志，需要给关键的业务流程加上结构化日志，方便后续分析"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "**/*service*.py"
+      key_memory_ids:
+        - "MEM-SEED-OBS-001"
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "日志规范是 base 种子包中的可观测性知识"
+
+  - query_id: "J-008"
+    category: "J"
+    category_desc: "冷启动 — 软删除（通用 SE 语言）"
+    task: "删除记录的时候不想真正从数据库里删掉，而是加一个 deleted_at 标记，查询时自动过滤掉已删除的记录"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "**/*service*.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "软删除模式，通用描述"
+
+  - query_id: "J-009"
+    category: "J"
+    category_desc: "冷启动 — 前端状态管理（通用 SE 语言）"
+    task: "点击按钮触发操作后，页面需要立即反馈操作结果，现在的实现是操作后手动刷新页面才能看到变化"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "debug"
+      key_files:
+        - "frontend/src/**/*.tsx"
+      key_memory_ids: []
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "前端状态同步，通用描述，测试三系统的前端层识别能力"
+
+  - query_id: "J-010"
+    category: "J"
+    category_desc: "冷启动 — 错误处理（通用 SE 语言）"
+    task: "系统出现内部错误时直接把技术堆栈信息返回给用户了，需要统一处理所有未捕获的异常，对用户返回友好的错误提示"
+    source: "cold_start_simulation"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "modify_logic"
+      key_files:
+        - "**/*exception*.py"
+      key_memory_ids:
+        - "MEM-SEED-ERR-001"
+      has_executable_cmd: false
+      cold_start: true
+    design_note: "全局异常处理，base 种子包应包含通用错误处理模式"

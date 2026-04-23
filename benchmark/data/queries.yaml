@@ -1,0 +1,506 @@
+# Benchmark 测试数据集 v1.0
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 设计原则：
+#   1. task 措辞模拟真实用户语言，避免直接使用 intent_map 中的关键词
+#   2. 来源三分法：ep_title（EP标题改写）/ task_history（历史任务）/ constructed（人工构造）
+#   3. Ground Truth 独立于任何检索系统，基于"完成任务工程师必须打开哪些文件"的客观判断
+#   4. key_files 均经过磁盘存在性验证
+#   5. adversarial 类别单独分析，不计入主评估综合得分
+#
+# 类别说明：
+#   A — 原子任务（单层、单文件）：三系统差距最小，作为公平基线
+#   B — 跨层任务（2+ 架构层）：典型工程软件开发场景
+#   C — 约束感知（需定位特定约束记忆）：RAG 语义相关 ≠ 约束精准
+#   D — MMS 工具操作：本体专属规则场景
+#   adversarial — 关键词歧义/意图混淆，单独报告
+#
+# 修改说明：
+#   - 新增任务：在对应 category 下添加新条目，保持 query_id 连续
+#   - 修改 GT：只改 ground_truth 节，task 保持不变（避免引入新的偏差）
+#   - 新增类别：在 metadata.categories 中添加描述
+#
+# 版本：1.0 | 创建于：2026-04-18 | EP-129
+
+metadata:
+  version: "1.0"
+  total: 30
+  main_eval: 25         # 主评估任务数（不含 adversarial）
+  adversarial: 5
+  top_k: 5              # 评估 Recall@K 时的 K 值
+  categories:
+    A: "原子任务 — 单层、单文件修改，三系统差距最小，作为公平基线"
+    B: "跨层任务 — 同时涉及 2+ 架构层，典型复杂工程场景"
+    C: "约束感知 — 需定位特定约束记忆，测试精准注入能力"
+    D: "MMS工具 — 本体有专属规则，测试系统对自身工具的理解"
+    adversarial: "对抗样本 — 关键词歧义/意图混淆，单独分析"
+
+queries:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 A：原子任务（8条）
+  # 来源：EP 标题改写 + 真实措辞
+  # 特点：单层、单模块，GT 文件 1-2 个
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "A-001"
+    category: "A"
+    category_desc: "原子任务 — 后端 API 新增"
+    task: "我需要给对象类型增加一个列表查询接口，支持按名称和状态过滤，结果要分页"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+
+  - query_id: "A-002"
+    category: "A"
+    category_desc: "原子任务 — 后端 Service 新增方法"
+    task: "在数据连接器服务里加一个方法，测试连接是否可达，超时时间要可配置"
+    source: "ep_title"
+    ground_truth:
+      layer: "L4_service"
+      operation: "create"
+      key_files:
+        - "backend/app/services/control/datalink_service.py"
+      key_memory_ids:
+        - "AD-002"
+        - "AD-005"
+      has_executable_cmd: false
+
+  - query_id: "A-003"
+    category: "A"
+    category_desc: "原子任务 — 前端页面新增"
+    task: "把首页的顶部导航栏只保留本体管理这一个入口，其他的菜单项全部隐藏"
+    source: "task_history"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "modify_config"
+      key_files:
+        - "frontend/src/config/navigation.ts"
+        - "frontend/src/layouts/MainLayout.tsx"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  - query_id: "A-004"
+    category: "A"
+    category_desc: "原子任务 — 前端组件修改"
+    task: "对象360视图的属性列表，如果属性值为空就显示一个占位符，不要留空白"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "modify_logic"
+      key_files:
+        - "frontend/src/pages/explorer/Object360/index.tsx"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  - query_id: "A-005"
+    category: "A"
+    category_desc: "原子任务 — 数据库迁移"
+    task: "对象类型表需要新增一个字段来记录最后一次被查询的时间戳"
+    source: "constructed"
+    ground_truth:
+      layer: "L2_database"
+      operation: "modify_config"
+      key_files:
+        - "backend/app/models/ontology.py"
+        - "backend/alembic/env.py"
+      key_memory_ids:
+        - "MEM-DB-002"
+      has_executable_cmd: false
+
+  - query_id: "A-006"
+    category: "A"
+    category_desc: "原子任务 — 权限配置"
+    task: "数据管家角色需要能够审批变更请求，但不能删除全局对象"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_security"
+      operation: "modify_config"
+      key_files:
+        - "backend/app/core/rbac.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  - query_id: "A-007"
+    category: "A"
+    category_desc: "原子任务 — 后端单测补充"
+    task: "补充对 action_service 里创建动作方法的单元测试，要覆盖成功和字段校验失败的场景"
+    source: "task_history"
+    ground_truth:
+      layer: "L5_testing"
+      operation: "test"
+      key_files:
+        - "backend/app/services/control/action_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  - query_id: "A-008"
+    category: "A"
+    category_desc: "原子任务 — 运维配置"
+    task: "本地调试时后端服务启动报数据库连不上，我用的是宿主机上 3307 端口的那个 MySQL"
+    source: "task_history"
+    ground_truth:
+      layer: "Ops"
+      operation: "debug"
+      key_files:
+        - "deploy/docker-compose.app.yml"
+      key_memory_ids:
+        - "ENV-001"
+      has_executable_cmd: false
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 B：跨层任务（7条）
+  # 来源：EP 标题改写
+  # 特点：同时涉及 2+ 架构层，GT 文件 2-4 个
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "B-001"
+    category: "B"
+    category_desc: "跨层任务 — API + Service + 前端"
+    task: "我要做一个完整的同步任务管理功能，包括创建、暂停、恢复，后端接口和前端页面都要"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+        - "backend/app/services/control/datalink_service.py"
+        - "frontend/src/config/navigation.ts"
+      key_memory_ids:
+        - "AD-002"
+        - "AD-005"
+      has_executable_cmd: false
+
+  - query_id: "B-002"
+    category: "B"
+    category_desc: "跨层任务 — Service + DB"
+    task: "场景模拟功能里，读取对象数据的时候要优先用场景覆盖层的数据，不能直接读主库"
+    source: "ep_title"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/models/ontology.py"
+      key_memory_ids:
+        - "AD-005"
+        - "MEM-DB-002"
+      has_executable_cmd: false
+
+  - query_id: "B-003"
+    category: "B"
+    category_desc: "跨层任务 — Worker + Kafka"
+    task: "数据载入的 Worker 把数据写入 Kafka 之前，把里面的日期类型和 Decimal 类型先做一下转换，不然消费端会报错"
+    source: "ep_title"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids:
+        - "MEM-L-002"
+        - "MEM-L-001"
+      has_executable_cmd: false
+
+  - query_id: "B-004"
+    category: "B"
+    category_desc: "跨层任务 — API + Service + 权限"
+    task: "资源治理的配额检查要在创建连接器的时候触发，超额就拒绝并返回明确的错误信息"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_api"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+        - "backend/app/services/control/datalink_service.py"
+        - "backend/app/core/rbac.py"
+      key_memory_ids:
+        - "AD-002"
+        - "AD-003"
+      has_executable_cmd: false
+
+  - query_id: "B-005"
+    category: "B"
+    category_desc: "跨层任务 — 前端 + API"
+    task: "对象血缘的可视化页面要用力导向图展示，点击节点能跳转到对应的 Object360 详情页"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "create"
+      key_files:
+        - "frontend/src/pages/explorer/Object360/index.tsx"
+        - "backend/app/api/v1/endpoints/ontology.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  - query_id: "B-006"
+    category: "B"
+    category_desc: "跨层任务 — 全链路功能"
+    task: "从连接器配置一直到对象属性展示，整个数据流水线要做一次端到端的验证测试"
+    source: "ep_title"
+    ground_truth:
+      layer: "L5_testing"
+      operation: "test"
+      key_files:
+        - "backend/app/services/control/datalink_service.py"
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/api/v1/endpoints/ontology.py"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+
+  - query_id: "B-007"
+    category: "B"
+    category_desc: "跨层任务 — K8s 部署 + 后端服务"
+    task: "CDC 变更数据捕获的组件要部署到集群里，同时服务层要能接收 Debezium 发过来的事件并处理"
+    source: "ep_title"
+    ground_truth:
+      layer: "Ops"
+      operation: "deploy"
+      key_files:
+        - "deploy/docker-compose.app.yml"
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids:
+        - "ENV-001"
+      has_executable_cmd: false
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 C：约束感知任务（5条）
+  # 来源：历史任务改写（症状描述，不提模块名）
+  # 特点：需精确命中特定约束记忆，仅找到"相关文档"不够
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "C-001"
+    category: "C"
+    category_desc: "约束感知 — 事务 Bug"
+    task: "保存对象类型的时候报了个 InvalidRequestError，说有事务已经在进行中，但我没有手动开事务"
+    source: "task_history"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids:
+        - "MEM-DB-002"
+      has_executable_cmd: false
+
+  - query_id: "C-002"
+    category: "C"
+    category_desc: "约束感知 — Kafka 序列化失败"
+    task: "Kafka 消费端有时候反序列化会静默失败，数据丢了但没有任何报错，怎么定位和修复"
+    source: "task_history"
+    ground_truth:
+      layer: "L2_messaging"
+      operation: "debug"
+      key_files:
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids:
+        - "MEM-L-002"
+        - "MEM-L-011"
+      has_executable_cmd: false
+
+  - query_id: "C-003"
+    category: "C"
+    category_desc: "约束感知 — 多租户数据隔离"
+    task: "发现 A 租户的用户能看到 B 租户的对象数据，需要排查是哪里的查询没有做租户过滤"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/core/rbac.py"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+
+  - query_id: "C-004"
+    category: "C"
+    category_desc: "约束感知 — Python 数值默认值陷阱"
+    task: "批量导入时如果某一行的数量字段是 0，后端会把它当成空值来处理，用了字段的默认配置，逻辑有问题"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids:
+        - "MEM-L-001"
+      has_executable_cmd: false
+
+  - query_id: "C-005"
+    category: "C"
+    category_desc: "约束感知 — 容器日志不可见"
+    task: "K8s 里的后端容器明明在运行，kubectl logs 却看不到任何输出，像是没有产生日志一样"
+    source: "task_history"
+    ground_truth:
+      layer: "Ops"
+      operation: "debug"
+      key_files:
+        - "deploy/docker-compose.app.yml"
+      key_memory_ids:
+        - "MEM-L-009"
+      has_executable_cmd: false
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 D：MMS 工具操作（5条）
+  # 来源：历史任务真实措辞改写（避免直接使用系统关键词）
+  # 特点：本体有专属规则（L0_mms），测试系统对自身工具的理解
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "D-001"
+    category: "D"
+    category_desc: "MMS工具 — 诊断追踪查看"
+    task: "上一个章节执行完了，想看看各个步骤花了多少时间，哪个环节是瓶颈，以及模型调用了几次"
+    source: "task_history"
+    ground_truth:
+      layer: "L0_mms"
+      operation: "view_trace"
+      key_files:
+        - "scripts/mms/trace/reporter.py"
+        - "scripts/mms/cli.py"
+      key_memory_ids: []
+      has_executable_cmd: true
+
+  - query_id: "D-002"
+    category: "D"
+    category_desc: "MMS工具 — 意图合成"
+    task: "我想开始一个新功能，需要给用户角色增加批量导出数据的权限，帮我生成一个完整的开发起手提示"
+    source: "task_history"
+    ground_truth:
+      layer: "L0_mms"
+      operation: "mms_synthesize"
+      key_files:
+        - "scripts/mms/synthesizer.py"
+        - "scripts/mms/cli.py"
+      key_memory_ids: []
+      has_executable_cmd: true
+
+  - query_id: "D-003"
+    category: "D"
+    category_desc: "MMS工具 — DAG 执行"
+    task: "这个章节的执行计划已经写好了，把它分解成可以独立执行的小任务，然后按顺序自动跑"
+    source: "task_history"
+    ground_truth:
+      layer: "L0_mms"
+      operation: "mms_dag"
+      key_files:
+        - "scripts/mms/unit_generate.py"
+        - "scripts/mms/unit_runner.py"
+        - "scripts/mms/cli.py"
+      key_memory_ids: []
+      has_executable_cmd: true
+
+  - query_id: "D-004"
+    category: "D"
+    category_desc: "MMS工具 — 知识蒸馏"
+    task: "这个章节做完了，把里面踩过的坑和关键决策提炼出来，沉淀成可以复用的工程经验"
+    source: "task_history"
+    ground_truth:
+      layer: "L0_mms"
+      operation: "mms_distill"
+      key_files:
+        - "scripts/mms/dream.py"
+        - "scripts/mms/cli.py"
+      key_memory_ids: []
+      has_executable_cmd: true
+
+  - query_id: "D-005"
+    category: "D"
+    category_desc: "MMS工具 — 测试基础设施评估"
+    task: "帮我看看当前 MMS 系统的测试覆盖情况，有哪些重要的场景还没有被测试用例覆盖到"
+    source: "task_history"
+    ground_truth:
+      layer: "L0_mms"
+      operation: "review"
+      key_files:
+        - "scripts/mms/tests/"
+        - "scripts/mms/cli.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 对抗样本（5条）— 单独分析，不计入主评估综合得分
+  # 构造原则：
+  #   ADV-1/2：关键词歧义（词语在多个领域有不同含义）
+  #   ADV-3/4：意图混淆（任务描述故意跨越两个不相关的领域）
+  #   ADV-5：本体盲区（使用 intent_map 中完全没有的新兴词汇描述常见任务）
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "ADV-001"
+    category: "adversarial"
+    category_desc: "对抗 — 关键词歧义：trace 的多重含义"
+    task: "数据血缘 trace 功能在追踪对象的来源时，有几个节点的上下游关系没有被正确记录"
+    source: "constructed"
+    ground_truth:
+      layer: "L3_ontology"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    adversarial_intent: "trace 在此处是数据血缘概念，不是 MMS 诊断追踪，测试系统是否会误匹配 rule_mms_trace"
+
+  - query_id: "ADV-002"
+    category: "adversarial"
+    category_desc: "对抗 — 关键词歧义：dag 的多重含义"
+    task: "Spark 任务的有向无环图执行顺序有问题，Stage3 应该在 Stage1 完成后才开始，但现在是并行的"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "debug"
+      key_files:
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    adversarial_intent: "dag 在此处是 Spark 执行图，不是 MMS DAG 编排，测试是否会误匹配 rule_mms_dag"
+
+  - query_id: "ADV-003"
+    category: "adversarial"
+    category_desc: "对抗 — 意图混淆：同时包含前端和后端关键特征"
+    task: "前端的 Zustand Store 在调用后端创建对象接口时，响应的数据没有触发状态更新，页面不刷新"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "debug"
+      key_files:
+        - "frontend/src/pages/explorer/Object360/index.tsx"
+        - "backend/app/api/v1/endpoints/ontology.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    adversarial_intent: "同时出现前端(Zustand)和后端(接口)关键词，测试系统能否识别主要故障域在前端"
+
+  - query_id: "ADV-004"
+    category: "adversarial"
+    category_desc: "对抗 — 意图混淆：看起来像测试，实际是 debug"
+    task: "集成测试里有 16 个用例失败了，但失败原因不是测试写错了，是被测的 Service 逻辑有问题"
+    source: "ep_title"
+    ground_truth:
+      layer: "L4_service"
+      operation: "debug"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    adversarial_intent: "包含'测试''失败'等词，但真正的操作是 debug service，不是 add test"
+
+  - query_id: "ADV-005"
+    category: "adversarial"
+    category_desc: "对抗 — 本体盲区：用新兴术语描述常见任务"
+    task: "用 vibe coding 的方式快速搭一个原型接口，先不用考虑测试覆盖和架构规范"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    adversarial_intent: "'vibe coding' 不在任何系统的关键词中，测试系统的泛化兜底能力"

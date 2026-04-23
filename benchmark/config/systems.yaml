@@ -1,0 +1,107 @@
+# Benchmark 检索系统配置 v1.0
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 扩展说明：
+#   - 禁用系统：将 enabled 设为 false
+#   - 新增系统：添加新条目并在 src/retrievers/ 实现对应类
+#   - 调整连接参数：只改 connection 节
+#   - 调整检索参数：只改 retrieval 节
+#
+# 版本：1.0 | EP-129
+
+# ── ES + Milvus 连接（宿主机 port-forward）─────────────────────────────────
+infrastructure:
+  elasticsearch:
+    host: "localhost"
+    port: 19200
+    timeout: 10
+    index_name: "mms_bm_docs"    # 独立命名空间，不影响 MDP 生产索引
+
+  milvus:
+    host: "localhost"
+    port: 19530
+    timeout: 10
+    collection_name: "mms_bm_docs"   # 独立命名空间，不影响 MDP 生产 collection
+    metric_type: "IP"                 # Inner Product（text-embedding-v3 使用归一化向量）
+    index_type: "HNSW"
+    index_params:
+      M: 16
+      efConstruction: 200
+    search_params:
+      ef: 64
+
+  embedding:
+    provider: "bailian"              # 使用已集成的 BailianEmbedProvider
+    model: "text-embedding-v3"
+    dimension: 1024
+    batch_size: 10                   # 批量 embedding，减少 API 调用次数
+
+# ── 检索系统定义 ──────────────────────────────────────────────────────────────
+systems:
+
+  markdown:
+    enabled: true
+    label: "Markdown Index"
+    description: |
+      基于 BM25 关键词匹配的传统文档索引。
+      代表 pageindex 风格：将 docs/context/ 下的 Manifest 文件作为检索目标，
+      模拟"用户 @mention 文档后 LLM 全文阅读"的工作流。
+    class: "MarkdownRetriever"
+    corpus:
+      paths:
+        - "data/corpus/context"     # docs/context/ 的软链
+        - "data/corpus/memories"    # docs/memory/shared/ 的软链
+      extensions: [".md"]
+    retrieval:
+      top_k: 5
+      algorithm: "bm25"             # 纯关键词匹配，无向量
+      chunk_size: 500               # 字符数（切分文档用）
+      chunk_overlap: 50
+
+  hybrid_rag:
+    enabled: true
+    label: "Hybrid RAG (ES BM25 + Milvus Vector + RRF)"
+    description: |
+      混合检索 RAG：Elasticsearch BM25 全文检索 + Milvus 向量语义检索，
+      使用 Reciprocal Rank Fusion (RRF) 融合两路排名。
+      Embedding 使用 Baidu text-embedding-v3（1024 维）。
+      代表当前主流生产级 RAG 系统。
+    class: "HybridRAGRetriever"
+    corpus:
+      paths:
+        - "data/corpus/context"
+        - "data/corpus/memories"
+      extensions: [".md"]
+    retrieval:
+      top_k: 5
+      es_top_k: 10       # ES 先取 10，Milvus 先取 10，RRF 合并后取 Top-5
+      mv_top_k: 10
+      rrf_k: 60          # RRF 公式中的 k 参数（标准值）
+      chunk_size: 500
+      chunk_overlap: 50
+
+  ontology:
+    enabled: true
+    label: "Ontology-driven MMS"
+    description: |
+      本体驱动的 MMS 记忆系统。通过 intent_map.yaml 规则做确定性意图分类，
+      结合 arch_resolver 的磁盘验证路径解析和 ActionDef 的 cli_usage 注入，
+      实现精准的上下文定向，无需 Embedding 或向量搜索。
+    class: "OntologyRetriever"
+    corpus:
+      paths:
+        - "data/corpus/context"
+        - "data/corpus/memories"
+      extensions: [".md", ".yaml"]
+    retrieval:
+      top_k: 5
+      use_llm_fallback: false   # benchmark 全程不触发 LLM，保证可复现性
+      inject_action_def: true   # 将命中 ActionDef 的 cli_usage 追加到上下文
+      inject_hot_memories: true # 注入 hot_memories 约束记忆
+
+  # ── 预留扩展槽位（未来可添加新系统）────────────────────────────────────────
+  # graph_rag:
+  #   enabled: false
+  #   label: "Graph RAG"
+  #   description: "基于知识图谱的 RAG，利用本体关系做图遍历检索"
+  #   class: "GraphRAGRetriever"

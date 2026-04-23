@@ -1,0 +1,55 @@
+# FunctionDef: fn_resolve_paths — 确定性路径解析函数
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   根据意图分类的结果（前端层/后端层等），从项目文件系统中找出
+#   真实存在的相关文件。所有返回的路径都经过磁盘验证，
+#   从根本上消除 LLM 编造不存在文件路径的问题。
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: fn_resolve_paths
+label: "确定性路径解析"
+type: function
+version: "3.0"
+
+description: |
+  输入：IntentResult（来自 fn_classify_intent）
+  输出：磁盘验证后的真实文件路径列表
+
+  三步解析流程：
+  1. 从 layers.yaml 读取该层的 entry_files（常用入口文件）
+  2. 读取 intent_result.entry_files_hint（规则建议的文件）
+  3. 通过 grep_codemap 在 codemap.md 快照中关键词搜索
+  → 合并所有候选，逐一用 os.path.exists() 验证，只保留真实存在的文件
+
+implementation: "scripts/mms/arch_resolver.py :: ArchResolver.resolve_from_intent()"
+
+schema_reference: "docs/memory/ontology/arch_schema/layers.yaml"
+
+inputs:
+  - name: intent_result
+    type: IntentResult
+    description: "fn_classify_intent 的输出"
+
+  - name: codemap_path
+    type: string
+    default: "docs/memory/_system/codemap.md"
+    description: "codemap 快照文件路径"
+
+outputs:
+  - name: resolved_files
+    type: list[string]
+    description: "经过磁盘验证的真实文件路径列表（绝对路径或相对于项目根的路径）"
+
+guarantees:
+  - "返回的每条路径都通过 os.path.exists() 验证"
+  - "绝不返回虚构路径（即使 codemap 未记录，也通过磁盘补验证）"
+  - "空列表也是有效返回（当层未找到任何匹配文件时）"
+
+anti_patterns:
+  - "禁止依赖 LLM 生成路径（LLM 有幻觉，本函数是无 LLM 的纯计算）"
+  - "禁止返回未经验证的路径（即使从规则或 codemap 取到了，也必须验证）"
+
+performance:
+  typical_latency: "< 50ms（文件系统访问）"
+  cache: "当前版本无缓存，每次调用重新解析（文件少，开销可接受）"

@@ -1,0 +1,142 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "mms"
+version = "0.1.0"
+description = "MMS — AI Agent 驱动的结构化知识管理系统，为复杂软件工程提供记忆积累、上下文注入、架构约束扫描与文档熵控能力"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "MMS Contributors" }]
+keywords = ["ai", "agent", "memory", "ontology", "context-engineering"]
+
+# 核心运行时依赖（全部可选降级，纯标准库也能运行核心功能）
+dependencies = [
+    # YAML 解析（配置、Ontology、Benchmark 数据集）
+    "pyyaml>=6.0",
+    # HTTP 客户端（Bailian / Gemini / Claude API 调用）
+    "urllib3>=1.26",
+    # 结构化日志
+    "structlog>=23.0",
+]
+
+[project.optional-dependencies]
+# LLM 提供商（按需安装）
+bailian = [
+    "openai>=1.30",         # Bailian 兼容 OpenAI SDK
+    "dashscope>=1.20",      # 阿里云百炼 SDK（嵌入向量）
+]
+gemini = [
+    "google-generativeai>=0.5",
+]
+claude = [
+    "anthropic>=0.25",
+]
+ollama = []  # Ollama 通过 HTTP 调用，无额外依赖
+
+# Benchmark（ES + Milvus 检索）
+benchmark = [
+    "pymilvus>=2.4",
+    "elasticsearch>=8.0",
+    "numpy>=1.24",
+]
+
+# 开发和测试
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.12",
+    "pytest-asyncio>=0.23",
+    "pytest-json-report>=1.5",
+    "pyyaml>=6.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-PyYAML",
+]
+
+# 全量安装
+all = [
+    "mms[bailian,gemini,benchmark,dev]",
+]
+
+[project.scripts]
+mms = "mms.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gaob13/mms"
+Repository = "https://github.com/gaob13/mms"
+
+# ── setuptools 包发现 ──────────────────────────────────────────────────────────
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mms*"]
+exclude = ["tests*", "benchmark*"]
+
+# ── pytest 配置 ───────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+addopts = [
+    "--tb=short",
+    "-q",
+    "--strict-markers",
+]
+markers = [
+    "slow: 慢速测试（需要 LLM API）",
+    "integration: 集成测试（需要外部服务）",
+    "benchmark: Benchmark 评估测试",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# ── coverage 配置 ─────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "benchmark/*",
+    "seed_packs/*",
+    "*/__pycache__/*",
+    "*/private.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+fail_under = 60  # 初始阈值，逐步提升
+
+# ── ruff lint 配置 ────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = [
+    "E501",   # 行长度（由 formatter 控制）
+    "B008",   # 函数调用作为默认参数
+    "N806",   # 变量名大写（兼容现有代码）
+    "UP007",  # Optional[X] → X | None（3.9 兼容）
+    "UP035",  # typing 模块用法（3.9 兼容）
+    "B904",   # raise from（现有代码）
+    "C901",   # 函数复杂度
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501", "F401", "F811", "N802"]
+"benchmark/*" = ["E501", "F401"]
+
+# ── mypy 配置（宽松模式，渐进式引入）────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_return_any = false
+check_untyped_defs = false

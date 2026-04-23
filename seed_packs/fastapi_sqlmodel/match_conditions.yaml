@@ -1,0 +1,9 @@
+stack_id: fastapi_sqlmodel
+description: "FastAPI + SQLModel/SQLAlchemy 异步后端栈"
+always_inject: false
+match_conditions:
+  - required_packages: ["fastapi"]
+  - optional_packages: ["sqlmodel", "sqlalchemy", "asyncmy"]
+    min_hits: 1
+  - dir_hints: ["backend/app/api", "backend/app/services/control"]
+    min_hits: 1

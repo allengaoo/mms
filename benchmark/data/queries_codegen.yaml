@@ -1,0 +1,651 @@
+##############################################################################
+# MMS Benchmark: 代码生成质量评测数据集 (EP-132)
+#
+# 设计原则：
+#   1. 确定性：每条任务都有明确的"唯一正确答案"，基于实际 MDP 后端代码模式
+#   2. 可扩展：新增任务只需添加一条 YAML 条目，无需修改评估器代码
+#   3. 分层覆盖：覆盖 L2(基础设施)~L5(接口层)，兼顾核心路径和边界场景
+#   4. 公正性：三个索引系统（pageindex/hybrid_rag/ontology）使用同一批任务
+#
+# 数据集版本历史：
+#   v1.0 (EP-132): 首版，聚焦 MDP 后端（FastAPI + SQLModel + 安全约束）
+#   v1.1: 可通过 schema_version 字段增加新类别，向后兼容
+#
+# 字段说明：
+#   id:                   唯一任务 ID，格式 CG-NNN（CG=CodeGen）
+#   category:             任务类别（见 categories 节）
+#   difficulty:           难度等级：easy / medium / hard
+#   description:          自然语言任务描述（模拟用户输入）
+#   context_hint:         背景提示（帮助索引系统找到相关记忆）
+#   expected_files:       生成代码应修改/创建的文件列表
+#   expected_aiu_types:   预期 AIU 类型（用于意图分解质量评估）
+#   required_signatures:  生成代码必须包含的函数/类签名（Level 2 检查）
+#   forbidden_patterns:   生成代码中禁止出现的模式（Level 2 检查）
+#   reference_code_path:  标准参考实现路径（相对于 benchmark/data/reference_code/）
+#   test_code_path:       可执行测试文件路径（相对于 benchmark/data/reference_code/）
+#   arch_check_rules:     需要通过的架构约束检查项
+#   notes:                评估备注
+##############################################################################
+
+schema_version: "1.0"
+domain: "mdp_backend"
+
+categories:
+  L5_api:       "FastAPI Endpoint 层：路由、权限守卫、响应模型"
+  L4_service:   "Service 层：业务逻辑、事务管理、SecurityContext"
+  L3_model:     "Domain Model 层：SQLModel 定义、Schema 定义"
+  L2_infra:     "Infrastructure 层：Repository、缓存、Kafka 消息"
+  cross_layer:  "跨层任务：需同时涉及 2+ 层"
+  error_handle: "错误处理与异常映射（DomainException + error_registry）"
+
+tasks:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # L5: API Endpoint 层（6 条）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-001"
+    category: "L5_api"
+    difficulty: "easy"
+    description: >
+      为 ontology 模块新增一个 GET /objects/{object_id}/topology 端点，
+      返回对象的拓扑结构（上游依赖和下游引用），
+      需要权限 ont:object:view，使用 ResponseHelper 包装返回。
+    context_hint: "ontology object topology endpoint permission"
+    expected_files:
+      - "backend/app/api/v1/endpoints/ontology.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "SCHEMA_ADD"
+    required_signatures:
+      - "async def get_object_topology"
+      - "@router.get"
+      - "response_model"
+      - "Depends(get_current_user)"
+    forbidden_patterns:
+      - "return []"
+      - "return {}"
+      - "session.begin()"
+      - "import pymilvus"
+      - "import aiokafka"
+    reference_code_path: "CG-001/endpoint_topology.py"
+    test_code_path: "CG-001/test_endpoint_topology.py"
+    arch_check_rules:
+      - "AC-2"  # SecurityContext 首参
+      - "AC-4"  # 信封格式
+    notes: "基础端点添加，考察路由装饰器和权限守卫的正确用法"
+
+  - id: "CG-002"
+    category: "L5_api"
+    difficulty: "medium"
+    description: >
+      为 datalink 模块新增一个 POST /datalinks/{link_id}/sync 端点，
+      触发异步同步任务，立即返回 202 Accepted，
+      body 包含 sync_mode（枚举：realtime/batch/on_demand）和可选的 scenario_id。
+      需要权限 data:link:sync，并记录审计日志。
+    context_hint: "datalink sync async 202 accepted audit"
+    expected_files:
+      - "backend/app/api/v1/endpoints/datalink.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "SCHEMA_ADD"
+      - "ASYNC_DISPATCH"
+    required_signatures:
+      - "async def trigger_sync"
+      - "@router.post"
+      - "status_code=202"
+      - "sync_mode"
+    forbidden_patterns:
+      - "return []"
+      - "import pymilvus"
+      - "import elasticsearch"
+    reference_code_path: "CG-002/endpoint_sync.py"
+    test_code_path: "CG-002/test_endpoint_sync.py"
+    arch_check_rules:
+      - "AC-2"
+      - "AC-3"  # AuditService.log()
+      - "AC-4"
+    notes: "202 异步模式考察，含枚举 schema 和审计调用"
+
+  - id: "CG-003"
+    category: "L5_api"
+    difficulty: "medium"
+    description: >
+      为 governance 模块新增 GET /governance/change-requests 列表端点，
+      支持分页（page/page_size）、状态过滤（status 枚举）和排序（sort_by/order），
+      返回 PaginatedData[ChangeRequestSummaryDTO]，需要权限 gov:cr:view。
+    context_hint: "governance change request list pagination filter sort"
+    expected_files:
+      - "backend/app/api/v1/endpoints/governance.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "SCHEMA_ADD"
+    required_signatures:
+      - "async def list_change_requests"
+      - "page: int"
+      - "page_size: int"
+      - "PaginatedData"
+    forbidden_patterns:
+      - "return []"
+      - "fetchall()"
+    reference_code_path: "CG-003/endpoint_cr_list.py"
+    test_code_path: "CG-003/test_endpoint_cr_list.py"
+    arch_check_rules:
+      - "AC-2"
+      - "AC-4"
+    notes: "列表端点含分页和过滤，考察标准查询参数模式"
+
+  - id: "CG-004"
+    category: "L5_api"
+    difficulty: "hard"
+    description: >
+      为 actions 模块新增 POST /actions/{action_id}/execute 端点，
+      支持场景化执行（可选 scenario_id），执行前检查 Feature Flag ENABLE_ACTION_EXECUTION，
+      参数通过 ActionExecuteDTO 传入，返回 ActionExecuteResultDTO。
+      需要权限 ont:action:execute，执行结果要发送 Kafka 事件。
+    context_hint: "action execute feature flag scenario kafka event"
+    expected_files:
+      - "backend/app/api/v1/endpoints/actions.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "SCHEMA_ADD"
+      - "FEATURE_FLAG_CHECK"
+      - "KAFKA_PUBLISH"
+    required_signatures:
+      - "async def execute_action"
+      - "scenario_id"
+      - "ENABLE_ACTION_EXECUTION"
+    forbidden_patterns:
+      - "import aiokafka"
+      - "import pymilvus"
+      - "return []"
+    reference_code_path: "CG-004/endpoint_action_execute.py"
+    test_code_path: "CG-004/test_endpoint_action_execute.py"
+    arch_check_rules:
+      - "AC-1"  # 禁止直接 import aiokafka
+      - "AC-2"
+      - "AC-3"
+      - "AC-4"
+    notes: "复杂端点：Feature Flag + 场景化 + Kafka 事件，考察架构边界"
+
+  - id: "CG-005"
+    category: "L5_api"
+    difficulty: "easy"
+    description: >
+      为 auth 模块新增 GET /auth/me 端点，
+      返回当前登录用户的基本信息（user_id, email, roles, tenant_id），
+      不需要额外权限（登录即可访问），使用 UserProfileDTO 作为响应模型。
+    context_hint: "auth current user profile endpoint"
+    expected_files:
+      - "backend/app/api/v1/endpoints/auth.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "SCHEMA_ADD"
+    required_signatures:
+      - "async def get_me"
+      - "@router.get"
+      - "response_model"
+      - "Depends(get_current_user)"
+    forbidden_patterns:
+      - "return []"
+      - "return {}"
+    reference_code_path: "CG-005/endpoint_get_me.py"
+    test_code_path: "CG-005/test_endpoint_get_me.py"
+    arch_check_rules:
+      - "AC-4"
+    notes: "简单只读端点，考察基础模式"
+
+  - id: "CG-006"
+    category: "L5_api"
+    difficulty: "medium"
+    description: >
+      为 notifications 模块新增 PATCH /notifications/{notification_id}/read 端点，
+      标记单条通知为已读，需要权限 sys:notification:update，
+      返回更新后的 NotificationDTO，仅限当前租户自己的通知（RLS 隔离）。
+    context_hint: "notification mark read patch RLS tenant isolation"
+    expected_files:
+      - "backend/app/api/v1/endpoints/notifications.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "DATA_WRITE"
+    required_signatures:
+      - "async def mark_notification_read"
+      - "@router.patch"
+      - "tenant_id"
+    forbidden_patterns:
+      - "return []"
+      - "return {}"
+    reference_code_path: "CG-006/endpoint_notification_read.py"
+    test_code_path: "CG-006/test_endpoint_notification_read.py"
+    arch_check_rules:
+      - "AC-2"
+      - "AC-3"
+      - "AC-4"
+    notes: "PATCH 端点含 RLS 隔离，考察软件对租户隔离的理解"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # L4: Service 层（6 条）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-007"
+    category: "L4_service"
+    difficulty: "medium"
+    description: >
+      在 ontology_service.py 中新增 bulk_create_objects 函数，
+      支持批量创建 ObjectTypeDef（最多 50 个），使用单个数据库事务，
+      失败时整体回滚，成功时返回创建的 ObjectReadDTO 列表。
+      需要过滤重复 api_name，并对每个对象调用审计日志。
+    context_hint: "ontology bulk create transaction rollback audit"
+    expected_files:
+      - "backend/app/services/control/ontology_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "TRANSACTION_WRITE"
+      - "AUDIT_LOG"
+    required_signatures:
+      - "async def bulk_create_objects"
+      - "ctx: RequestContext"
+      - "audit_service"
+    forbidden_patterns:
+      - "session.begin()"
+      - "fetchall()"
+      - "print("
+    reference_code_path: "CG-007/service_bulk_create.py"
+    test_code_path: "CG-007/test_service_bulk_create.py"
+    arch_check_rules:
+      - "AC-2"
+      - "AC-3"
+    notes: "批量写操作：事务管理 + 审计日志 + RLS 是核心考察点"
+
+  - id: "CG-008"
+    category: "L4_service"
+    difficulty: "medium"
+    description: >
+      在 datalink_service.py 中新增 get_sync_health 函数，
+      查询最近 N 条 SyncJob 的状态统计（成功率、平均延迟、失败次数），
+      结果需要缓存 60 秒（使用 @cached 装饰器），
+      返回 SyncHealthDTO 数据对象。
+    context_hint: "datalink sync health cache redis decorator"
+    expected_files:
+      - "backend/app/services/control/datalink_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "CACHE_READ"
+      - "QUERY_READ"
+    required_signatures:
+      - "async def get_sync_health"
+      - "ctx: RequestContext"
+      - "@cached"
+    forbidden_patterns:
+      - "fetchall()"
+      - "print("
+      - "import elasticsearch"
+    reference_code_path: "CG-008/service_sync_health.py"
+    test_code_path: "CG-008/test_service_sync_health.py"
+    arch_check_rules:
+      - "AC-2"
+    notes: "读密集型 Service：@cached 装饰器用法是核心考察点"
+
+  - id: "CG-009"
+    category: "L4_service"
+    difficulty: "hard"
+    description: >
+      在 scenario_service.py 中新增 apply_scenario_overlay 函数，
+      支持场景化数据覆盖：当 scenario_id 非 None 时，
+      优先从 sys_object_edits 表（Redis/MySQL 覆盖层）读取数据，
+      否则从主表读取。函数必须处理 scenario_id=None 和 scenario_id="live" 两种等价情况。
+    context_hint: "scenario overlay sys_object_edits simulation context"
+    expected_files:
+      - "backend/app/services/control/scenario_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "CONDITIONAL_LOGIC"
+      - "QUERY_READ"
+    required_signatures:
+      - "async def apply_scenario_overlay"
+      - "scenario_id"
+      - "sys_object_edits"
+    forbidden_patterns:
+      - "fetchall()"
+      - "print("
+    reference_code_path: "CG-009/service_scenario_overlay.py"
+    test_code_path: "CG-009/test_service_scenario_overlay.py"
+    arch_check_rules:
+      - "AC-2"
+    notes: "场景化覆盖逻辑是 MDP 核心功能，考察 Overlay Pattern 理解"
+
+  - id: "CG-010"
+    category: "L4_service"
+    difficulty: "medium"
+    description: >
+      在 role_service.py 中新增 assign_permissions_batch 函数，
+      批量为角色分配权限（最多 100 条），使用 Strategy B（autobegin + explicit commit）事务模式，
+      重复权限跳过（幂等），并调用 audit_service 记录每条分配。
+    context_hint: "role permission batch assign idempotent audit transaction strategy B"
+    expected_files:
+      - "backend/app/services/control/role_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "TRANSACTION_WRITE"
+      - "AUDIT_LOG"
+      - "IDEMPOTENT_UPSERT"
+    required_signatures:
+      - "async def assign_permissions_batch"
+      - "ctx: RequestContext"
+      - "audit_service"
+      - "session.commit()"
+    forbidden_patterns:
+      - "session.begin()"
+      - "print("
+      - "fetchall()"
+    reference_code_path: "CG-010/service_assign_permissions.py"
+    test_code_path: "CG-010/test_service_assign_permissions.py"
+    arch_check_rules:
+      - "AC-2"
+      - "AC-3"
+    notes: "事务策略 B + 幂等写 + 审计，考察对 Strategy A/B 的理解"
+
+  - id: "CG-011"
+    category: "L4_service"
+    difficulty: "easy"
+    description: >
+      在 config_service.py 中新增 get_feature_flags 函数，
+      返回所有以 ENABLE_ 开头的 SystemConfig 配置项（键值字典），
+      结果缓存 30 秒，支持 tenant_id 隔离（不同租户有不同 Flag 值）。
+    context_hint: "config feature flags SystemConfig cache tenant"
+    expected_files:
+      - "backend/app/services/control/config_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "CACHE_READ"
+    required_signatures:
+      - "async def get_feature_flags"
+      - "ctx: RequestContext"
+      - "@cached"
+      - "ENABLE_"
+    forbidden_patterns:
+      - "print("
+      - "fetchall()"
+    reference_code_path: "CG-011/service_feature_flags.py"
+    test_code_path: "CG-011/test_service_feature_flags.py"
+    arch_check_rules:
+      - "AC-2"
+    notes: "Feature Flag 读取，考察 SystemConfig 的标准用法"
+
+  - id: "CG-012"
+    category: "L4_service"
+    difficulty: "hard"
+    description: >
+      在 lineage_service.py 中新增 trace_upstream_lineage 函数，
+      递归追踪一个 ObjectTypeDef 的上游数据血缘（深度限制 10 层），
+      使用 BFS 算法避免环路，返回 LineageGraphDTO（含节点和边的列表）。
+      查询 N+1 问题用 selectinload 解决。
+    context_hint: "lineage trace upstream BFS selectinload recursion"
+    expected_files:
+      - "backend/app/services/control/lineage_service.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "GRAPH_QUERY"
+      - "ANTI_N_PLUS_ONE"
+    required_signatures:
+      - "async def trace_upstream_lineage"
+      - "ctx: RequestContext"
+      - "selectinload"
+      - "depth"
+    forbidden_patterns:
+      - "fetchall()"
+      - "print("
+      - "import pymilvus"
+    reference_code_path: "CG-012/service_trace_lineage.py"
+    test_code_path: "CG-012/test_service_trace_lineage.py"
+    arch_check_rules:
+      - "AC-2"
+    notes: "图查询场景：BFS + selectinload + 循环检测，难度高"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # L3: Domain Model 层（3 条）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-013"
+    category: "L3_model"
+    difficulty: "easy"
+    description: >
+      为 ObjectTypeDef 模型新增一个 metadata_json 字段（JSON 类型），
+      存储扩展元数据（标签、注释等），允许为 NULL，
+      默认值为空字典 {}，需要使用 sa_column=Column(JSON) 正确定义。
+    context_hint: "SQLModel field JSON column sa_column ObjectTypeDef"
+    expected_files:
+      - "backend/app/models/ontology.py"
+    expected_aiu_types:
+      - "FIELD_ADD"
+    required_signatures:
+      - "metadata_json"
+      - "sa_column=Column(JSON)"
+      - "Optional"
+    forbidden_patterns:
+      - "JSON()"
+      - "JsonType"
+    reference_code_path: "CG-013/model_field_json.py"
+    test_code_path: "CG-013/test_model_field_json.py"
+    arch_check_rules: []
+    notes: "JSON 字段定义，考察 MySQL+SQLModel 的正确用法"
+
+  - id: "CG-014"
+    category: "L3_model"
+    difficulty: "medium"
+    description: >
+      新增 ChangeRequestEvent Pydantic Schema（用于 Kafka Avro 序列化），
+      包含字段：event_id(str), cr_id(str), action(枚举: CREATED/APPROVED/REJECTED/WITHDRAWN),
+      tenant_id(str), occurred_at(datetime), operator_id(str)。
+      需要包含 model_config 配置和字段验证器，确保 event_id 符合 UUID4 格式。
+    context_hint: "schema Pydantic Kafka Avro ChangeRequest event UUID validator"
+    expected_files:
+      - "backend/app/api/schemas/governance.py"
+    expected_aiu_types:
+      - "SCHEMA_ADD"
+      - "VALIDATOR_ADD"
+    required_signatures:
+      - "class ChangeRequestEvent"
+      - "event_id"
+      - "cr_id"
+      - "occurred_at"
+      - "@field_validator"
+    forbidden_patterns:
+      - "print("
+    reference_code_path: "CG-014/schema_cr_event.py"
+    test_code_path: "CG-014/test_schema_cr_event.py"
+    arch_check_rules: []
+    notes: "事件 Schema + 字段验证器，考察 Pydantic v2 用法"
+
+  - id: "CG-015"
+    category: "L3_model"
+    difficulty: "medium"
+    description: >
+      新增 SharedPropertyDef SQLModel 类，表名 meta_shared_property_defs，
+      包含字段：id(UUID, PK), api_name(str, unique per tenant), display_name(str),
+      data_type(str), is_sensitive(bool=False), tenant_id(str), created_at(datetime), updated_at(datetime)。
+      需要正确配置索引（tenant_id + api_name 联合唯一索引）。
+    context_hint: "SQLModel SharedPropertyDef table index unique tenant"
+    expected_files:
+      - "backend/app/models/ontology.py"
+    expected_aiu_types:
+      - "MODEL_ADD"
+    required_signatures:
+      - "class SharedPropertyDef"
+      - "table=True"
+      - "__tablename__"
+      - "meta_shared_property_defs"
+      - "UniqueConstraint"
+    forbidden_patterns:
+      - "print("
+    reference_code_path: "CG-015/model_shared_property.py"
+    test_code_path: "CG-015/test_model_shared_property.py"
+    arch_check_rules: []
+    notes: "SQLModel 表定义 + 复合索引，考察命名规范（snake_case 复数表名）"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # L2: Infrastructure 层（2 条）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-016"
+    category: "L2_infra"
+    difficulty: "medium"
+    description: >
+      为 Redis 缓存层实现 invalidate_tenant_cache 函数，
+      按 tenant_id 前缀批量删除该租户的所有缓存 key（格式：mdp:{tenant_id}:*），
+      使用 SCAN 迭代（禁止 KEYS 命令），异步实现，
+      返回删除的 key 数量。
+    context_hint: "redis cache invalidate SCAN tenant prefix async"
+    expected_files:
+      - "backend/app/infrastructure/cache/redis_client.py"
+    expected_aiu_types:
+      - "FUNCTION_ADD"
+      - "CACHE_INVALIDATE"
+    required_signatures:
+      - "async def invalidate_tenant_cache"
+      - "tenant_id"
+      - "scan"
+    forbidden_patterns:
+      - "KEYS"
+      - "keys("
+      - "print("
+      - "fetchall()"
+    reference_code_path: "CG-016/infra_redis_invalidate.py"
+    test_code_path: "CG-016/test_infra_redis_invalidate.py"
+    arch_check_rules: []
+    notes: "Redis 最佳实践：SCAN vs KEYS，生产环境关键约束"
+
+  - id: "CG-017"
+    category: "L2_infra"
+    difficulty: "hard"
+    description: >
+      实现 KafkaEventPublisher.publish_with_retry 方法，
+      使用 Tenacity 对 Kafka 发送进行指数退避重试（最大 3 次，初始等待 0.5s），
+      发送前必须调用 normalize_record 归一化消息（处理 date/Decimal/UUID 类型），
+      发送成功后记录 structlog 日志（含 topic, partition, offset, trace_id）。
+    context_hint: "kafka publish retry tenacity normalize_record structlog trace_id"
+    expected_files:
+      - "backend/app/infrastructure/messaging/kafka_publisher.py"
+    expected_aiu_types:
+      - "METHOD_ADD"
+      - "RETRY_LOGIC"
+      - "NORMALIZE_RECORD"
+    required_signatures:
+      - "async def publish_with_retry"
+      - "normalize_record"
+      - "tenacity"
+      - "structlog"
+    forbidden_patterns:
+      - "print("
+      - "import aiokafka"
+      - "fetchall()"
+    reference_code_path: "CG-017/infra_kafka_publish.py"
+    test_code_path: "CG-017/test_infra_kafka_publish.py"
+    arch_check_rules:
+      - "AC-1"  # 禁止直接 import aiokafka（通过 infrastructure 层）
+    notes: "Kafka 发布 + 重试 + 归一化，考察防坑规则 MEM-L-002"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # error_handle: 错误处理层（2 条）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-018"
+    category: "error_handle"
+    difficulty: "easy"
+    description: >
+      为 governance 模块新增 E_GOV_001 错误码定义（变更请求不存在），
+      在 exceptions.py 中注册，code=E_GOV_001, message="Change request not found",
+      http_status=404。并在 change_request_service 的 get_by_id 函数中
+      正确抛出该异常（替换原有的裸 ValueError 或 KeyError）。
+    context_hint: "DomainException error code E_GOV governance"
+    expected_files:
+      - "backend/app/core/exceptions.py"
+      - "backend/app/services/control/change_request_service.py"
+    expected_aiu_types:
+      - "ERROR_CODE_ADD"
+      - "EXCEPTION_RAISE"
+    required_signatures:
+      - "E_GOV_001"
+      - "DomainException"
+      - "http_status=404"
+    forbidden_patterns:
+      - "raise ValueError"
+      - "raise KeyError"
+      - "raise Exception"
+      - "print("
+    reference_code_path: "CG-018/error_code_gov.py"
+    test_code_path: "CG-018/test_error_code_gov.py"
+    arch_check_rules: []
+    notes: "错误码规范：DomainException 替代裸异常，考察 error_registry 理解"
+
+  - id: "CG-019"
+    category: "error_handle"
+    difficulty: "medium"
+    description: >
+      在 GlobalExceptionHandler 中新增对 asyncpg.UniqueViolationError 的处理，
+      将其映射为 DomainException(code="E_DB_001", message="Duplicate key violation")，
+      http_status=409，并在 structlog 中记录原始错误信息（含 constraint_name 字段）。
+    context_hint: "GlobalExceptionHandler UniqueViolation asyncpg structlog 409"
+    expected_files:
+      - "backend/app/core/exceptions.py"
+    expected_aiu_types:
+      - "EXCEPTION_HANDLER_ADD"
+      - "ERROR_CODE_ADD"
+    required_signatures:
+      - "UniqueViolationError"
+      - "E_DB_001"
+      - "structlog"
+      - "constraint_name"
+    forbidden_patterns:
+      - "print("
+      - "raise Exception"
+    reference_code_path: "CG-019/error_handler_unique.py"
+    test_code_path: "CG-019/test_error_handler_unique.py"
+    arch_check_rules: []
+    notes: "全局异常映射，考察 structlog + DomainException 组合用法"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # cross_layer: 跨层任务（1 条，难度最高）
+  # ────────────────────────────────────────────────────────────────────────────
+
+  - id: "CG-020"
+    category: "cross_layer"
+    difficulty: "hard"
+    description: >
+      为 MDP 系统新增"对象版本回滚"功能：
+      1. POST /objects/{object_id}/rollback endpoint（L5），
+         接受 target_version（int），需要权限 ont:object:rollback
+      2. rollback_object_version service 函数（L4），
+         查询指定版本的快照（ObjectTypeVer），
+         创建新版本并将内容复制（不覆盖当前版本），
+         整个操作在单事务中完成，成功后发送 Kafka 事件
+      3. 返回新版本的 ObjectReadDTO（含 version 字段）
+    context_hint: "object version rollback snapshot transaction kafka cross layer"
+    expected_files:
+      - "backend/app/api/v1/endpoints/ontology.py"
+      - "backend/app/services/control/ontology_service.py"
+    expected_aiu_types:
+      - "ENDPOINT_ADD"
+      - "FUNCTION_ADD"
+      - "TRANSACTION_WRITE"
+      - "KAFKA_PUBLISH"
+      - "AUDIT_LOG"
+    required_signatures:
+      - "async def rollback_object_version"
+      - "async def rollback_object"
+      - "target_version"
+      - "audit_service"
+    forbidden_patterns:
+      - "return []"
+      - "import aiokafka"
+      - "import pymilvus"
+      - "fetchall()"
+      - "print("
+    reference_code_path: "CG-020/cross_layer_rollback.py"
+    test_code_path: "CG-020/test_cross_layer_rollback.py"
+    arch_check_rules:
+      - "AC-1"
+      - "AC-2"
+      - "AC-3"
+      - "AC-4"
+    notes: "最高难度：跨 2 层 + 事务 + Kafka + 审计，综合考察 MDP 架构理解"

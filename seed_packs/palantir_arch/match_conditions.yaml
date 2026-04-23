@@ -1,0 +1,9 @@
+stack_id: palantir_arch
+description: "Palantir Foundry 风格架构约束（CQRS + Hexagonal + RLS）"
+always_inject: false
+match_conditions:
+  - dir_hints:
+      - "backend/app/services/control"
+      - "backend/app/infrastructure"
+      - "docs/memory"
+    min_hits: 2

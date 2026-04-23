@@ -1,0 +1,103 @@
+---
+name: worker-job
+label: Worker Job 模板（含 JobExecutionScope）
+layer: L4_application
+description: 生成符合 MDP Worker 规范的 Job 处理函数（含 JobExecutionScope、structlog、流式处理）
+required_vars:
+  - job_name: Job 名称（snake_case，如 data_ingestion）
+  - job_label: Job 中文标签（如 数据摄入任务）
+  - job_type: Job 类型（ingestion | indexing | scheduler | export）
+optional_vars:
+  - source_type: 数据源类型（如 mysql | s3 | api，仅 ingestion 时填写）
+---
+# === 架构约束注释（来自 layer_contracts.md，开发时参考） ===
+# {{arch_constraints}}
+# ========================================================
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Generator, Optional
+
+import structlog
+
+if TYPE_CHECKING:
+    pass
+
+logger = structlog.get_logger(__name__)
+
+
+# ── Job 处理函数（被 Scheduler / Worker 调用）─────────────────────────────────
+
+async def run_{{job_name}}(
+    job_id: str,
+    tenant_id: str,
+    # TODO: 添加 Job 特定参数
+    # connector_id: str,
+    # config: dict,
+) -> None:
+    """
+    {{job_label}}（{{job_type}}）。
+
+    Args:
+        job_id: Job 实例 ID（用于状态追踪）
+        tenant_id: 租户 ID（所有操作必须隔离）
+        # TODO: 其他业务参数
+
+    注意：
+        - 必须使用 JobExecutionScope 管理生命周期（AC-6）
+        - 禁止使用 read() / fetchall()，必须用 yield 流式处理（AC-10）
+        - 禁止裸 try/except 吞掉异常
+    """
+    # AC-6: 必须使用 JobExecutionScope 管理 Job 状态生命周期
+    # 禁止散落的 try/except 来管理 RUNNING/SUCCESS/FAILED 状态
+    from app.workers.base import JobExecutionScope
+    from app.core.security import SecurityContext
+
+    # 构造执行上下文（SecurityContext）
+    ctx = SecurityContext(
+        tenant_id=tenant_id,
+        user_id="system",       # Worker 以 system 身份执行
+        roles=[],
+        permissions=[],
+    )
+
+    async with JobExecutionScope(job_id=job_id, ctx=ctx) as scope:
+        log = logger.bind(
+            job_id=job_id,
+            tenant_id=tenant_id,
+            job_type="{{job_type}}",
+        )
+        log.info("{{job_name}}_start")
+
+        # ── 流式处理数据（禁止 fetchall() / read()）────────────────────────
+        async for batch in _stream_{{job_name}}_data(ctx):
+            # TODO: 处理每个批次
+            # normalize_record(batch)  # Kafka 消息必须先 normalize
+            # await scope.update_progress(processed=len(batch))
+            log.debug("batch_processed", size=len(batch))
+
+        log.info("{{job_name}}_done")
+
+
+async def _stream_{{job_name}}_data(
+    ctx: "SecurityContext",
+    batch_size: int = 100,
+) -> Generator:
+    """
+    流式读取数据（Generator 模式，避免全量加载到内存）。
+
+    Yields:
+        List[dict]  — 每次 yield 一个批次
+    """
+    # TODO: 实现流式读取逻辑
+    # 示例（MySQL cursor 流式读取）：
+    #   async with session_factory() as session:
+    #       result = await session.stream(stmt)  # 使用 stream()，不用 exec()
+    #       async for row in result:
+    #           batch.append(row)
+    #           if len(batch) >= batch_size:
+    #               yield batch
+    #               batch = []
+    #       if batch:
+    #           yield batch
+    yield []  # TODO: 替换为实际流式读取

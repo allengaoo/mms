@@ -1,0 +1,156 @@
+# ActionDef: unit_run — Unit 自动执行动作
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   unit_run 是 MMS "代码生成" 的核心执行动作。
+#   用户只需告诉系统"执行 EP-129 的 U3"，
+#   系统就会自动：生成上下文 → 调用 LLM → 解析代码变更 →
+#   应用到文件 → 运行测试 → 提交 git commit。
+#   如果失败，会自动重试（3-Strike）；3次失败后触发 AIU Feedback 分析。
+#
+# 版本：v1.0 | 创建于：2026-04-18 | EP-119 → EP-129
+
+id: action_unit_run
+label: "Unit 自动执行"
+type: action
+version: "1.0"
+source_ep: "EP-119"
+
+description: |
+  驱动 UnitRunner 自动执行指定 DagUnit 的完整流程：
+    1. 生成 unit_context（复用 unit_context.py）
+    2. AIU 分解（可选，由 fn_decompose_task 驱动）
+    3. AIU 代价估算（fn_estimate_aiu_cost）
+    4. 调用 LLM 生成代码（===BEGIN-CHANGES=== 协议）
+    5. 解析代码变更 + Scope Guard（防止越权修改）
+    6. 应用文件变更（GitSandbox 保护）
+    7. 运行 arch_check diff + pytest 验证
+    8. PASS → git commit + mark_done
+       FAIL → rollback + 错误注入上下文 → 重试（3-Strike）
+    9. 3次全部失败 → 完全回滚 + _aiu_feedback_analysis
+
+  --save-output 模式：
+    不写入业务文件，仅保存 LLM 原始输出至
+    docs/memory/private/compare/<EP>/<Unit>/qwen.txt
+    供双模型对比工作流（EP-120）使用。
+
+  实现文件：scripts/mms/unit_runner.py :: UnitRunner
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    description: "EP 编号，如 EP-129"
+    example: "EP-129"
+
+  - name: unit_id
+    type: string
+    required: true
+    description: "Unit 编号，如 U3"
+    example: "U3"
+
+  - name: model
+    type: string
+    required: false
+    default: "从 DagUnit.model_hint 读取"
+    enum: ["8b", "16b", "capable", "fast"]
+    description: "强制覆盖模型规格（不指定则使用 DagUnit.model_hint）"
+
+  - name: dry_run
+    type: boolean
+    required: false
+    default: false
+    description: "预览模式：生成代码变更但不写入文件"
+
+  - name: confirm
+    type: boolean
+    required: false
+    default: false
+    description: "写入文件前要求用户确认（交互式）"
+
+  - name: save_output
+    type: boolean
+    required: false
+    default: false
+    description: "保存 LLM 原始输出用于双模型对比（EP-120 模式）"
+
+  - name: no_aiu
+    type: boolean
+    required: false
+    default: false
+    description: "跳过 AIU 分解，直接以 DagUnit 整体作为单个语义块执行"
+
+outputs:
+  - name: success
+    type: boolean
+    description: "执行是否成功"
+
+  - name: commit_hash
+    type: string
+    description: "成功时的 git commit hash"
+
+  - name: error_report
+    type: string
+    description: "失败时的诊断报告（含 3-Strike 错误历史 + AIU Feedback 建议）"
+
+  - name: aiu_plan
+    type: object
+    description: "执行中使用的 AIUPlan（含每个 AIUStep 的实际执行状态）"
+
+side_effects:
+  - "修改 docs/memory/_system/dag/{ep_id}.json（更新 DagUnit status）"
+  - "写入 docs/memory/_system/trace.jsonl（DiagnosticEvent 流）"
+  - "写入 docs/memory/_system/feedback_stats.jsonl（AIU 执行统计）"
+  - "成功时提交 git commit"
+  - "失败时通过 GitSandbox 自动回滚（保证工作区干净）"
+  - "调用 LLM API（qwen3-coder-next 或指定模型）"
+
+cli_usage: |
+  # 执行 EP-129 的 U3
+  python3 scripts/mms/cli.py unit run --ep EP-129 --unit U3
+
+  # 仅预览（不写文件）
+  python3 scripts/mms/cli.py unit run --ep EP-129 --unit U3 --dry-run
+
+  # 写入前确认
+  python3 scripts/mms/cli.py unit run --ep EP-129 --unit U3 --confirm
+
+  # 自动执行当前批次所有就绪 Unit
+  python3 scripts/mms/cli.py unit run-next --ep EP-129
+
+  # 执行全部剩余 Unit（谨慎使用）
+  python3 scripts/mms/cli.py unit run-all --ep EP-129
+
+  # 保存 LLM 输出用于双模型对比
+  python3 scripts/mms/cli.py unit run --ep EP-129 --unit U3 --save-output
+
+calls_functions:
+  - fn_decompose_task
+  - fn_estimate_aiu_cost
+  - fn_compute_ep_health
+
+# EP-130 新增：标注此动作会修改代码，postcheck 阶段需触发 AST 同步
+triggers_ast_sync: true
+ast_sync_scope: "files changed in DagUnit.files"
+
+related_actions:
+  - action_precheck
+  - action_postcheck
+
+related_objects:
+  - DagUnit
+  - AIUStep
+  - DiagnosticEvent
+
+# ── fn_classify_intent 路由规则 ──────────────────────────────────────────────
+
+intent_keywords:
+  - "unit run"
+  - "自动执行"
+  - "单元执行"
+  - "代码生成"
+  - "3-Strike"
+  - "AIU 执行"
+  - "unit runner"
+  - "save-output"
+  - "run-next"
+  - "run-all"

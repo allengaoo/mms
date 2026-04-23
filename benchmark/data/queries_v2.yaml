@@ -1,0 +1,403 @@
+# Benchmark 测试数据集 v2.0 — 通用软件工程扩展集
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 设计动机（基于 v1.0 Benchmark 分析结论）：
+#   问题1：v1.0 的 GT 文件全部是代码文件（0%文档），导致 RAG 系统 Recall@K 被结构性清零，
+#          无法真实反映三系统在混合 GT 场景下的能力差距。
+#   问题2：v1.0 含 MDP 特有任务比例过高（D 类 MMS 工具占 20%），本体系统有专属规则优势。
+#   问题3：缺乏"纯文档 GT"的概念查询类任务，无法体现 RAG 在知识问答方面的优势。
+#
+# v2.0 新增 4 个类别：
+#   E — 混合GT（文档+代码）：GT同时包含记忆文件和代码文件，三系统均有获胜机会
+#   F — 纯文档概念查询：GT只有文档文件，RAG 有主场优势，测试本体系统的文档召回能力
+#   G — 通用SE任务（去MDP偏移）：任务描述不使用 MDP 特有词汇，测试泛化能力
+#   H — 多跳推理：需要先找到架构概念，再定位实现文件，测试链式推理能力
+#
+# 评估策略：
+#   - v2.0 作为独立评估集，与 v1.0 并行运行
+#   - 联合评估（v1.0 + v2.0）才能得到完整的公平性评估结论
+#
+# 版本：2.0 | 创建于：2026-04-21 | EP-129（续）
+# GT 设计原则：基于"完成任务的工程师必须打开哪些文件"的客观判断，独立于任何检索系统
+
+metadata:
+  version: "2.0"
+  total: 20
+  main_eval: 20
+  adversarial: 0
+  top_k: 5
+  design_note: "通用软件工程扩展集，解决 v1.0 数据集的三类偏移问题"
+  categories:
+    E: "混合GT — GT同时包含文档记忆文件和代码文件，公平测试三系统的综合召回能力"
+    F: "纯文档概念查询 — GT为文档/记忆文件，测试 RAG 主场优势场景和本体系统文档召回"
+    G: "通用SE任务 — 任务语言去除 MDP 特有词汇，测试系统泛化能力"
+    H: "多跳推理 — 需要链式推理找到架构层再定位实现，测试深度理解能力"
+
+queries:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 E：混合 GT（文档+代码）— 5条
+  # 设计目的：GT 同时包含记忆约束文档和代码实现文件
+  #   RAG 优势：语义检索可命中记忆文档
+  #   本体优势：路径解析可命中代码文件
+  #   公平性：两类 GT 各贡献 50% 的 Recall@K 权重
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "E-001"
+    category: "E"
+    category_desc: "混合GT — 事务约束 + 代码实现"
+    task: "写一个新的 Service 方法来批量更新对象的状态，要保证要么全部成功要么全部回滚，用数据库事务来实现"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "create"
+      key_files:
+        # 代码文件（本体系统通过路径推断可命中）
+        - "backend/app/services/control/ontology_service.py"
+        # 记忆约束文档（RAG 语义检索可命中）
+        - "docs/memory/shared/cross_cutting/decisions/AD-005.md"
+        - "docs/memory/shared/L2_infrastructure/D4_resilience/MEM-L-003.md"
+      key_memory_ids:
+        - "AD-005"
+      has_executable_cmd: false
+    design_note: "GT 同时含代码文件和记忆文档，检验各系统的综合召回能力"
+
+  - query_id: "E-002"
+    category: "E"
+    category_desc: "混合GT — 缓存装饰器约束 + Service 实现"
+    task: "元数据列表接口被频繁请求，想给它加个 Redis 缓存，要用平台统一的缓存机制，不要自己造轮子"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        # 代码文件
+        - "backend/app/infrastructure/cache/redis_decorator.py"
+        - "backend/app/services/control/ontology_service.py"
+        # 记忆文档（RAG 可命中）
+        - "docs/memory/shared/cross_cutting/decisions/AD-008.md"
+      key_memory_ids:
+        - "AD-008"
+      has_executable_cmd: false
+    design_note: "redis_decorator.py 既是约束的实现也是 GT，同时含决策文档 AD-008"
+
+  - query_id: "E-003"
+    category: "E"
+    category_desc: "混合GT — Kafka 规范约束 + Worker 实现"
+    task: "数据载入 Worker 要往 Kafka 发消息，消息格式要用 Avro，而且发送前必须做数据类型归一化处理"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "modify_logic"
+      key_files:
+        # 代码文件
+        - "backend/app/workers/ingestion.py"
+        # 记忆约束文档（RAG 语义检索可命中）
+        - "docs/memory/shared/L2_infrastructure/D6_messaging/MEM-L-002.md"
+        - "docs/memory/shared/L2_infrastructure/D6_messaging/MEM-L-011.md"
+      key_memory_ids:
+        - "MEM-L-002"
+        - "MEM-L-011"
+      has_executable_cmd: false
+    design_note: "Avro+归一化是典型约束感知场景，记忆文档和代码文件均在 GT 中"
+
+  - query_id: "E-004"
+    category: "E"
+    category_desc: "混合GT — RBAC 约束 + API 实现"
+    task: "新建一个查看审计日志的接口，只有管理员和审计员角色可以访问，要按平台的权限规范来实现"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        # 代码文件
+        - "backend/app/api/v1/endpoints/audit.py"
+        - "backend/app/core/rbac.py"
+        # 记忆文档（权限规范说明）
+        - "docs/memory/shared/cross_cutting/decisions/AD-002.md"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+    design_note: "权限相关任务，rbac.py 是代码文件，AD-002 是规范文档，GT 混合"
+
+  - query_id: "E-005"
+    category: "E"
+    category_desc: "混合GT — 容错约束 + 外部调用实现"
+    task: "连接器测试接口调用外部系统时如果超时或者失败，要自动重试，但要避免频繁重试把对方打垮"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        # 代码文件
+        - "backend/app/services/control/datalink_service.py"
+        - "backend/app/core/resilience.py"
+        # 记忆文档（重试策略规范）
+        - "docs/memory/shared/L2_infrastructure/D4_resilience/MEM-L-003.md"
+      key_memory_ids:
+        - "MEM-L-003"
+      has_executable_cmd: false
+    design_note: "resilience.py 含 Tenacity 封装，记忆文档含重试规范，均在 GT"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 F：纯文档概念查询 — 5条
+  # 设计目的：GT 只包含文档/记忆文件，RAG 有主场优势
+  #   RAG 优势：语义检索天然擅长文档类查询
+  #   本体劣势：规则分类可能正确，但返回代码路径而非文档，导致 Recall@K=0
+  #   测试价值：诚实反映本体系统在文档召回上的短板，以及 BM25 兜底的必要性
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "F-001"
+    category: "F"
+    category_desc: "纯文档 — 架构概念解释"
+    task: "解释一下为什么后端代码里不能直接 import pymilvus，要通过 infrastructure 层来访问，这样设计的原因是什么"
+    source: "constructed"
+    ground_truth:
+      layer: "L2_infrastructure"
+      operation: "review"
+      key_files:
+        - "docs/memory/shared/cross_cutting/decisions/AD-001.md"
+        - "docs/memory/shared/cross_cutting/decisions/AD-007.md"
+      key_memory_ids:
+        - "AD-001"
+        - "AD-007"
+      has_executable_cmd: false
+    design_note: "纯架构决策解释，GT 只有决策文档，无代码文件"
+
+  - query_id: "F-002"
+    category: "F"
+    category_desc: "纯文档 — 约束规范查询"
+    task: "在写新的服务方法之前，我想先确认一下平台对 Service 层的设计约束，特别是方法签名和审计方面的要求"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "review"
+      key_files:
+        - "docs/memory/shared/cross_cutting/decisions/AD-002.md"
+        - "docs/memory/shared/cross_cutting/decisions/AD-003.md"
+        - "docs/memory/shared/cross_cutting/decisions/AD-004.md"
+      key_memory_ids:
+        - "AD-002"
+        - "AD-003"
+        - "AD-004"
+      has_executable_cmd: false
+    design_note: "纯规范查询，用户在写代码前先查约束，GT 全部是决策文档"
+
+  - query_id: "F-003"
+    category: "F"
+    category_desc: "纯文档 — 错误码查询"
+    task: "我们系统里的错误码是怎么规划的，新增一个业务错误应该怎么命名，有没有现成的文档可以参考"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "review"
+      key_files:
+        - "docs/memory/shared/cross_cutting/decisions/AD-006.md"
+      key_memory_ids:
+        - "AD-006"
+      has_executable_cmd: false
+    design_note: "纯文档查询，错误码规范是文档，不涉及特定代码文件"
+
+  - query_id: "F-004"
+    category: "F"
+    category_desc: "纯文档 — 多租户隔离概念"
+    task: "新来的同事问为什么所有的数据库查询都必须带租户 ID 过滤，平台的多租户隔离策略是怎么设计的"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "review"
+      key_files:
+        - "docs/memory/shared/cross_cutting/decisions/AD-002.md"
+        - "docs/memory/shared/BIZ/BIZ-001.md"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+    design_note: "架构概念解释性查询，GT 为设计决策文档和业务规范文档"
+
+  - query_id: "F-005"
+    category: "F"
+    category_desc: "纯文档 — 可观测性规范"
+    task: "代码里有地方用了 print 来调试，被代码审查说不合规，平台规定的日志和指标标准是什么"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "review"
+      key_files:
+        - "docs/memory/shared/L1_platform/D3_observability/MEM-L-009.md"
+        - "docs/memory/shared/cross_cutting/decisions/AD-004.md"
+      key_memory_ids:
+        - "MEM-L-009"
+        - "AD-004"
+      has_executable_cmd: false
+    design_note: "规范查询，GT 是可观测性相关的记忆文档和决策文档"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 G：通用SE任务（去MDP特有词汇）— 5条
+  # 设计目的：任务描述不使用 MDP/MMS 的术语，测试系统对通用软件工程语言的泛化能力
+  #   测试价值：暴露本体系统 intent_classifier 在通用语境下的关键词盲区
+  #   基线意义：如果 RAG/BM25 在通用SE任务上也低于本体系统，则本体优势更可信
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "G-001"
+    category: "G"
+    category_desc: "通用SE — 依赖注入+接口设计（通用语言描述）"
+    task: "想给用户登录的接口加上访问频率限制，比如一分钟内只能尝试 5 次，超了就返回错误"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_api"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/api/v1/endpoints/auth.py"
+        - "backend/app/core/resilience.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "描述完全是通用 web 开发语言，不含 MDP 特有词汇，测试泛化能力"
+
+  - query_id: "G-002"
+    category: "G"
+    category_desc: "通用SE — 数据分页查询优化（通用语言描述）"
+    task: "列表接口在数据量大的时候非常慢，感觉是每次都查了所有关联数据，能不能只在需要时才加载关联数据"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+      key_memory_ids:
+        - "AD-008"
+      has_executable_cmd: false
+    design_note: "N+1 问题的通用描述，不提 selectinload 或任何框架术语"
+
+  - query_id: "G-003"
+    category: "G"
+    category_desc: "通用SE — 异步任务状态管理（通用语言描述）"
+    task: "后台有个耗时很长的任务，用户触发后不知道有没有在跑，也看不到进度，想做成异步的并且能查状态"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "modify_logic"
+      key_files:
+        - "backend/app/workers/base.py"
+        - "backend/app/workers/ingestion.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "异步任务是通用 SE 概念，不提 JobExecutionScope 等平台术语"
+
+  - query_id: "G-004"
+    category: "G"
+    category_desc: "通用SE — 配置外部化（通用语言描述）"
+    task: "代码里有个超时时间写死了是 30 秒，每次想改都要重新部署，希望能从配置文件或者环境变量里读取"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_platform"
+      operation: "modify_config"
+      key_files:
+        - "backend/app/core/config.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "配置外部化是普遍 SE 诉求，描述完全通用"
+
+  - query_id: "G-005"
+    category: "G"
+    category_desc: "通用SE — 前端状态同步（通用语言描述）"
+    task: "点击删除按钮之后接口返回成功了，但是页面上的列表没有更新，需要手动刷新才能看到变化"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_frontend"
+      operation: "debug"
+      key_files:
+        - "frontend/src/pages/ontology"
+        - "frontend/src/hooks"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "前端状态同步问题的通用描述，不提 Zustand、React Query 等术语"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # 类别 H：多跳推理 — 5条
+  # 设计目的：任务需要先理解架构层关系，再定位实现文件，考验链式推理深度
+  #   典型形式："A 功能依赖 B 组件，B 组件的实现在哪"
+  #   本体优势：arch_resolver 可沿架构层做路径推断
+  #   RAG/BM25 劣势：语义相似度无法建模多跳关系
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - query_id: "H-001"
+    category: "H"
+    category_desc: "多跳推理 — API层→Service层→Model层的完整链路"
+    task: "我要给对象类型新增一个字段，从 API 接口一直到数据库表定义，需要改哪几个文件"
+    source: "constructed"
+    ground_truth:
+      layer: "L5_api"
+      operation: "create"
+      key_files:
+        - "backend/app/api/v1/endpoints/ontology.py"
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/models/ontology.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "典型全栈修改场景，需要理解 L5→L4→L2 的层级关系才能列出所有文件"
+
+  - query_id: "H-002"
+    category: "H"
+    category_desc: "多跳推理 — 权限变更的全链路影响"
+    task: "想新增一个权限，让特定角色可以查看系统配置，这个权限要在后端注册，在 API 守卫，在前端也要控制显示"
+    source: "constructed"
+    ground_truth:
+      layer: "L1_security"
+      operation: "create"
+      key_files:
+        - "backend/app/core/rbac.py"
+        - "backend/app/api/v1/endpoints/config.py"
+        - "frontend/src/layouts/MainLayout.tsx"
+      key_memory_ids:
+        - "AD-002"
+      has_executable_cmd: false
+    design_note: "权限贯穿三层，需要跨 L1→L5_api→L5_frontend 推理"
+
+  - query_id: "H-003"
+    category: "H"
+    category_desc: "多跳推理 — 事件驱动链路追踪"
+    task: "当用户触发一个对象类型的创建时，这个操作会产生什么事件，事件会被哪些 Worker 消费处理"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_service"
+      operation: "review"
+      key_files:
+        - "backend/app/services/control/ontology_service.py"
+        - "backend/app/workers/indexing.py"
+        - "backend/app/workers/metadata_sync.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "事件驱动架构理解，需要从 Service 跳到 Worker，跨 L4_service→L4_worker"
+
+  - query_id: "H-004"
+    category: "H"
+    category_desc: "多跳推理 — 连接器到属性的数据流"
+    task: "数据连接器同步完成后，属性值是怎么一步步流转到前端展示的，中间经过了哪些处理环节"
+    source: "constructed"
+    ground_truth:
+      layer: "L3_data_pipeline"
+      operation: "review"
+      key_files:
+        - "backend/app/services/control/datalink_service.py"
+        - "backend/app/workers/ingestion.py"
+        - "backend/app/workers/indexing.py"
+        - "frontend/src/pages/explorer"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "数据流追踪，需要跨 L3→L4_worker→L5_frontend 的多跳推理"
+
+  - query_id: "H-005"
+    category: "H"
+    category_desc: "多跳推理 — 调度器→Worker→Kafka 的执行链"
+    task: "定时调度任务触发之后，任务的执行是怎么流转的，调度器、执行引擎、具体的 Worker 之间是什么关系"
+    source: "constructed"
+    ground_truth:
+      layer: "L4_worker"
+      operation: "review"
+      key_files:
+        - "backend/app/workers/scheduler_daemon.py"
+        - "backend/app/workers/scheduler_engine.py"
+        - "backend/app/workers/base.py"
+      key_memory_ids: []
+      has_executable_cmd: false
+    design_note: "调度执行链多跳推理，需要理解 daemon→engine→base 的组件关系"

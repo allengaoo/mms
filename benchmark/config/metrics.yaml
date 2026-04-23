@@ -1,0 +1,247 @@
+# Benchmark 指标配置 v1.0
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 扩展说明：
+#   - 新增指标：在 metrics 节添加新条目，并在 src/metrics/ 对应文件中实现计算函数
+#   - 禁用指标：将 enabled 设为 false，无需修改代码
+#   - 调整权重：修改 weight，综合得分自动重新归一化
+#   - 修改参数：只改 params 节
+#
+# 版本：1.0 | EP-129
+
+defaults:
+  top_k: 5              # Recall@K 的 K 值
+  token_estimate_ratio: 4   # 字符数 / 4 ≈ token 数（中英混合估算）
+  small_model_window: 4000  # 小参数模型有效注意力窗口（token），用于 info_density 归一化
+
+metrics:
+
+  # ── 准确性指标 ─────────────────────────────────────────────────────────────
+
+  layer_accuracy:
+    enabled: true
+    category: accuracy
+    weight: 1.0
+    description: |
+      架构层命中率。预测层与 GT 层完全匹配计 1 分，否则 0 分。
+      公式：LayerAcc = Σ 1[ŷ_layer == y*_layer] / N
+    params: {}
+
+  op_accuracy:
+    enabled: true
+    category: accuracy
+    weight: 1.0
+    description: |
+      操作类型准确率。预测操作与 GT 操作完全匹配计 1 分，否则 0 分。
+      公式：OpAcc = Σ 1[ŷ_op == y*_op] / N
+    params: {}
+
+  recall_at_k:
+    enabled: true
+    category: accuracy
+    weight: 1.5
+    description: |
+      GT 关键文件召回率。返回的 Top-K 文件中覆盖 GT key_files 的比例。
+      公式：Recall@K = (1/N) * Σ |TopK_i ∩ F*_i| / |F*_i|
+      说明：路径匹配采用前缀匹配（GT 为目录时，只要返回文件属于该目录即命中）
+    params:
+      k: 5
+
+  mrr:
+    enabled: true
+    category: accuracy
+    weight: 1.0
+    description: |
+      平均倒数排名。第一个 GT 文件在返回列表中排名的倒数均值。
+      公式：MRR = (1/N) * Σ 1/rank_i（未命中时 rank_i → ∞，贡献 0）
+      说明：排名从 1 开始；只考虑 GT key_files 中的第一个文件
+    params:
+      k: 5    # 只在 Top-K 内查找
+
+  path_validity:
+    enabled: true
+    category: accuracy
+    weight: 0.8
+    description: |
+      路径有效率（反幻觉指标）。推荐路径中磁盘实际存在的比例。
+      公式：PathValidity = Σ|{f ∈ R_i : exists(f)}| / Σ|R_i|
+      说明：exists() 使用 Path.exists() 或 Path.is_dir() 双重判断
+    params: {}
+
+  memory_recall:
+    enabled: true
+    category: accuracy
+    weight: 1.0
+    description: |
+      约束记忆命中率。GT key_memory_ids 中被检索结果覆盖的比例。
+      公式：MemRecall = (1/N) * Σ |{m ∈ R_i : m.id ∈ M*_i}| / max(|M*_i|, 1)
+      说明：仅对 key_memory_ids 非空的任务有意义；检索结果中 doc_id 包含记忆 ID 即命中
+    params: {}
+
+  # ── 效率指标 ─────────────────────────────────────────────────────────────
+
+  latency:
+    enabled: true
+    category: efficiency
+    weight: 0.5
+    description: |
+      检索端到端耗时。记录 min/p50/p95/max 分布，低优先级（不影响离线 benchmark 结论）。
+      公式：Latency_i = t_result - t_start（毫秒）
+      子组件：embed_latency（Bailian API）/ es_latency / milvus_latency 分别记录
+    params: {}
+
+  context_tokens:
+    enabled: true
+    category: efficiency
+    weight: 1.0
+    description: |
+      上下文 token 估算。返回内容注入 LLM 时消耗的 token 数（越少越好）。
+      公式：ContextTokens_i = floor(|context_i|_chars / 4)
+      说明：4 字符 ≈ 1 token（中英混合文本通用估算）
+    params:
+      char_per_token: 4
+
+  info_density:
+    enabled: true
+    category: efficiency
+    weight: 2.0     # 核心指标：小模型场景最重要，权重最高
+    description: |
+      有效信息密度。衡量"每千 token 能帮助模型命中多少关键文件"。
+      这是小参数模型场景的核心指标：token 有限，每个 token 都要有价值。
+      公式：InfoDensity_i = Recall@K_i / max(ContextTokens_i / 1000, 0.1)
+      说明：分母最小值 0.1 防止零除；越高表示单位 token 的信息价值越大
+    params:
+      token_unit: 1000    # 分母归一化单位
+
+  actionability:
+    enabled: true
+    category: efficiency
+    weight: 1.5
+    description: |
+      可执行性等级（0-3 分量表，对三个系统中立）。
+      Level 0：返回无关内容（GT 层不相关）
+      Level 1：返回相关领域文档片段（GT 层相关）
+      Level 2：返回相关且磁盘有效的文件路径
+      Level 3：返回可直接执行的命令（cli_usage / 含命令行示例的记忆片段）
+      公式：Actionability_i ∈ {0, 1, 2, 3}（以均值报告）
+      注：RAG 系统若记忆文件含命令示例同样可得 Level 3，不惩罚无 ActionDef 的系统
+    params: {}
+
+  # ── 统计显著性 ────────────────────────────────────────────────────────────
+
+  statistical_test:
+    enabled: true
+    category: statistical
+    weight: 0.0     # 不计入综合得分，仅用于结论验证
+    description: |
+      统计显著性检验。验证系统间差异是否具有统计意义（而非随机涨落）。
+      二元指标（layer_accuracy/op_accuracy/path_validity）：McNemar 检验
+      连续指标（recall_at_k/mrr/latency/context_tokens/info_density）：Wilcoxon 符号秩检验
+      报告 p 值：p < 0.05 标记为显著，p ≥ 0.05 标记为不显著
+      注意：N=25 样本量较小，不显著结论同样重要（诚实报告）
+    params:
+      alpha: 0.05
+      method: "auto"    # auto: 二元→mcnemar, 连续→wilcoxon
+      alternative: "two-sided"
+
+  # ── AIU 分解质量（仅 I 类查询，仅 ontology 系统）────────────────────────
+
+  aiu_decomp_precision:
+    enabled: true
+    category: aiu_quality
+    weight: 1.5
+    description: |
+      AIU 分解精度（仅对 I 类查询计算，RAG 系统标记 N/A）。
+      公式：AIU_Prec = |预测AIU类型集 ∩ 期望AIU类型集| / |预测AIU类型集|
+      说明：
+        - 仅计算类型集合交集，不考虑顺序（顺序由 aiu_order_similarity 指标衡量）
+        - 期望AIU类型集 = ground_truth.expected_aiu_types
+        - 预测AIU类型集 = task_decomposer 实际输出的 AIUStep.aiu_type 集合
+        - forbidden_aiu_types 命中时自动给予惩罚（precision × 0.5）
+    params:
+      forbidden_penalty: 0.5    # 出现 forbidden_aiu_types 时的 precision 惩罚系数
+
+  aiu_decomp_recall:
+    enabled: true
+    category: aiu_quality
+    weight: 1.5
+    description: |
+      AIU 分解召回率（仅对 I 类查询计算，RAG 系统标记 N/A）。
+      公式：AIU_Recall = |预测AIU类型集 ∩ 期望AIU类型集| / |期望AIU类型集|
+      说明：
+        - 分母为 expected_aiu_types 的大小（GT 期望的 AIU 类型数量）
+        - AIU 数量超出 expected_aiu_count_range 时记录警告（不扣分）
+    params: {}
+
+  aiu_order_similarity:
+    enabled: true
+    category: aiu_quality
+    weight: 1.0
+    description: |
+      AIU 执行顺序相似度（仅 aiu_order_matters=true 的 I 类查询）。
+      公式：OrderSim = LCS_len(预测序列, 期望序列) / max(|预测|, |期望|)
+      其中 LCS = 最长公共子序列（Longest Common Subsequence），按 AIU 类型字符串匹配
+      说明：
+        - aiu_order_matters=false 的查询此指标标记 N/A（不参与均值计算）
+        - 完全相同序列得分 1.0，完全不相关得分 0.0
+    params: {}
+
+  # ── 成本效率（端侧小模型场景核心指标）────────────────────────────────────
+
+  cost_efficiency:
+    enabled: true
+    category: efficiency
+    weight: 2.0    # 端侧场景最核心指标（与 info_density 并列最高权重）
+    description: |
+      成本效率综合指标（端侧小模型场景核心）。
+      衡量"单位总成本下的文件召回率"，比 info_density 更全面（额外计量 LLM 调用次数）。
+
+      公式：
+        TotalCost_i = α × (context_tokens_i / 1000)
+                    + β × llm_calls_i
+                    + γ × (latency_ms_i / 1000)
+        CostEff_i = Recall@K_i / max(TotalCost_i, 0.1)
+
+      参数含义：
+        α = 1.0  （每千 token 的成本权重）
+        β = 0.5  （每次额外 LLM 调用的成本权重，等价 500 tokens）
+        γ = 0.1  （每秒延迟的成本权重）
+
+      与 info_density 的区别：
+        info_density 只考虑 context_tokens（注入 token 数）
+        cost_efficiency 额外考虑：
+          - LLM 调用次数（端侧最昂贵的资源）
+          - 延迟（端侧小模型推理慢，延迟成本更高）
+
+      为什么对端侧场景重要：
+        Ontology 系统：LLM 调用 = 0（RBO 命中时），context_tokens 极低
+        Hybrid RAG：每次必须调用 Embedding API（1次），ES + Milvus 双查询
+        此指标能量化"零 LLM 调用"的成本优势
+
+      llm_calls_i 的定义：
+        - Ontology：from_llm=True 时计 1，否则计 0
+        - Hybrid RAG：固定计 1（embedding API 调用）
+        - Markdown：计 0（无 LLM 调用）
+    params:
+      alpha: 1.0      # token 成本权重（单位：千 token）
+      beta: 0.5       # LLM 调用成本权重
+      gamma: 0.1      # 延迟成本权重（单位：秒）
+      min_denominator: 0.1  # 防零除最小分母
+
+  # ── 综合得分（加权聚合）─────────────────────────────────────────────────
+
+  composite_score:
+    enabled: true
+    category: composite
+    weight: 0.0     # 综合得分本身不参与自身计算
+    description: |
+      加权综合得分（0-1 归一化）。
+      公式：Score = Σ (w_m * normalized(metric_m)) / Σ w_m
+      归一化方式：
+        - 准确性指标（0-1）：直接使用
+        - actionability（0-3）：除以 3 归一化到 0-1
+        - latency：不计入（效率通过 info_density 间接体现）
+        - context_tokens：不计入（效率通过 info_density 间接体现）
+      参与指标：layer_accuracy / op_accuracy / recall_at_k / mrr /
+               path_validity / memory_recall / info_density / actionability
+    params: {}

@@ -1,0 +1,79 @@
+---
+name: service-method
+label: Service 层方法模板（Control Services）
+layer: L4_application
+description: 为 Service 类新增方法生成符合架构约束的代码骨架（含 SecurityContext、AuditService、RLS 过滤）
+required_vars:
+  - entity: 实体名（PascalCase，如 ObjectType）
+  - method_name: 方法名（snake_case，如 create_object_type）
+  - action: 操作类型（create | update | delete | get | list）
+  - resource: 资源类型标签（snake_case，如 object_type，用于 AuditService）
+optional_vars:
+  - return_type: 返回类型（默认与 entity 同名）
+---
+# === 架构约束注释（来自 layer_contracts.md，开发时参考） ===
+# {{arch_constraints}}
+# ========================================================
+
+from __future__ import annotations
+
+from typing import Optional
+
+from app.core.security import SecurityContext
+from app.services.control.audit_service import audit_service
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
+async def {{method_name}}(
+    self,
+    ctx: SecurityContext,          # AC-2: Service 公开方法首参必须是 SecurityContext
+    # TODO: 在此添加业务参数
+    # 示例：data: {{entity}}CreateRequest
+) -> "{{entity}}":
+    """
+    {{method_name}} — {{entity}} {{action}} 操作。
+
+    Args:
+        ctx: 安全上下文（含 tenant_id、user_id、permissions）
+        # data: 业务入参（替换此注释）
+
+    Returns:
+        {{entity}} 实例
+
+    Raises:
+        DomainException: 业务规则校验失败时抛出
+    """
+    log = logger.bind(
+        tenant_id=ctx.tenant_id,
+        user_id=ctx.user_id,
+        action="{{method_name}}",
+    )
+    log.info("{{method_name}}_start")
+
+    async with self.session_factory() as session:
+        # ── 1. RLS 查询（必须过滤 tenant_id）─────────────────────────────
+        # from sqlmodel import select
+        # stmt = (
+        #     select({{entity}})
+        #     .where({{entity}}.tenant_id == ctx.tenant_id)  # AC-2: RLS 必须
+        #     # .where(...)  # 其他过滤条件
+        # )
+        # result = await session.exec(stmt)
+
+        # ── 2. 业务逻辑 ───────────────────────────────────────────────────
+        # TODO: 实现 {{action}} 业务逻辑
+
+        # ── 3. WRITE 操作必须调用 AuditService（AC-3）────────────────────
+        # （仅 create / update / delete 需要，get / list 不需要）
+        # await audit_service.log(
+        #     action="{{method_name}}",
+        #     target_type="{{resource}}",
+        #     target_id=str(result.id),
+        #     ctx=ctx,
+        # )
+
+        log.info("{{method_name}}_done")
+        # return result  # TODO: 替换为实际返回值
+        raise NotImplementedError("TODO: 实现 {{method_name}}")

@@ -1,0 +1,123 @@
+---
+name: react-list-page
+label: React ProTable 列表页模板
+layer: L5_interface
+description: 生成符合 MDP 前端规范的 ProTable 列表页（含 useQuery、PermissionGate、分页）
+required_vars:
+  - entity: 实体名（PascalCase，如 ObjectType）
+  - entity_label: 实体中文标签（如 对象类型）
+  - api_path: API 路径（如 /api/v1/object-types）
+  - permission_view: 查看权限 key（如 ont:object:view）
+  - permission_create: 创建权限 key（如 ont:object:create）
+optional_vars:
+  - store_name: Zustand Store 名（如 useObjectTypeStore）
+---
+// === 架构约束注释（来自 layer_contracts.md）===
+// {{arch_constraints}}
+// =============================================
+
+import React, { useState } from 'react';
+import { Button, Space, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import type { ProColumns } from '@ant-design/pro-components';
+import { ProTable } from '@ant-design/pro-components';
+import { useQuery } from '@tanstack/react-query';
+import PermissionGate from '@/components/auth/PermissionGate';
+import { request } from '@/utils/request';
+
+// TODO: 定义实体类型（与后端 Response Schema 对齐）
+interface {{entity}} {
+  id: string;
+  name: string;
+  tenant_id: string;
+  created_at: string;
+  // TODO: 添加业务字段
+}
+
+// TODO: 定义 API 调用函数（封装在 src/services/ 中，不要在组件内直接调用 axios）
+// import { list{{entity}} } from '@/services/{{entity | lower}}';
+
+const {{entity}}ListPage: React.FC = () => {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // ── 数据获取（React Query）──────────────────────────────────────────
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['{{entity | lower}}', 'list', page, pageSize],
+    queryFn: async () => {
+      // TODO: 替换为实际 API 调用（封装在 src/services/ 中）
+      const res = await request.get('{{api_path}}', {
+        params: { page, page_size: pageSize },
+      });
+      return res.data; // { code: 200, data: [], meta: { total: 0 } }
+    },
+  });
+
+  const list: {{entity}}[] = data?.data ?? [];
+  const total: number = data?.meta?.total ?? 0;
+
+  // ── 列定义 ──────────────────────────────────────────────────────────
+  const columns: ProColumns<{{entity}}>[] = [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      ellipsis: true,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      valueType: 'dateTime',
+      width: 180,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 160,
+      render: (_, record) => (
+        <Space>
+          {/* TODO: 添加查看/编辑/删除操作，按需包裹 PermissionGate */}
+          <PermissionGate permission="{{permission_view}}">
+            <Button type="link" size="small">详情</Button>
+          </PermissionGate>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <ProTable<{{entity}}>
+      headerTitle="{{entity_label}}列表"
+      rowKey="id"
+      loading={isLoading}
+      dataSource={list}
+      columns={columns}
+      search={false}
+      pagination={{
+        current: page,
+        pageSize,
+        total,
+        onChange: (p, ps) => {
+          setPage(p);
+          setPageSize(ps);
+        },
+      }}
+      toolBarRender={() => [
+        // 创建按钮：使用 PermissionGate 控制显示
+        <PermissionGate key="create" permission="{{permission_create}}">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              // TODO: 打开创建抽屉或跳转创建页
+              message.info('TODO: 打开创建表单');
+            }}
+          >
+            新建{{entity_label}}
+          </Button>
+        </PermissionGate>,
+      ]}
+    />
+  );
+};
+
+export default {{entity}}ListPage;

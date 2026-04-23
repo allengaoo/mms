@@ -1,0 +1,113 @@
+# ActionDef: trace_show — 查看 EP 诊断报告
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   读取 trace.jsonl 并生成可读报告，类似 Oracle 的 tkprof 工具。
+#   报告包含步骤耗时瀑布图、LLM 调用明细、文件变更统计和验证结果。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: action_trace_show
+label: "查看诊断报告"
+type: action
+version: "3.0"
+
+description: |
+  读取指定 EP 的 trace.jsonl，聚合统计后生成多格式诊断报告。
+
+  报告内容（取决于追踪 Level）：
+  - 步骤耗时瀑布图（所有 Level）
+  - LLM 调用明细：模型 / token 消耗 / 重试次数（Level ≥ 4）
+  - 文件变更统计：path / lines_added / Scope Guard 结果（Level ≥ 8）
+  - 验证汇总：arch_ok / test_ok（Level ≥ 4）
+  - 3-Strike 重试追踪（Level ≥ 4）
+
+  底层实现：
+    trace/reporter.py :: generate_report()
+    trace/reporter.py :: TraceSummary（聚合统计）
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    example: "EP-128"
+
+  - name: format
+    type: enum
+    required: false
+    default: "text"
+    options: ["text", "json", "html"]
+    description: "报告格式：text（终端彩色）/ json（结构化）/ html（浏览器）"
+
+  - name: filter_step
+    type: string
+    required: false
+    description: "仅显示含该关键词的步骤（如 unit_run、precheck）"
+
+  - name: filter_unit
+    type: string
+    required: false
+    description: "仅显示指定 Unit 的事件（如 U1、U2）"
+
+  - name: no_save
+    type: boolean
+    required: false
+    default: false
+    description: "设为 true 时不保存报告到 report/ 目录"
+
+outputs:
+  - name: report
+    type: text
+    description: "格式化的诊断报告内容"
+
+  - name: summary_line
+    type: string
+    description: "单行摘要（总耗时 / LLM calls / tokens / 重试次数）"
+
+side_effects:
+  - "若 no_save=false（默认），报告保存到 docs/memory/private/trace/<EP-NNN>/report/"
+
+cli_usage: |
+  # 查看文本格式报告（默认）
+  python3 scripts/mms/cli.py trace show EP-128
+
+  # 只看某个步骤
+  python3 scripts/mms/cli.py trace show EP-128 --step unit_run
+
+  # 只看 U1 的事件
+  python3 scripts/mms/cli.py trace show EP-128 --unit U1
+
+  # 生成 JSON 报告（用于程序解析）
+  python3 scripts/mms/cli.py trace show EP-128 --format json
+
+  # 生成 HTML 报告（用浏览器查看）
+  python3 scripts/mms/cli.py trace show EP-128 --format html
+
+  # 快速单行摘要
+  python3 scripts/mms/cli.py trace summary EP-128
+
+calls_functions:
+  - fn_compute_ep_health
+
+related_actions:
+  - action_trace_enable
+  - action_trace_clean
+  - action_postcheck
+
+example_output: |
+  ═══════════════════════════════════════════════════════════
+   MMS Trace Report · EP-128 · Level: LLM
+   Trace ID: MMS-TRACE-20260418-A1B2C3D4
+  ═══════════════════════════════════════════════════════════
+
+  📊 步骤耗时（瀑布图）
+  precheck      [████████                      ]  1.2s
+  dag_generate  [████████████████              ]  2.4s
+  unit_run/U1   [██████████████████████████████] 18.5s ← 最慢
+  unit_run/U2   [█████████████████             ] 12.1s
+  postcheck     [████████                      ]  1.8s
+  总计: 36.0s
+
+  🤖 LLM 调用明细（3 次）
+  U1  qwen3-coder    in=1,024  out=512   8.2s  ✅ success
+  U1  gemini-2.5-pro in=2,048  out=320   9.8s  ✅ success
+  U2  qwen3-coder    in=896    out=448   6.3s  ⚠️ retry×1

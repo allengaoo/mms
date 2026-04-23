@@ -1,0 +1,563 @@
+# 意图快速映射表 — MMS-OG v3.0
+#
+# 用途：
+#   用户任务描述 → {layer, operation} 的纯本地快速匹配。
+#   取代 injector.py 中硬编码的 _KEYWORD_LAYER_MAP。
+#
+# 匹配算法（arch_resolver.py 实现）：
+#   1. 按 priority 从高到低逐条检查规则
+#   2. 统计 keywords 中有多少在任务描述中出现
+#   3. 命中数 / 规则 keywords 总数 ≥ min_hit_ratio 时触发该规则
+#   4. confidence = min(命中比例 × 2, 1.0) + confidence_boost（若配置）
+#   5. confidence ≥ 0.80 时跳过第1轮 LLM 调用，直接进入路径解析
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+version: "3.0"
+created_at: "2026-04-16"
+
+defaults:
+  min_hit_ratio: 0.12
+  confidence_threshold: 0.80
+
+rules:
+
+  # ──────────────────────────────────────────────────────────
+  # 高优先级规则（priority 80-100）
+  # ──────────────────────────────────────────────────────────
+
+  - id: "rule_frontend_nav"
+    priority: 95
+    layer: "L5_frontend"
+    operation: "modify_config"
+    description: "修改前端导航栏/菜单/侧栏配置"
+    keywords:
+      - "导航"
+      - "导航栏"
+      - "菜单"
+      - "侧栏"
+      - "顶栏"
+      - "navigation"
+      - "sidebar"
+      - "navbar"
+      - "只保留"
+      - "精简"
+      - "隐藏"
+      - "菜单项"
+    entry_files_hint:
+      - "frontend/src/config/navigation.ts"
+      - "frontend/src/layouts/MainLayout.tsx"
+    confidence_boost: 0.15
+
+  - id: "rule_auth_debug"
+    priority: 92
+    layer: "L1_security"
+    operation: "debug"
+    description: "调试认证/鉴权问题（401/403）"
+    keywords:
+      - "401"
+      - "403"
+      - "登录失败"
+      - "认证"
+      - "token"
+      - "unauthorized"
+      - "forbidden"
+      - "JWT"
+      - "登录"
+      - "用户认证"
+    entry_files_hint:
+      - "backend/app/services/control/auth_service.py"
+      - "backend/app/core/security.py"
+      - "frontend/src/utils/request.ts"
+
+  - id: "rule_transaction_debug"
+    priority: 90
+    layer: "L4_service"
+    operation: "debug"
+    description: "调试 SQLAlchemy 事务/autobegin 问题"
+    keywords:
+      - "事务"
+      - "transaction"
+      - "autobegin"
+      - "session.begin"
+      - "InvalidRequestError"
+      - "session"
+      - "begin"
+      - "commit"
+      - "rollback"
+      - "回滚"
+      - "全部成功"
+      - "全部回滚"
+      - "进行中"
+    entry_files_hint:
+      - "backend/app/core/db.py"
+      - "backend/app/services/control/"
+
+  - id: "rule_frontend_new_page"
+    priority: 88
+    layer: "L5_frontend"
+    operation: "create"
+    description: "新增前端页面或组件"
+    keywords:
+      - "新增页面"
+      - "新增组件"
+      - "创建页面"
+      - "新页面"
+      - "前端页面"
+      - "add page"
+      - "new page"
+      - "create component"
+    entry_files_hint:
+      - "frontend/src/pages/"
+      - "docs/architecture/frontend_page_map.md"
+
+  - id: "rule_kafka_debug"
+    priority: 88
+    layer: "L2_messaging"
+    operation: "debug"
+    description: "调试 Kafka/Avro 序列化/反序列化问题"
+    keywords:
+      - "kafka"
+      - "avro"
+      - "序列化"
+      - "反序列化"
+      - "deserialize"
+      - "serialize"
+      - "normalize_record"
+      - "schema registry"
+      - "fastavro"
+      - "topic"
+      - "消费端"
+      - "消费者"
+      - "consumer"
+      - "静默失败"
+      - "数据丢失"
+      - "丢消息"
+    entry_files_hint:
+      - "backend/app/infrastructure/kafka/"
+
+  - id: "rule_ontology_modify"
+    priority: 85
+    layer: "L3_ontology"
+    operation: "modify_logic"
+    description: "修改本体层（对象类型/链接类型/Action/Function）"
+    keywords:
+      - "本体"
+      - "对象类型"
+      - "链接类型"
+      - "ObjectTypeDef"
+      - "LinkTypeDef"
+      - "ActionDef"
+      - "FunctionDef"
+      - "场景"
+      - "ontology"
+      - "action"
+      - "回写"
+    entry_files_hint:
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/app/models/ontology.py"
+
+  - id: "rule_data_pipeline_create"
+    priority: 85
+    layer: "L3_data_pipeline"
+    operation: "create"
+    description: "新增数据管道功能（Connector/SyncJob/Worker）"
+    keywords:
+      - "connector"
+      - "syncjob"
+      - "同步任务"
+      - "数据管道"
+      - "pipeline"
+      - "ingestion"
+      - "DataCatalog"
+      - "列映射"
+      - "watermark"
+      - "CDC"
+    entry_files_hint:
+      - "backend/app/services/control/datalink_service.py"
+      - "backend/app/workers/base.py"
+
+  - id: "rule_backend_api_create"
+    priority: 80
+    layer: "L5_api"
+    operation: "create"
+    description: "新增后端 API 接口"
+    keywords:
+      - "新增API"
+      - "新增接口"
+      - "新增路由"
+      - "add endpoint"
+      - "new endpoint"
+      - "REST API"
+      - "HTTP接口"
+    entry_files_hint:
+      - "backend/app/api/v1/endpoints/"
+      - "backend/app/services/control/"
+      - "docs/architecture/e2e_traceability.md"
+
+  # ──────────────────────────────────────────────────────────
+  # 中优先级规则（priority 50-79）
+  # ──────────────────────────────────────────────────────────
+
+  - id: "rule_worker_lifecycle"
+    priority: 75
+    layer: "L4_worker"
+    operation: "modify_logic"
+    description: "修改 Worker 生命周期或调度逻辑"
+    keywords:
+      - "worker"
+      - "调度"
+      - "scheduler"
+      - "JobExecutionScope"
+      - "cron"
+      - "后台任务"
+      - "定时任务"
+    entry_files_hint:
+      - "backend/app/workers/base.py"
+      - "backend/app/workers/scheduler_engine.py"
+
+  - id: "rule_deploy_ops"
+    priority: 72
+    layer: "Ops"
+    operation: "deploy"
+    description: "部署运维操作"
+    keywords:
+      - "部署"
+      - "镜像"
+      - "docker"
+      - "k8s"
+      - "kubectl"
+      - "重启"
+      - "deploy"
+      - "alembic"
+      - "数据库迁移"
+      - "rollout"
+      - "OrbStack"
+    entry_files_hint:
+      - "deploy/docker-compose.app.yml"
+
+  - id: "rule_rbac_permission"
+    priority: 70
+    layer: "L1_security"
+    operation: "create"
+    description: "新增权限控制点"
+    keywords:
+      - "权限"
+      - "RBAC"
+      - "require_permission"
+      - "PermissionGate"
+      - "permission"
+      - "角色"
+      - "role"
+    entry_files_hint:
+      - "backend/app/core/rbac.py"
+      - "frontend/src/components/auth/"
+
+  - id: "rule_service_debug"
+    priority: 65
+    layer: "L4_service"
+    operation: "debug"
+    description: "通用 Service 层 Bug 修复"
+    keywords:
+      - "service"
+      - "业务逻辑"
+      - "fix"
+      - "修复"
+      - "bug"
+      - "error"
+    entry_files_hint:
+      - "backend/app/services/control/"
+
+  - id: "rule_add_test"
+    priority: 60
+    layer: "L5_testing"
+    operation: "test"
+    description: "补充测试"
+    keywords:
+      - "测试"
+      - "test"
+      - "pytest"
+      - "vitest"
+      - "单元测试"
+      - "集成测试"
+      - "补充测试"
+      - "写测试"
+    entry_files_hint:
+      - "backend/tests/"
+
+  - id: "rule_cache_redis"
+    priority: 72
+    layer: "L4_service"
+    operation: "modify_logic"
+    description: "添加 Redis 缓存装饰器或缓存逻辑"
+    keywords:
+      - "缓存"
+      - "redis"
+      - "cache"
+      - "缓存机制"
+      - "cached"
+      - "频繁请求"
+      - "缓存层"
+      - "加缓存"
+    entry_files_hint:
+      - "backend/app/infrastructure/cache/redis_decorator.py"
+      - "backend/app/services/control/"
+
+  - id: "rule_resilience_retry"
+    priority: 70
+    layer: "L4_service"
+    operation: "modify_logic"
+    description: "添加重试/超时/限流等容错机制"
+    keywords:
+      - "重试"
+      - "retry"
+      - "超时"
+      - "timeout"
+      - "限流"
+      - "rate limit"
+      - "tenacity"
+      - "熔断"
+      - "降级"
+      - "频率限制"
+      - "失败重试"
+      - "自动重试"
+    entry_files_hint:
+      - "backend/app/core/resilience.py"
+      - "backend/app/services/control/"
+
+  - id: "rule_arch_concept_review"
+    priority: 65
+    layer: "L1_platform"
+    operation: "review"
+    description: "架构概念解释/规范查询（不涉及代码修改）"
+    min_hit_ratio: 0.08
+    confidence_boost: 0.25
+    keywords:
+      - "为什么"
+      - "解释"
+      - "说明"
+      - "原因"
+      - "规范"
+      - "约束"
+      - "标准"
+      - "规定"
+      - "设计约束"
+      - "方法签名"
+      - "审计要求"
+      - "错误码"
+      - "命名规则"
+      - "多租户"
+      - "隔离策略"
+      - "日志规范"
+      - "指标标准"
+      - "可观测性"
+      - "不合规"
+      - "有没有文档"
+      - "怎么命名"
+    entry_files_hint:
+      - "docs/memory/shared/cross_cutting/decisions/AD-001.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-002.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-003.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-004.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-006.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-007.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-005.md"
+      - "docs/memory/shared/cross_cutting/decisions/AD-008.md"
+      - "docs/memory/shared/L1_platform/D3_observability/MEM-L-009.md"
+      - "docs/memory/shared/BIZ/BIZ-001.md"
+      - "docs/context/MASTER_INDEX.md"
+
+  - id: "rule_k8s_ops_debug"
+    priority: 85
+    layer: "Ops"
+    operation: "debug"
+    description: "K8s/OrbStack 运维调试问题"
+    keywords:
+      - "k8s"
+      - "kubectl"
+      - "pod"
+      - "容器"
+      - "日志"
+      - "logs"
+      - "重启"
+      - "CrashLoopBackOff"
+      - "OOMKilled"
+      - "deploy"
+      - "OrbStack"
+      - "看不到日志"
+      - "看不到输出"
+    entry_files_hint:
+      - "deploy/"
+
+  # ──────────────────────────────────────────────────────────
+  # 低优先级兜底规则（priority < 50）
+  # ──────────────────────────────────────────────────────────
+
+  - id: "rule_generic_frontend"
+    priority: 40
+    layer: "L5_frontend"
+    operation: "modify_config"
+    description: "通用前端修改（兜底）"
+    keywords:
+      - "前端"
+      - "react"
+      - "page"
+      - "component"
+      - "store"
+      - "zustand"
+    entry_files_hint:
+      - "frontend/src/"
+
+  - id: "rule_generic_backend"
+    priority: 35
+    layer: "L4_service"
+    operation: "modify_logic"
+    description: "通用后端修改（兜底）"
+    keywords:
+      - "后端"
+      - "backend"
+      - "python"
+      - "fastapi"
+      - "service"
+    entry_files_hint:
+      - "backend/app/"
+
+  - id: "rule_generic_debug"
+    priority: 30
+    layer: "L4_service"
+    operation: "debug"
+    description: "通用调试（最低优先级兜底）"
+    keywords:
+      - "修复"
+      - "报错"
+      - "fix"
+      - "bug"
+      - "error"
+      - "问题"
+    entry_files_hint: []
+    min_hit_ratio: 0.30
+
+  # ──────────────────────────────────────────────────────────
+  # EP-128 新增：MMS 工具层规则（priority 70-85）
+  # 覆盖用户对 MMS 系统本身的操作查询，如诊断追踪、DAG 编排、知识蒸馏
+  # ──────────────────────────────────────────────────────────
+
+  - id: "rule_mms_trace"
+    priority: 85
+    layer: "L0_mms"
+    operation: "view_trace"
+    description: "查看或管理 EP 诊断追踪数据（trace show/summary/enable/clean）"
+    keywords:
+      - "诊断"
+      - "诊断数据"
+      - "步骤耗时"
+      - "最慢"
+      - "token 消耗"
+      - "token"
+      - "llm 调用"
+      - "瀑布图"
+      - "waterfall"
+      - "trace"
+      - "追踪"
+      - "报告"
+      - "重试次数"
+      - "ep 健康"
+      - "哪个步骤"
+      - "消耗了多少"
+      - "花了多少时间"
+      - "哪个环节"
+      - "性能瓶颈"
+      - "执行时间"
+      - "调用了几次"
+      - "瓶颈"
+      - "多少时间"
+      - "模型调用"
+    entry_files_hint:
+      - "scripts/mms/trace/reporter.py"
+      - "scripts/mms/trace/tracer.py"
+      - "scripts/mms/cli.py"
+    confidence_boost: 0.15
+
+  - id: "rule_mms_dag"
+    priority: 80
+    layer: "L0_mms"
+    operation: "mms_dag"
+    description: "使用 DAG 编排执行 EP Unit（unit generate / run / run-next）"
+    keywords:
+      - "dag"
+      - "unit generate"
+      - "unit run"
+      - "unit done"
+      - "unit next"
+      - "执行 unit"
+      - "执行计划"
+      - "dag 生成"
+      - "mms unit"
+      - "原子化"
+      - "atomicity"
+      - "批次"
+      - "执行顺序"
+      - "分解成"
+      - "分解任务"
+      - "小任务"
+      - "独立执行"
+      - "按顺序"
+      - "自动跑"
+    entry_files_hint:
+      - "scripts/mms/dag_model.py"
+      - "scripts/mms/unit_runner.py"
+      - "scripts/mms/unit_generate.py"
+
+  - id: "rule_mms_synthesize"
+    priority: 78
+    layer: "L0_mms"
+    operation: "mms_synthesize"
+    description: "使用 mms synthesize 合成 EP 起手提示词"
+    keywords:
+      - "synthesize"
+      - "意图合成"
+      - "起手提示"
+      - "mms synthesize"
+      - "生成 ep"
+      - "生成提示词"
+      - "起手"
+    entry_files_hint:
+      - "scripts/mms/synthesizer.py"
+      - "scripts/mms/intent_classifier.py"
+
+  - id: "rule_mms_distill"
+    priority: 75
+    layer: "L0_mms"
+    operation: "mms_distill"
+    description: "使用 mms distill / dream 提取 EP 知识，生成或提升记忆草稿"
+    keywords:
+      - "distill"
+      - "蒸馏"
+      - "dream"
+      - "知识草稿"
+      - "记忆草稿"
+      - "mms distill"
+      - "mms dream"
+      - "promote"
+      - "提升记忆"
+      - "知识沉淀"
+      - "学习闭环"
+      - "踩过的坑"
+      - "关键决策"
+      - "提炼"
+      - "沉淀"
+      - "可复用"
+      - "工程经验"
+    entry_files_hint:
+      - "scripts/mms/dream.py"
+
+# ──────────────────────────────────────────────────────────
+# 通用补充（所有规则命中时都会附加）
+# ──────────────────────────────────────────────────────────
+universal_files:
+  - "docs/context/MASTER_INDEX.md"
+  - "docs/context/SESSION_HANDOFF.md"
+
+universal_memories:
+  - "AD-002"
+  - "AD-005"

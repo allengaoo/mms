@@ -1,0 +1,184 @@
+# task_quickmap.yaml — 极简任务类型快速索引（MMS 三级检索漏斗 · 第三级兜底）
+#
+# 用途
+# ────
+# 当前两级检索（历史任务相似匹配 + 记忆关键词匹配）均无命中时，
+# 本文件作为最后兜底，为 LLM 提供"任务类型 → 最小必读上下文"的静态映射。
+# 不依赖任何 LLM 调用，毫秒级返回，永远不会为空。
+#
+# 维护规则
+# ────────
+# - must_read_files: 该类型任务"几乎必然要读"的真实文件路径，来自 codemap 快照
+# - hot_memories:    该类型任务最相关的 hot 记忆 ID（来自 MEMORY_INDEX.json）
+# - key_constraints: 给 LLM 的 1~3 句核心约束提示（减少每次都从记忆全文提取的 token 开销）
+# - 路径如有变动（重构/改名），运行 codemap.py 后按新路径更新本文件
+#
+# 版本：v1.0 | 创建于：2026-04-15 | EP-115
+
+version: "1.0"
+created_at: "2026-04-15"
+source_ep: "EP-115"
+
+# ─────────────────────────────────────────────────────────────
+# 模板类型快速映射
+# ─────────────────────────────────────────────────────────────
+task_types:
+
+  ep-backend-api:
+    # 新增 REST Endpoint、Service 方法、Repository、ORM Model、Alembic 迁移
+    description: "新增后端 API / Service / Repository"
+    must_read_files:
+      # API 路由层：参考已有 endpoint 写法
+      - "backend/app/api/v1/endpoints/auth.py"
+      - "backend/app/api/v1/endpoints/ontology.py"
+      # Service 层：参考 control service 模式
+      - "backend/app/services/control/auth_service.py"
+      # 核心组件：异常、响应封装、RBAC
+      - "backend/app/core/exceptions.py"
+      - "backend/app/core/response.py"
+      - "backend/app/core/rbac.py"
+      # 架构追踪：确认端到端路径
+      - "docs/architecture/e2e_traceability.md"
+    hot_memories:
+      - "AD-002"   # RLS: 所有查询必须含 WHERE tenant_id
+      - "AD-005"   # 事务策略：Strategy A（begin-first）或 B（autobegin+commit），二选一
+      - "MEM-L-021" # API 信封格式：{ code, data, meta }，禁止裸列表
+    key_constraints:
+      - "Service 公开方法首参必须是 ctx: SecurityContext（AD-002）"
+      - "所有 WRITE 必须调用 AuditService.log(ctx, ...)（AD-003）"
+      - "事务选且仅选 Strategy A 或 B，禁止 execute 后再 begin（AD-005）"
+
+  ep-frontend:
+    # 新增 React 页面、ProComponents 表格/表单、Zustand Store、前端权限控制
+    description: "新增前端页面 / 组件 / Zustand Store"
+    must_read_files:
+      # 已有页面参考
+      - "frontend/src/pages/ontology/"
+      # Zustand Store 模式
+      - "frontend/src/store/userStore.ts"
+      - "frontend/src/store/simulationStore.ts"
+      # API 服务封装（axios）
+      - "frontend/src/services/auth.ts"
+      - "frontend/src/utils/request.ts"
+      # 路由与权限守卫
+      - "frontend/src/routes/guards.tsx"
+      # 页面路由映射（确认已有路由 + 权限键）
+      - "docs/architecture/frontend_page_map.md"
+    hot_memories:
+      - "MEM-L-024" # 前端视觉规范：Deep Blue header，Light Gray sidebar
+      - "AD-004"    # 前端管理页面必须用 React 组件，禁止在非 Chat2App 模块使用 Amis JSON
+      - "MEM-L-021" # API 调用必须通过 src/services/*.ts，不直接调用 axios
+    key_constraints:
+      - "Management 页面用 Ant Design ProComponents，不用 Amis JSON（AD-004）"
+      - "API 调用封装在 frontend/src/services/*.ts，使用 unwrap() 解包信封"
+      - "新增路由后必须更新 frontend_page_map.md（全局约束 16）"
+
+  ep-ontology:
+    # 本体层：ObjectTypeDef / LinkTypeDef / ActionDef / FunctionDef 的增删改查
+    description: "本体层操作（对象/链接/Action/Function）"
+    must_read_files:
+      # 本体 API
+      - "backend/app/api/v1/endpoints/ontology.py"
+      - "backend/app/api/v1/endpoints/links.py"
+      - "backend/app/api/v1/endpoints/actions.py"
+      # 本体 Service
+      - "backend/app/services/control/ontology_service.py"
+      # 本体数据模型
+      - "backend/app/models/ontology.py"
+      # 架构追踪：本体模块端到端路径
+      - "docs/architecture/e2e_traceability.md"
+    hot_memories:
+      - "MEM-L-014" # ObjectTypeDef 核心字段与约束
+      - "MEM-L-015" # LinkTypeDef 属性与关系模型
+      - "AD-002"    # RLS：本体查询必须 tenant_id 过滤
+    key_constraints:
+      - "本体变更必须做影响分析（全域资产库修改触发变更请求审批）"
+      - "SharedProperty 跨对象复用时，修改会影响所有引用方"
+      - "ActionDef 的回写路径：scenario → sys_object_edits / live → sys_object_instances"
+
+  ep-data-pipeline:
+    # 数据管道：Connector / SyncJob / IngestionWorker / DataCatalog / 列映射
+    description: "数据管道（Connector / SyncJob / Worker）"
+    must_read_files:
+      # 数据管道 API
+      - "backend/app/api/v1/endpoints/datalink.py"
+      # 数据管道 Service
+      - "backend/app/services/control/datalink_service.py"
+      # Worker 基类（JobExecutionScope 必须使用）
+      - "backend/app/workers/base.py"
+      # 基础设施适配器（禁止 Service 层直接 import）
+      - "backend/app/infrastructure/connector/"
+    hot_memories:
+      - "MEM-L-006" # Kafka Avro：发送前必须 normalize_record，禁止原始 batch
+      - "MEM-L-016" # 数据管道核心约束
+      - "AD-002"    # RLS：SyncJob 查询必须 tenant_id 过滤
+    key_constraints:
+      - "Worker 必须用 JobExecutionScope，禁止散落 try/except 管理 Job 状态（全局约束 9）"
+      - "读 S3/File/DB Cursor 必须用 yield 流式处理，禁止 read()/fetchall()（全局约束 10）"
+      - "Kafka 发送前必须 normalize_record(row)，禁止含 PG/date/Decimal 原始类型（全局约束 6）"
+
+  ep-debug:
+    # Bug 诊断 / 热修复 / 运行时错误 / 性能问题 / 401/403/500 排查
+    description: "Bug 诊断 / 热修复 / 性能问题"
+    must_read_files:
+      # 异常与错误码注册
+      - "backend/app/core/exceptions.py"
+      # 认证核心（401/403 高频）
+      - "backend/app/core/auth.py"
+      - "backend/app/core/security.py"
+      # 认证 Service（登录失败排查入口）
+      - "backend/app/services/control/auth_service.py"
+      # 全局异常处理
+      - "backend/app/main.py"
+      # 前端 axios 拦截器（前端 401 表现根因）
+      - "frontend/src/utils/request.ts"
+    hot_memories:
+      - "MEM-L-003" # 事务异常：execute 后不能再 begin（InvalidRequestError 根因）
+      - "MEM-L-009" # kubectl logs 不可见：PYTHONUNBUFFERED 未设置
+      - "AD-002"    # RLS：查询缺 tenant_id 导致 404/401 静默失败
+    key_constraints:
+      - "401 E_IAM_001 三大根因：错误密码 / tenant_id 不匹配 / 用户或租户未激活"
+      - "事务异常 InvalidRequestError：execute() 触发 autobegin 后禁止再调 session.begin()"
+      - "前端 401 在登录页不应触发 logout()：见 request.ts isAnonymousAuthPath 逻辑"
+
+  ep-ontology-impact:
+    # 本体影响范围分析（改动已有对象/链接/属性时的影响评估）
+    description: "本体影响范围分析 / 变更评审"
+    must_read_files:
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/app/models/ontology.py"
+      - "docs/architecture/e2e_traceability.md"
+    hot_memories:
+      - "MEM-L-014"
+      - "MEM-L-015"
+    key_constraints:
+      - "全域资产库删除必须是软删除（回收站机制）"
+      - "修改 SharedProperty 触发全局影响分析警告"
+
+  ep-ops:
+    # K8s 部署 / 镜像构建 / 端口转发 / 数据库迁移 / 基础设施调试
+    description: "运维/部署（K8s / Docker / Alembic）"
+    must_read_files:
+      - "deploy/k8s/mdp/"
+      - "backend/alembic/"
+      - "backend/app/core/db.py"
+    hot_memories:
+      - "MEM-L-003" # 数据库事务约束
+      - "MEM-L-004" # Worker 部署约束
+    key_constraints:
+      - "K8s 环境端口转发：后端 localhost:8001→svc/mdp-backend:8000"
+      - "Alembic 迁移：alembic revision --autogenerate 后必须人工检查生成内容"
+      - "镜像构建后需滚动更新：kubectl rollout restart deployment/mdp-backend"
+
+# ─────────────────────────────────────────────────────────────
+# 通用必读（所有任务类型均注入，token 极低）
+# ─────────────────────────────────────────────────────────────
+universal_context:
+  # 适用于任何任务，提供项目结构骨架
+  always_mention:
+    - "docs/context/MASTER_INDEX.md"
+    - "docs/context/SESSION_HANDOFF.md"
+  # 最核心的架构决策，任何任务都应知晓
+  universal_memories:
+    - "AD-002"   # RLS — tenant_id 隔离（最高频约束）
+    - "AD-005"   # 事务策略（崩溃级约束）

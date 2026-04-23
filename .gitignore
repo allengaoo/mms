@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+
+# 测试 & 覆盖率
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.coveragerc
+junit.xml
+test-results/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# MMS 运行时产出（不入库）
+docs/memory/_system/checkpoints/
+docs/memory/_system/dag/
+docs/memory/_system/model_usage.jsonl*
+docs/memory/_system/task_history.jsonl
+docs/memory/private/
+
+# benchmark 结果（原始数据不入库，只保留报告模板）
+benchmark/results/*.json
+benchmark/results/*.jsonl
+benchmark/results/*.md
+
+# EP 执行计划（本地产出，不入库）
+docs/execution_plans/EP-*.md
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+tmp/
+.tmp/
+*.tmp
+mms_codegen_eval_*/

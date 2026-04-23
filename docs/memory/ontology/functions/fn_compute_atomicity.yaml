@@ -1,0 +1,92 @@
+# FunctionDef: fn_compute_atomicity — DAG Unit 原子化评分函数
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   判断一个 DAG Unit（执行单元）是否足够"小"，小到单个 AI 模型
+#   能在一次对话中可靠地完成它。类比：一个好的 git commit 只做一件事。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: fn_compute_atomicity
+label: "Unit 原子化评分"
+type: function
+version: "3.0"
+
+description: |
+  输入一个 DAG Unit 的元数据，计算其原子化评分（0.0 ~ 1.0）。
+  评分越高表示该 Unit 越适合由单个小模型独立完成，越低表示需要
+  拆分或改用 capable 模型。
+
+  评分维度（参考 config.yaml dag.atomicity_thresholds）：
+  1. 文件数量：files 列表长度。超过阈值扣分
+     - 8b 模型：max_files = 2，capable 模型：max_files = 5
+  2. 层一致性：files 是否跨越多个架构层（跨层扣分）
+  3. 混合类型：同时包含业务文件和测试文件（轻微扣分）
+  4. 层内聚度：同一层内的文件更内聚，分数更高
+
+  配置来源：
+    config.yaml → dag.atomicity_thresholds
+
+implementation: "scripts/mms/atomicity_check.py :: compute_atomicity_score()"
+
+schema_reference: "docs/memory/ontology/arch_schema/layers.yaml"
+
+inputs:
+  - name: files
+    type: list[string]
+    description: "Unit 涉及的文件路径列表（来自 DAG unit.files）"
+    example:
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/tests/unit/services/control/test_ontology_service.py"
+
+  - name: layer
+    type: string
+    description: "Unit 声明的架构层（如 L3_ontology）"
+
+  - name: model_hint
+    type: string
+    description: "目标执行模型（8b / 16b / capable / fast）"
+    default: "capable"
+
+outputs:
+  - name: score
+    type: float
+    description: "原子化评分 0.0 ~ 1.0，越高越原子"
+
+  - name: label
+    type: enum
+    options: ["atomic", "warning", "split_required"]
+    description: |
+      atomic        — 可由目标模型直接执行
+      warning       — 勉强可执行，建议关注
+      split_required — 必须拆分后才能可靠执行
+
+  - name: reason
+    type: string
+    description: "评分原因简述（用于 DAG 生成时的反馈提示）"
+
+anti_patterns:
+  - "禁止在此函数中读写磁盘（纯内存计算，输入已从 dag_model.py 预处理）"
+  - "禁止调用 LLM（本函数必须 < 10ms 完成，是 DAG 生成的内循环）"
+
+performance:
+  latency: "< 5ms（纯 Python 规则计算，无 IO）"
+
+thresholds_config: |
+  # config.yaml 中的对应配置节：
+  dag:
+    atomicity_thresholds:
+      8b:
+        max_files: 2
+        max_layers: 1
+        min_score: 0.75
+      capable:
+        max_files: 5
+        max_layers: 2
+        min_score: 0.50
+
+related_functions:
+  - fn_compute_ep_health
+
+called_by:
+  - "unit_generate.py（DAG 生成时对每个 Unit 评分）"
+  - "atomicity_check.py（独立命令 mms unit check）"

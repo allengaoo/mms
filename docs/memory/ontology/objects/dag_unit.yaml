@@ -1,0 +1,209 @@
+# ObjectTypeDef: DagUnit — DAG 执行单元对象
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   DagUnit 是 EP（执行计划）的最小可跟踪执行块，
+#   类比数据库中的"事务"：有明确的开始、结束、回滚机制。
+#   每个 DagUnit 对应 1~2 个源码文件，由 capable model 规划、
+#   small model 执行，完成后用 git commit 固化状态。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128 → EP-129
+
+id: DagUnit
+label: "DAG 执行单元"
+type: object
+version: "3.0"
+source_ep: "EP-117"
+
+description: |
+  EP（执行计划）中的文件级最小执行单元。
+  由 capable model 在 mms unit generate 阶段生成，
+  由 UnitRunner 驱动 small model 逐一执行。
+
+  EP-129 扩展：DagUnit 内部可进一步分解为若干 AIUStep（语义级子步骤）。
+  若 aiu_steps 为空，视为"未经 AIU 分解"，直接整体执行（向后兼容）。
+
+  存储格式：JSON，路径 docs/memory/_system/dag/{EP-NNN}.json
+  实现文件：scripts/mms/dag_model.py :: DagUnit
+
+primary_key: "ep_id + unit_id"
+
+# ── 生命周期状态机 ────────────────────────────────────────────────────────────
+#
+#   pending ──(unit run)──> in_progress ──(pass)──> done
+#                                         ──(skip)──> skipped
+#
+# 注意：3-Strike 全部失败 → 状态回退为 pending，并触发 AIU Feedback 分析
+
+lifecycle:
+  states:
+    - pending:      "等待执行（初始状态）"
+    - in_progress:  "UnitRunner 正在执行（LLM 生成代码中）"
+    - done:         "执行成功，git commit 已提交"
+    - skipped:      "人工跳过（手动执行或已过期）"
+
+  transitions:
+    - from: pending
+      to: in_progress
+      trigger: "mms unit run --ep EP-NNN --unit U1"
+    - from: in_progress
+      to: done
+      trigger: "arch_check + pytest 全部通过 + git commit"
+    - from: in_progress
+      to: pending
+      trigger: "3-Strike 全部失败 → AIU Feedback 分析后回退"
+    - from: pending
+      to: skipped
+      trigger: "mms unit done --ep EP-NNN --unit U1 --skip"
+
+# ── 属性定义 ─────────────────────────────────────────────────────────────────
+
+properties:
+
+  id:
+    type: string
+    required: true
+    description: "Unit 编号，如 U1、U2"
+    example: "U3"
+
+  title:
+    type: string
+    required: true
+    description: "一句话描述本 Unit 要完成的事情"
+    example: "新增 ObjectType 批量导出 API Endpoint"
+
+  layer:
+    type: string
+    required: true
+    enum:
+      - "L1_platform"
+      - "L2_infrastructure"
+      - "L3_domain"
+      - "L4_application"
+      - "L5_interface"
+      - "cross_cutting"
+      - "testing"
+      - "docs"
+      - "infra"
+      - "unknown"
+    description: "本 Unit 主要影响的架构层，决定执行顺序（同层可并行）"
+
+  files:
+    type: list[string]
+    required: true
+    description: "本 Unit 涉及的所有源码文件路径（含业务文件和测试文件）"
+    example:
+      - "backend/app/api/v1/endpoints/ontology.py"
+      - "backend/app/services/control/ontology_service.py"
+      - "tests/test_ontology_api.py"
+
+  depends_on:
+    type: list[string]
+    required: true
+    description: "前置 Unit ID 列表，必须全部 done 才能执行本 Unit"
+    example: ["U1", "U2"]
+
+  order:
+    type: integer
+    required: true
+    description: "执行批次编号，同 order 的 Unit 可并行执行"
+    example: 2
+
+  status:
+    type: string
+    required: true
+    default: "pending"
+    enum: ["pending", "in_progress", "done", "skipped"]
+
+  model_hint:
+    type: string
+    required: false
+    default: "capable"
+    enum: ["8b", "16b", "capable", "fast"]
+    description: "建议执行本 Unit 的模型规格"
+
+  atomicity_score:
+    type: float
+    required: false
+    default: 0.0
+    description: |
+      原子性评分 0.0~1.0，由 fn_compute_atomicity 计算。
+      分数越高表示本 Unit 越小/越独立，执行成功率越高。
+      < 0.5 时建议进一步拆分为多个 Unit。
+
+  git_commit:
+    type: string
+    required: false
+    description: "Unit 完成时的 git commit hash"
+
+  completed_at:
+    type: datetime
+    required: false
+    description: "Unit 完成时间（ISO 8601）"
+
+  test_files:
+    type: list[string]
+    required: false
+    description: "本 Unit 对应的测试文件路径（可独立于 files 单独列出）"
+
+  # ── EP-129 扩展字段 ────────────────────────────────────────────────────────
+
+  aiu_steps:
+    type: list[object]
+    required: false
+    default: []
+    v3_new: true
+    description: |
+      AIU 子步骤列表（AIUStep 序列化后的 dict 列表）。
+      由 task_decomposer.py 生成，UnitRunner 按序执行每个子步骤。
+      空列表 = 未经 AIU 分解，Unit 整体作为单个语义块执行（向后兼容）。
+    item_schema:
+      aiu_id:    "唯一步骤 ID（如 U3-A1）"
+      aiu_type:  "AIUType 枚举值（如 SCHEMA_ADD_FIELD）"
+      layer:     "影响的架构层"
+      token_budget: "分配的 token 预算（整数）"
+      model_hint:   "推荐执行模型"
+      status:    "pending | running | done | failed"
+
+  aiu_feedback_log:
+    type: list[object]
+    required: false
+    default: []
+    v3_new: true
+    description: |
+      AIU Feedback 回退记录列表。
+      每次 3-Strike 失败触发 Feedback 分析时，追加一条记录。
+      用于防止同一 Unit 无限循环回退（最多 3 级）。
+    item_schema:
+      feedback_level: "回退级别 1~3"
+      error_pattern:  "AIUErrorPattern 枚举值"
+      triggered_at:   "触发时间 ISO 8601"
+      action_taken:   "本次采取的动作描述（如 expand_budget / insert_prereq / split_aiu）"
+
+# ── 约束规则 ─────────────────────────────────────────────────────────────────
+
+constraints:
+  - "files 列表不能为空（至少包含一个业务文件）"
+  - "depends_on 中的 Unit ID 必须在同一 DagState 中存在"
+  - "status=done 时 git_commit 不能为空"
+  - "aiu_feedback_log 长度 ≤ 3（超过视为 Unit 设计不合理，应人工介入）"
+
+# ── 关联对象 ─────────────────────────────────────────────────────────────────
+
+related_objects:
+  - id: "DiagnosticEvent"
+    relation: "generates"
+    description: "每次 UnitRunner 执行时生成多条 DiagnosticEvent（llm_call / file_ops / git_commit）"
+  - id: "AIUStep"
+    relation: "contains"
+    description: "通过 aiu_steps 字段包含若干 AIUStep（EP-129 新增）"
+
+related_functions:
+  - fn_compute_atomicity
+  - fn_compute_ep_health
+  - fn_decompose_task
+  - fn_estimate_aiu_cost
+
+related_actions:
+  - action_unit_run
+  - action_precheck
+  - action_postcheck
