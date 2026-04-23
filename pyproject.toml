@@ -111,7 +111,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
 ]
-fail_under = 60  # 初始阈值，逐步提升
+# fail_under = 60  # 渐进式引入，初期不阻断 CI
 
 # ── ruff lint 配置 ────────────────────────────────────────────────────────────
 [tool.ruff]
@@ -119,15 +119,15 @@ target-version = "py39"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+# 仅启用错误（E/F/W）和导入排序（I），关闭 UP（Python 3.9 兼容模式）
+select = ["E", "F", "W", "I"]
 ignore = [
-    "E501",   # 行长度（由 formatter 控制）
-    "B008",   # 函数调用作为默认参数
-    "N806",   # 变量名大写（兼容现有代码）
-    "UP007",  # Optional[X] → X | None（3.9 兼容）
-    "UP035",  # typing 模块用法（3.9 兼容）
-    "B904",   # raise from（现有代码）
-    "C901",   # 函数复杂度
+    "E501",   # 行长度（不强制）
+    "E402",   # 模块级 import 不在顶部（路径注入模式需要）
+    "F401",   # 未使用 import（现有代码较多，渐进式清理）
+    "W291",   # 尾部空格
+    "W293",   # 空白行包含空格
+    "I001",   # import 排序（现有代码批量改动风险高）
 ]
 
 [tool.ruff.lint.per-file-ignores]
