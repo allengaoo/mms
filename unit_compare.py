@@ -440,10 +440,12 @@ def _run_gemini_review(
         provider = auto_detect("code_review")
         print(f"  · 语义评审使用 Provider：{provider.model_name}")
 
-        # 截断过长内容，避免超出 token 限制
-        diff_summary = report_so_far[:3000]
-        qwen_truncated = qwen_raw[:4000] + ("\n...(截断)" if len(qwen_raw) > 4000 else "")
-        sonnet_truncated = sonnet_raw[:4000] + ("\n...(截断)" if len(sonnet_raw) > 4000 else "")
+        # 截断过长内容，避免超出 token 限制（从 cfg 读取，默认 3000/4000 字符）
+        _diff_limit = int(getattr(_cfg, "compare_diff_truncate_chars", 3000)) if _cfg else 3000
+        _code_limit = int(getattr(_cfg, "compare_code_truncate_chars", 4000)) if _cfg else 4000
+        diff_summary = report_so_far[:_diff_limit]
+        qwen_truncated = qwen_raw[:_code_limit] + ("\n...(截断)" if len(qwen_raw) > _code_limit else "")
+        sonnet_truncated = sonnet_raw[:_code_limit] + ("\n...(截断)" if len(sonnet_raw) > _code_limit else "")
 
         prompt = _REVIEW_PROMPT_TEMPLATE.format(
             ep_id=ep_id,

@@ -262,12 +262,14 @@ class IntentPlanSummary:
             for unit in groups[order]:
                 # 从 aiu_steps 估算 token 预算
                 token_budget = 0
+                _budget_fast = _cfg.runner_token_budget_fast if _cfg else 2000
+                _budget_capable = _cfg.runner_token_budget_capable if _cfg else 4000
                 for step in getattr(unit, "aiu_steps", []):
-                    token_budget += step.get("token_budget", 2000) if isinstance(step, dict) else 2000
+                    token_budget += step.get("token_budget", _budget_fast) if isinstance(step, dict) else _budget_fast
                 if token_budget == 0:
                     # 无 AIU 分解时，按模型 hint 估算
                     model_hint = getattr(unit, "model_hint", "capable")
-                    token_budget = 4000 if model_hint == "capable" else 2000
+                    token_budget = _budget_capable if model_hint == "capable" else _budget_fast
 
                 # 置信度：尝试从 unit 属性读取（EP-129 新增字段），默认 1.0
                 confidence = float(getattr(unit, "intent_confidence", 1.0))

@@ -2,8 +2,8 @@
 _paths.py — MMS 项目路径解析（独立项目兼容）
 
 提供 get_project_root() 函数，支持两种运行模式：
-  1. 独立项目：/Users/gaobin/code/mms/
-  2. 嵌入 MDP：/Users/gaobin/code/mdp-xxx/（脚本在 scripts/mms/ 下）
+  1. 独立项目：<repo>/        （mms 作为仓库根目录）
+  2. 嵌入模式：<monorepo>/scripts/mms/（mms 嵌入其他项目）
 
 路径解析策略（按优先级）：
   1. 环境变量 MMS_PROJECT_ROOT 指定的路径（最高优先级，CI/Docker 使用）

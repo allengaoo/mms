@@ -27,9 +27,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-_BENCH_DIR = Path(__file__).parent.parent.parent
-_MMS_DIR = _BENCH_DIR.parent
-_PROJECT_ROOT = _MMS_DIR.parent.parent  # mdp-enterprise-version-build-with-cursor/
+_BENCH_DIR = Path(__file__).parent.parent.parent   # mms/benchmark
+_MMS_DIR = _BENCH_DIR.parent                       # mms root
+try:
+    sys.path.insert(0, str(_MMS_DIR))
+    from _paths import _PROJECT_ROOT               # type: ignore[import]
+except ImportError:
+    _PROJECT_ROOT = _MMS_DIR
 sys.path.insert(0, str(_MMS_DIR))
 sys.path.insert(0, str(_BENCH_DIR / "src"))
 

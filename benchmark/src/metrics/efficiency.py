@@ -61,7 +61,7 @@ def actionability(retrieval_result, gt, cfg: dict) -> ActionabilityLevel:
         return ActionabilityLevel(level=0, reason="无检索结果")
 
     from pathlib import Path
-    _ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+    _ROOT = Path(__file__).parent.parent.parent.parent  # benchmark/src/metrics → mms root
 
     # ── Level 3：有可执行命令 ────────────────────────────────────────────
     # 本体系统：executable_cmds 非空

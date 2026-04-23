@@ -11,6 +11,7 @@
   - Circuit Breaker 状态持久化
 """
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -33,7 +34,7 @@ def atomic_write(path, content: str, encoding: str = "utf-8") -> None:
 
     Example:
         atomic_write(Path("docs/memory/MEM-L-025.md"), content)
-        atomic_write("/tmp/test.json", content)  # str 路径同样支持
+        atomic_write(Path(tempfile.gettempdir()) / "test.json", content)  # 临时文件使用 tempfile
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

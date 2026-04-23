@@ -13,7 +13,11 @@ from pathlib import Path
 
 from .base import LLMProvider, ProviderUnavailableError
 
-_MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
+try:
+    from _paths import DOCS_MEMORY as _MEMORY_ROOT  # type: ignore[import]
+except ImportError:
+    _MEMORY_ROOT = Path(__file__).resolve().parent.parent / "docs" / "memory"
+
 _PENDING_DIR = _MEMORY_ROOT / "_system" / "pending_claude_prompts"
 
 

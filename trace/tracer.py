@@ -49,7 +49,7 @@ _HERE = Path(__file__).resolve().parent
 try:
     from _paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
 except ImportError:
-    _ROOT = _HERE.parent.parent.parent
+    _ROOT = _HERE.parent  # trace/ → mms root
 _TRACE_BASE = _ROOT / "docs" / "memory" / "private" / "trace"
 
 _DEFAULT_LEVEL = LEVEL_LLM          # 默认 Level 4

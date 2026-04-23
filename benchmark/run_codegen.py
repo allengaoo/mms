@@ -43,8 +43,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 _BENCH_DIR = Path(__file__).parent
+_MMS_DIR = _BENCH_DIR.parent  # mms root
 sys.path.insert(0, str(_BENCH_DIR / "src"))
-sys.path.insert(0, str(_BENCH_DIR.parent))  # scripts/mms/
+sys.path.insert(0, str(_MMS_DIR))
+
+try:
+    from mms_config import cfg as _cfg  # type: ignore[import]
+except ImportError:
+    _cfg = None  # type: ignore[assignment]
 
 from evaluators.codegen_evaluator import (
     CodeGenEvaluator,
@@ -182,8 +188,8 @@ def _generate_code(
         from providers.factory import auto_detect  # type: ignore[import]
         provider = auto_detect("code_generation")
 
-        # 上下文截断（防止超出 8k token 窗口）
-        max_context_chars = 12000  # 约 3000 tokens
+        # 上下文截断（防止超出 token 窗口，从 cfg 读取，默认 12000 字符约 3000 tokens）
+        max_context_chars = int(getattr(_cfg, "benchmark_max_context_chars", 12000)) if _cfg else 12000
         if len(context) > max_context_chars:
             context = context[:max_context_chars] + "\n\n...(上下文已截断)"
 
@@ -199,9 +205,10 @@ def _generate_code(
 
 请直接输出 Python 代码，不需要解释。代码必须符合 MDP 架构规范。"""
 
+        _codegen_max_tokens = int(getattr(_cfg, "benchmark_codegen_max_tokens", 2048)) if _cfg else 2048
         source = provider.complete(
             f"{_CODE_GEN_SYSTEM_PROMPT}\n\n{prompt}",
-            max_tokens=2048,
+            max_tokens=_codegen_max_tokens,
         ) or ""
 
         # 清除可能的 markdown 代码块标记
@@ -325,7 +332,7 @@ def run_codegen_benchmark(
                     "run_id": run_id,
                     "system": sys_name,
                     "task_id": task_id,
-                    "generated_source": source[:3000] if len(source) > 3000 else source,
+                    "generated_source": source[: int(getattr(_cfg, "benchmark_result_preview_chars", 3000)) if _cfg else 3000],
                     "eval": result.to_dict(),
                     "retrieval_tokens": ctx_tokens,
                     "gen_tokens": gen_tokens,

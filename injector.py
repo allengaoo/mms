@@ -214,9 +214,13 @@ class MemoryInjector:
         可选 LLM 增强：用 deepseek-r1:8b 分析任务，补充可能遗漏的节点。
         结果直接修改 current_nodes（in-place）。
         """
-        from mms.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(model="deepseek-r1:8b")
+        try:
+            from providers.factory import get  # type: ignore[import]
+            provider = get("ollama_r1")
+        except Exception:
+            from mms.providers.ollama import OllamaProvider
+            import os as _os
+            provider = OllamaProvider(model=_os.environ.get("OLLAMA_R1_MODEL", "deepseek-r1:8b"))
         if not provider.is_available():
             return
 

@@ -379,7 +379,7 @@ def _call_llm_generate_dag(
             if _tracer:
                 _tracer.record_llm(  # type: ignore[union-attr]
                     step="dag_generate",
-                    model=getattr(provider, "model_name", "gemini-2.5-pro"),
+                    model=getattr(provider, "model_name", "dag_orchestration"),
                     tokens_in=estimate_tokens(full_prompt),
                     tokens_out=estimate_tokens(response),
                     elapsed_ms=_elapsed,

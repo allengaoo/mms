@@ -74,6 +74,16 @@ def _cfg_int(attr: str, default: int) -> int:
     return int(getattr(_cfg, attr, default))
 
 
+def _token_budget_fast() -> int:
+    """返回 fast 模型的 token budget（从 cfg 读取，默认 2000）。"""
+    return _cfg_int("runner_token_budget_fast", 2000)
+
+
+def _token_budget_capable() -> int:
+    """返回 capable 模型的 token budget（从 cfg 读取，默认 4000）。"""
+    return _cfg_int("runner_token_budget_capable", 4000)
+
+
 def _cfg_bool(attr: str, default: bool) -> bool:
     if _cfg is None:
         return default
@@ -128,7 +138,7 @@ RBO_RULES: List[Dict] = [
             "返回字段", "response schema", "pydantic response",
         ],
         "description_template": "新增 {entity} 的 Pydantic Response Schema",
-        "token_budget": 2000,
+        "token_budget": _token_budget_fast(),
         "model_hint": "fast",
         "files_hint": ["backend/app/api/v1/schemas/"],
     },
@@ -140,7 +150,7 @@ RBO_RULES: List[Dict] = [
             "入参", "request schema", "pydantic request",
         ],
         "description_template": "新增 {entity} 的 Pydantic Request Schema",
-        "token_budget": 2000,
+        "token_budget": _token_budget_fast(),
         "model_hint": "fast",
         "files_hint": ["backend/app/api/v1/schemas/"],
     },
@@ -212,7 +222,7 @@ RBO_RULES: List[Dict] = [
             "输入验证", "raise exception", "抛出异常",
         ],
         "description_template": "在 {method} 方法新增前置校验逻辑",
-        "token_budget": 2000,
+        "token_budget": _token_budget_fast(),
         "model_hint": "fast",
         "files_hint": ["backend/app/services/control/"],
     },
@@ -402,7 +412,7 @@ class TaskDecomposer:
             target_files=files_hint or [],
             depends_on=[],
             exec_order=3,
-            token_budget=4000,
+            token_budget=_token_budget_capable(),
             model_hint="capable",
         )
         return AIUPlan(

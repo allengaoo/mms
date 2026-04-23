@@ -293,10 +293,20 @@ class DagState:
 
 # ── 工厂函数 ──────────────────────────────────────────────────────────────────
 
+def _default_orchestrator_model() -> str:
+    """从 factory 动态获取 dag_orchestration 的模型名，避免硬编码。"""
+    try:
+        from providers.factory import auto_detect  # type: ignore[import]
+        p = auto_detect("dag_orchestration")
+        return getattr(p, "model_name", "dag_orchestration")
+    except Exception:
+        return "dag_orchestration"
+
+
 def make_dag_state(
     ep_id: str,
     units_data: List[dict],
-    orchestrator_model: str = "qwen3-32b",
+    orchestrator_model: Optional[str] = None,
 ) -> DagState:
     """
     从原始 dict 列表构造 DagState。
@@ -327,6 +337,6 @@ def make_dag_state(
     return DagState(
         ep_id=ep_id.upper(),
         generated_at=datetime.now(timezone.utc).isoformat(),
-        orchestrator_model=orchestrator_model,
+        orchestrator_model=orchestrator_model or _default_orchestrator_model(),
         units=units,
     )

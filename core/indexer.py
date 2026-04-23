@@ -17,7 +17,11 @@ from typing import Dict, List, Optional, Tuple
 
 from .writer import atomic_write_json
 
-_MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
+try:
+    from _paths import DOCS_MEMORY as _MEMORY_ROOT  # type: ignore[import]
+except ImportError:
+    _MEMORY_ROOT = Path(__file__).resolve().parent.parent / "docs" / "memory"
+
 _INDEX_FILE = _MEMORY_ROOT / "MEMORY_INDEX.json"
 
 

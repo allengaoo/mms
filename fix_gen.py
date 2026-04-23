@@ -19,11 +19,15 @@ fix_gen.py — Ollama 辅助架构违反修复补丁生成器
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parents[2]
 _HERE = Path(__file__).resolve().parent
+try:
+    from _paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
+except ImportError:
+    _ROOT = _HERE  # fix_gen.py is at mms root level
 
 try:
     import sys as _sys
@@ -31,7 +35,8 @@ try:
     from mms_config import cfg as _cfg  # type: ignore[import]
 except Exception:
     _cfg = None  # type: ignore[assignment]
-_CODER_MODEL = "qwen-coder-plus"  # 百炼默认；本地 Ollama 降级时改为 deepseek-coder-v2:16b
+# 降级 Ollama 模型名从环境变量读取（与 factory.py 保持一致）
+_OLLAMA_CODER_MODEL = os.environ.get("OLLAMA_CODER_MODEL", "deepseek-coder-v2:16b")
 
 # ── 规则记忆片段（从 MMS 注入） ────────────────────────────────────────────────
 
@@ -154,7 +159,7 @@ def run_llm(prompt: str, model: str = _CODER_MODEL) -> str:
             from mms.providers.ollama import OllamaProvider
         except ImportError:
             from providers.ollama import OllamaProvider  # type: ignore[no-redef]
-        provider = OllamaProvider(model="deepseek-coder-v2:16b")
+        provider = OllamaProvider(model=_OLLAMA_CODER_MODEL)
         if not provider.is_available():
             print("[fix_gen] 百炼和 Ollama 均不可用，请检查网络或服务状态", file=sys.stderr)
             sys.exit(1)

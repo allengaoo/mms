@@ -16,7 +16,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-_MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
+try:
+    from _paths import DOCS_MEMORY as _MEMORY_ROOT  # type: ignore[import]
+except ImportError:
+    _MEMORY_ROOT = Path(__file__).resolve().parent.parent / "docs" / "memory"
+
 _INDEX_FILE = _MEMORY_ROOT / "MEMORY_INDEX.json"
 
 # 缓存条目：(数据, 过期时间戳)

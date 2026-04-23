@@ -23,7 +23,11 @@ from typing import Any, Callable, Optional, TypeVar
 
 R = TypeVar("R")
 
-_MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
+try:
+    from _paths import DOCS_MEMORY as _MEMORY_ROOT  # type: ignore[import]
+except ImportError:
+    _MEMORY_ROOT = Path(__file__).resolve().parent.parent / "docs" / "memory"
+
 _DEFAULT_STATE_FILE = _MEMORY_ROOT / "_system" / "circuit_state.json"
 
 _STATE_CLOSED = "CLOSED"

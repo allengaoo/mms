@@ -50,8 +50,12 @@ _EMBED_TIMEOUT = int(getattr(_cfg_bailian, "llm_bailian_embed_timeout", 30)) if 
 # 支持 <think> 过滤的模型关键字（Qwen3 思维链模式 / DeepSeek-R1 兼容）
 _THINKING_MODEL_KEYWORDS = ("think", "r1", "qwq", "qwen3")
 
-# .env.memory 文件路径（parents[3] = 项目根，回退读取，优先级低于真实环境变量）
-_ENV_FILE = Path(__file__).resolve().parents[3] / ".env.memory"
+try:
+    from _paths import _PROJECT_ROOT as _PROOT  # type: ignore[import]
+except ImportError:
+    _PROOT = Path(__file__).resolve().parent.parent
+# .env.memory 路径（优先级低于真实环境变量）
+_ENV_FILE = _PROOT / ".env.memory"
 
 # 缓存：避免重复读文件
 _ENV_CACHE: Optional[dict] = None

@@ -20,7 +20,12 @@ import re
 from pathlib import Path
 from typing import List
 
-_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent  # scripts/mms/benchmark/src/metrics → project root
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+    from _paths import _PROJECT_ROOT  # type: ignore[import]
+except ImportError:
+    _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # benchmark/src/metrics → mms root
 
 
 def layer_accuracy(retrieval_result, gt, cfg: dict) -> float:

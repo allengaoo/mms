@@ -305,6 +305,47 @@ class MmsConfig:
         # fallback: config.yaml → trace.report.use_color (default=true)
         return bool(_get(self._raw, "trace", "report", "use_color", default=True))
 
+    # ── runner.token_budget ───────────────────────────────────────────────────
+
+    @property
+    def runner_token_budget_fast(self) -> int:
+        # fallback: config.yaml → runner.token_budget.fast (default=2000)
+        return int(_get(self._raw, "runner", "token_budget", "fast", default=2000))
+
+    @property
+    def runner_token_budget_capable(self) -> int:
+        # fallback: config.yaml → runner.token_budget.capable (default=4000)
+        return int(_get(self._raw, "runner", "token_budget", "capable", default=4000))
+
+    # ── compare.truncate ──────────────────────────────────────────────────────
+
+    @property
+    def compare_diff_truncate_chars(self) -> int:
+        # fallback: config.yaml → compare.diff_truncate_chars (default=3000)
+        return int(_get(self._raw, "compare", "diff_truncate_chars", default=3000))
+
+    @property
+    def compare_code_truncate_chars(self) -> int:
+        # fallback: config.yaml → compare.code_truncate_chars (default=4000)
+        return int(_get(self._raw, "compare", "code_truncate_chars", default=4000))
+
+    # ── benchmark ─────────────────────────────────────────────────────────────
+
+    @property
+    def benchmark_max_context_chars(self) -> int:
+        # fallback: config.yaml → benchmark.max_context_chars (default=12000)
+        return int(_get(self._raw, "benchmark", "max_context_chars", default=12000))
+
+    @property
+    def benchmark_codegen_max_tokens(self) -> int:
+        # fallback: config.yaml → benchmark.codegen_max_tokens (default=2048)
+        return int(_get(self._raw, "benchmark", "codegen_max_tokens", default=2048))
+
+    @property
+    def benchmark_result_preview_chars(self) -> int:
+        # fallback: config.yaml → benchmark.result_preview_chars (default=3000)
+        return int(_get(self._raw, "benchmark", "result_preview_chars", default=3000))
+
 
 # ── 全局单例 ──────────────────────────────────────────────────────────────────
 

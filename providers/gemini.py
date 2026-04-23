@@ -49,8 +49,12 @@ _GENERATE_TIMEOUT = int(getattr(_cfg, "llm_google_generate_timeout", 180)) if _c
 # fallback: config.yaml → llm.google.min_output_tokens (default=8192)
 _MIN_OUTPUT_TOKENS = int(getattr(_cfg, "llm_google_min_output_tokens", 8192)) if _cfg else 8192
 
-# .env.memory 路径（parents[3] = 项目根）
-_ENV_FILE = Path(__file__).resolve().parents[3] / ".env.memory"
+try:
+    from _paths import _PROJECT_ROOT as _PROOT  # type: ignore[import]
+except ImportError:
+    _PROOT = Path(__file__).resolve().parent.parent
+# .env.memory 路径（优先级低于真实环境变量）
+_ENV_FILE = _PROOT / ".env.memory"
 _ENV_CACHE: Optional[dict] = None
 
 
