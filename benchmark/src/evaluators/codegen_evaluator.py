@@ -284,7 +284,7 @@ class CodeGenEvaluator:
 
         except subprocess.TimeoutExpired:
             return LevelResult(3, "arch_check", 0, len(arch_rules), errors=["arch_check 超时"])
-        except Exception as e:
+        except Exception:
             return self._fallback_arch_check(source, arch_rules)
 
     def _fallback_arch_check(self, source: str, arch_rules: List[str]) -> LevelResult:

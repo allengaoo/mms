@@ -113,7 +113,7 @@ class ArchResolver:
 
     # ── 公共 API ──────────────────────────────────────────────────────────────
 
-    def resolve_from_intent(self, intent_result: "IntentResult") -> List[str]:  # type: ignore[name-defined]
+    def resolve_from_intent(self, intent_result: "IntentResult") -> List[str]:  # type: ignore[name-defined]  # noqa: F821
         """
         从意图分类结果直接解析真实文件路径。
 
@@ -413,7 +413,7 @@ if __name__ == "__main__":
         entry = resolver.get_layer_entry_files(layer_id)
         prefixes = resolver.get_layer_prefixes(layer_id)
         print(f"\n层：{layer_id}")
-        print(f"入口文件：")
+        print("入口文件：")
         for f in entry:
             exists = "✅" if resolver.validate_path(f) else "❌"
             print(f"  {exists} {f}")

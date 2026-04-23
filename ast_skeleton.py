@@ -477,7 +477,7 @@ def _main():
     )
     total_funcs = sum(len(v.get("top_level_functions", [])) for v in index.values())
 
-    print(f"[ast_skeleton] 扫描完成:")
+    print("[ast_skeleton] 扫描完成:")
     print(f"  文件数: {total_files}")
     print(f"  类数:   {total_classes}")
     print(f"  方法数: {total_methods}")

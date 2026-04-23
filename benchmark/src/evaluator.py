@@ -79,7 +79,7 @@ def _compute_metrics(
         fn = METRIC_FUNCS[metric_name]
         try:
             value = fn(retrieval, gt, metric_cfg)
-        except Exception as e:
+        except Exception:
             value = 0.0
 
         # 写入对应字段

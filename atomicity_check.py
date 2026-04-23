@@ -143,7 +143,7 @@ def check_a3_layer_consistency(files: List[str]) -> CheckResult:
 
     layers = [infer_layer(f) for f in files]
     # 排除 testing 和 docs（允许与任何业务层混合）
-    business_layers = [l for l in layers if l not in ("testing", "docs", "unknown")]
+    business_layers = [lyr for lyr in layers if lyr not in ("testing", "docs", "unknown")]
 
     if not business_layers:
         return CheckResult(
@@ -156,7 +156,7 @@ def check_a3_layer_consistency(files: List[str]) -> CheckResult:
     passed = len(unique_layers) <= 1
 
     layer_map = {f: infer_layer(f) for f in files}
-    detail_parts = [f"{Path(f).name}→{l}" for f, l in layer_map.items()]
+    detail_parts = [f"{Path(f).name}→{lyr}" for f, lyr in layer_map.items()]
 
     return CheckResult(
         passed=passed,
@@ -180,7 +180,7 @@ def check_a4_verifiability(
 
     # 检查 arch_check 是否覆盖（涉及 services/ 或 api/ 层）
     layers = [infer_layer(f) for f in files]
-    has_arch_check = any(l in _ARCH_CHECK_LAYERS for l in layers)
+    has_arch_check = any(lyr in _ARCH_CHECK_LAYERS for lyr in layers)
 
     passed = has_test_file or has_arch_check
 
@@ -275,8 +275,6 @@ def _print_results(
     print("─" * 50)
 
     score_bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
-    color = _G if is_atomic else _R
-
     if is_atomic:
         verdict = f"{_G}{_B}✅ ATOMIC{_X}（score={score:.2f}）  适合 {model} 模型执行"
     else:

@@ -436,7 +436,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    report_path = run_codegen_benchmark(
+    run_codegen_benchmark(
         systems=args.systems,
         full_eval=args.full_eval,
         dry_run=args.dry_run,
