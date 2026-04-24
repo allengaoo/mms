@@ -1,0 +1,54 @@
+# AIU 类型扩展定义（YAML 扩展层）
+# ──────────────────────────────────────────────────────────────────────────────
+# 用途：在不修改 aiu_types.py 源码的情况下，新增 AIU 类型或覆盖内置类型配置。
+# 加载方式：由 aiu_registry.py 的 AIURegistry 在运行时读取。
+#
+# 格式：
+#   extended_types:
+#     - id: AIU_TYPE_ID          # 必填，全大写蛇形命名，不应与内置 AIUType 重名（除非覆盖）
+#       family: A_schema         # 所属族（见 aiu_types.py 的 AIU_FAMILY）
+#       layer: L2_infrastructure  # 代码层（L1-L5 / CC / BIZ）
+#       exec_order: 1            # 执行顺序（数字越小越先执行）
+#       base_cost: 1800          # 基础 Token 成本（与 AIU_BASE_COST 对应）
+#       description: "..."       # 人类可读描述
+#
+# 注意事项：
+#   - exec_order 相同时按字母序排列
+#   - base_cost 单位：tokens，用于 aiu_cost_estimator.py 的成本预估
+#   - is_builtin: false（YAML 定义的类型自动标记为非内置）
+#   - 覆盖内置类型：使用与 AIUType Enum 相同的 id 值即可
+#
+# 版本：v1.0 | 创建于：2026-04-25 | Phase 5（AIU 扩展性升级）
+
+extended_types:
+  # ─── 示例：新增索引操作类型 ─────────────────────────────────────────────────
+  - id: SCHEMA_ADD_INDEX
+    family: A_schema
+    layer: L2_infrastructure
+    exec_order: 1
+    base_cost: 1800
+    description: "新增数据库索引（单字段或复合索引，不影响 ORM 模型字段定义）"
+
+  # ─── 示例：事件溯源（Event Sourcing）操作 ────────────────────────────────────
+  - id: EVENT_ADD_SAGA
+    family: E_infrastructure
+    layer: L3_domain
+    exec_order: 2
+    base_cost: 4500
+    description: "新增 Saga 协调器（分布式事务编排，多服务补偿流程）"
+
+  # ─── 示例：GraphQL 接口 ──────────────────────────────────────────────────────
+  - id: ROUTE_ADD_GRAPHQL_RESOLVER
+    family: D_interface
+    layer: L4_application
+    exec_order: 3
+    base_cost: 3500
+    description: "新增 GraphQL Resolver（Apollo Server / Strawberry 风格）"
+
+  # ─── 示例：gRPC 服务 ─────────────────────────────────────────────────────────
+  - id: ROUTE_ADD_GRPC_SERVICE
+    family: D_interface
+    layer: L2_infrastructure
+    exec_order: 2
+    base_cost: 4000
+    description: "新增 gRPC 服务方法（含 Protobuf 定义更新）"

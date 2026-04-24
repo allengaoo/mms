@@ -7,13 +7,29 @@
   Level 3: 架构约束通过率（arch_check_pass_rate）
   Level 4: 参考测试通过率（test_pass_rate）
 
+核心基准指标（Pass@1 + Resolve Rate）：
+  pass_at_1    : 一次执行即通过 Level 4 测试的概率（无需反馈回环）
+  resolve_rate : 在最多 3 级 Feedback 回退机制下的最终问题修复率
+
 综合指标：
   codegen_score: 加权综合分（Level1×0.1 + Level2×0.3 + Level3×0.3 + Level4×0.3）
+                 [已降级为遗留指标，新测试应优先看 pass_at_1 和 resolve_rate]
 
 设计原则（EP-132）：
   - 确定性：每个指标有明确计算公式，结果可复现
   - 可扩展：新指标只需添加 CodegenMetricResult 字段，不修改评估器逻辑
   - 可对比：三个索引系统（pageindex/hybrid_rag/ontology）使用同一套指标
+
+# === 扩展新指标的标准流程 ===
+# 1. 在 CodegenMetricResult 添加新字段（带默认值，向后兼容）
+#    如: new_metric: float = 0.0
+# 2. 在 codegen_evaluator.py 的 evaluate() 中填充新字段
+#    如: result.new_metric = compute_new_metric(...)
+# 3. 在 CodegenSystemSummary 添加聚合属性（@property）
+#    如: @property def avg_new_metric(self) -> float: ...
+# 4. 在 run_codegen.py 的报告输出中添加展示
+# 5. 添加对应单元测试（tests/test_codegen_quality.py 或 benchmark/tests/）
+# 注意：不要修改 Level 1-4 的计算逻辑，以保证历史数据可比性
 """
 from __future__ import annotations
 
