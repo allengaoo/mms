@@ -435,6 +435,13 @@ runner:
     retry_on_test_fail: true    # pytest 失败时是否重试（true=注入错误日志重试）
     retry_on_arch_fail: true    # arch_check 失败时是否重试
 
+  # ── 双角色内部评审 ────────────────────────────────────────────────────────
+  # Feature flag（默认关闭）：Coder 生成代码后，交由 Reviewer（qwen3-32b）
+  # 在落盘前进行架构合规审查。违规时打回 Coder 重写，最多 2 轮。
+  # 开启方式：将 enable_internal_review 改为 true，或设置环境变量
+  #   MMS_ENABLE_INTERNAL_REVIEW=true
+  enable_internal_review: false
+
   # ── 沙箱与安全 ────────────────────────────────────────────────────────────
   sandbox:
     enabled: true               # 始终启用沙箱（禁用会导致失败后无法自动回滚，不推荐）

@@ -122,7 +122,7 @@ def run_arch_check_post(baseline_violations: List[Dict]) -> Tuple[bool, int, Lis
 
     返回：(no_new_violations: bool, new_count: int, new_violations: List)
     """
-    arch_check = _HERE / "mms.analysis.arch_check.py"
+    arch_check = _HERE.parent / "analysis" / "arch_check.py"
     if not arch_check.exists():
         return True, 0, []
 
@@ -396,6 +396,33 @@ def run_postcheck(
             "details": new_violations[:10],
         }
         failures += 1
+
+    # ── 2.5 MigrationGate: DB 迁移脚本门控（针对 ORM/Schema 变更）────────────────
+    print(f"\n{_C}▶ Step 2.5 · DB 迁移脚本门控（MigrationGate）{_X}")
+    try:
+        from mms.workflow.migration_gate import run_migration_gate
+        mig_result = run_migration_gate(scope_files, project_root=_ROOT)
+        mig_status = mig_result.get("status", "SKIPPED")
+        mig_summary = mig_result.get("summary", "")
+        results["migration_gate"] = mig_result
+
+        if mig_status == "PASS":
+            _ok(f"MigrationGate：{mig_summary}")
+        elif mig_status == "SKIPPED":
+            _info(f"MigrationGate：{mig_summary}")
+        elif mig_status == "WARN":
+            _warn(f"MigrationGate：{mig_summary}")
+            for issue in mig_result.get("issues", [])[:3]:
+                print(f"    {_Y}→{_X} {issue}")
+            warnings += 1
+        else:  # FAIL
+            _err(f"MigrationGate：{mig_summary}")
+            for issue in mig_result.get("issues", [])[:5]:
+                print(f"    {_R}→{_X} {issue}")
+            failures += 1
+    except ImportError as _e:
+        _info(f"MigrationGate：模块不可用（{_e}），跳过")
+        results["migration_gate"] = {"status": "SKIPPED", "summary": "模块未加载"}
 
     # ── 3. AST 契约变更检测（EP-130）────────────────────────────────────────────
     print(f"\n{_C}▶ Step 3 · AST 契约变更检测（ast_sync）{_X}")

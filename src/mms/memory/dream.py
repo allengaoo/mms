@@ -344,6 +344,11 @@ access_count: 0
 ## WHEN（触发条件 / 危险信号）
 {draft.get("when", "待补充")}
 """
+    try:
+        from mms.core.sanitize import sanitize_or_raise
+        content = sanitize_or_raise(content, path_hint=str(path))
+    except ImportError:
+        pass
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -417,6 +422,11 @@ def promote_draft(draft_path: Path) -> Optional[Path]:
 
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"{new_id}.md"
+    try:
+        from mms.core.sanitize import sanitize_or_raise
+        new_content = sanitize_or_raise(new_content, path_hint=str(target_path))
+    except ImportError:
+        pass
     target_path.write_text(new_content, encoding="utf-8")
     draft_path.unlink()
 

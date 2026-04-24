@@ -1,0 +1,29 @@
+# go_gin/ontology/core_objects.yaml
+object_types:
+  - id: GormModel
+    description: 带有 GORM 标签的数据库模型结构体
+    attributes:
+      - name: ID
+        type: uint | string
+        gorm_tag: "primaryKey"
+        required: true
+      - name: CreatedAt
+        type: time.Time
+        gorm_tag: "autoCreateTime"
+      - name: UpdatedAt
+        type: time.Time
+        gorm_tag: "autoUpdateTime"
+
+  - id: GinHandler
+    description: Gin HTTP Handler 函数，接收 *gin.Context
+    attributes:
+      - name: ctx
+        type: "*gin.Context"
+        required: true
+
+  - id: Repository
+    description: Go interface 定义的数据访问抽象（依赖反转）
+    attributes:
+      - name: interface_methods
+        type: "[]FuncSignature"
+        required: true

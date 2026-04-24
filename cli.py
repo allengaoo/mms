@@ -52,11 +52,13 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-# 将 scripts/ 目录加入 sys.path
-_SCRIPTS_DIR = Path(__file__).parent.parent
-sys.path.insert(0, str(_SCRIPTS_DIR))
+# src/ 目录加入 sys.path，使 `from mms.X import Y` 生效
+_CLI_DIR = Path(__file__).resolve().parent
+_SRC_DIR = _CLI_DIR / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
-_PROJECT_ROOT = _SCRIPTS_DIR.parent
+_PROJECT_ROOT = _CLI_DIR
 _MEMORY_ROOT = _PROJECT_ROOT / "docs" / "memory"
 _SYSTEM_DIR = _MEMORY_ROOT / "_system"
 
@@ -1364,6 +1366,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="只比对这些文件（空则全量比对）",
     )
 
+    # ── seed — 种子包管理（Rule Absorber EP-131）─────────────────────────────
+    p_seed = sub.add_parser(
+        "seed",
+        help="种子包管理：列出 / 注入 / 吸收外部规范",
+    )
+    p_seed_sub = p_seed.add_subparsers(dest="subcommand", metavar="<subcommand>")
+
+    # seed list
+    p_seed_sub.add_parser("list", help="列出所有已安装的种子包")
+
+    # seed ingest
+    p_si = p_seed_sub.add_parser(
+        "ingest",
+        help="从 URL 或本地文件吸收 .cursorrules/.mdc 规范，蒸馏为 MMS YAML",
+    )
+    p_si.add_argument("url", metavar="URL_OR_PATH", help="GitHub URL 或本地文件路径")
+    p_si.add_argument(
+        "--seed-name", default=None,
+        help="目标种子包名称（默认从 URL 文件名推导）",
+    )
+    p_si.add_argument(
+        "--dry-run", action="store_true",
+        help="预览蒸馏结果，不写文件",
+    )
+    p_si.add_argument(
+        "--force", action="store_true",
+        help="覆盖同名已有种子包",
+    )
+
     return parser
 
 
@@ -1372,7 +1403,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     import time
 
     try:
-        sys.path.insert(0, str(_SCRIPTS_DIR))
+        sys.path.insert(0, str(_SRC_DIR))
         from mms.analysis.dep_sniffer import sniff  # type: ignore[import]
         from seed_packs import install_packs  # type: ignore[import]
         from mms.analysis.ast_skeleton import build_ast_index  # type: ignore[import]
@@ -1466,10 +1497,76 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_seed(args: argparse.Namespace) -> int:
+    """seed 子命令：种子包管理 + Rule Absorber。"""
+    subcmd = getattr(args, "subcommand", None)
+
+    if subcmd == "list" or subcmd is None:
+        seed_root = _PROJECT_ROOT / "seed_packs"
+        packs = sorted(
+            p for p in seed_root.iterdir()
+            if p.is_dir() and not p.name.startswith("_") and not p.name.startswith(".")
+        )
+        if not packs:
+            print("  (无种子包)")
+            return 0
+        print(f"\n  已安装种子包（{len(packs)} 个）：\n")
+        for p in packs:
+            mc = p / "match_conditions.yaml"
+            desc = ""
+            if mc.exists():
+                for line in mc.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("description:"):
+                        desc = line.split(":", 1)[1].strip().strip('"')
+                        break
+            layers = sum(1 for _ in (p / "arch_schema").glob("*.yaml")) if (p / "arch_schema").exists() else 0
+            onto = sum(1 for _ in (p / "ontology").glob("*.yaml")) if (p / "ontology").exists() else 0
+            cons = sum(1 for _ in (p / "constraints").glob("*.yaml")) if (p / "constraints").exists() else 0
+            print(f"  📦  {p.name:<25} arch:{layers} ontology:{onto} constraints:{cons}")
+            if desc:
+                print(f"       {desc}")
+        print()
+        return 0
+
+    elif subcmd == "ingest":
+        try:
+            from mms.analysis.seed_absorber import ingest  # type: ignore[import]
+        except ImportError as e:
+            print(f"❌ seed_absorber 模块未找到（{e}）")
+            return 1
+
+        url = getattr(args, "url", None)
+        if not url:
+            print("❌ 请指定 URL 或本地文件路径")
+            return 1
+
+        seed_name = getattr(args, "seed_name", None)
+        dry_run = getattr(args, "dry_run", False)
+        force = getattr(args, "force", False)
+
+        print(f"\n{'='*60}")
+        print(f"  MMS Rule Absorber — 规则吸收器")
+        print(f"{'='*60}")
+        try:
+            result_dir = ingest(url, seed_name=seed_name, dry_run=dry_run, force=force)
+            if not dry_run:
+                print(f"\n  ✅ 种子包就绪：{result_dir}")
+                print(f"  提示：运行 `mms seed list` 查看所有种子包")
+                print(f"  提示：运行 `mms bootstrap` 将种子包注入到当前项目\n")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"\n  ❌ 获取失败：{e}\n")
+            return 1
+        return 0
+
+    else:
+        print(f"未知子命令 `{subcmd}`，使用 `mms seed --help` 查看帮助")
+        return 1
+
+
 def cmd_ast_diff(args: argparse.Namespace) -> int:
     """ast-diff 子命令：比对 AST 快照检测契约变更。"""
     try:
-        sys.path.insert(0, str(_SCRIPTS_DIR))
+        sys.path.insert(0, str(_SRC_DIR))
         from mms.analysis.ast_diff import diff_ast_files, load_ast_index  # type: ignore[import]
     except ImportError as e:
         print(f"❌ ast_diff 模块未找到（{e}）")
@@ -2300,6 +2397,7 @@ _COMMAND_HANDLERS = {
     "trace":         cmd_trace,
     "bootstrap":     cmd_bootstrap,    # EP-130: 离线冷启动
     "ast-diff":      cmd_ast_diff,     # EP-130: AST 契约变更检测
+    "seed":          cmd_seed,         # EP-131: 种子包管理 + Rule Absorber
 }
 
 

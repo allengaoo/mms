@@ -324,8 +324,10 @@ def run_codegen_benchmark(
 
                 sys_results.append(result)
 
-                score_str = f"{result.codegen_score * 100:.0f}%" if result.codegen_score == result.codegen_score else "N/A"
-                print(f"score={score_str} L1={result.level1_syntax.pass_rate_pct} L2={result.level2_contract.pass_rate_pct}")
+                # v2.0 核心指标：Pass@1 + Resolve Rate（替代旧版 codegen_score）
+                p1 = "✅" if result.pass_at_1 else "❌"
+                rr = "✅" if result.resolve_rate else "❌"
+                print(f"Pass@1={p1} ResolveRate={rr} L1={result.level1_syntax.pass_rate_pct} L2={result.level2_contract.pass_rate_pct}")
 
                 # 写 raw JSONL
                 raw_record = {
@@ -342,7 +344,13 @@ def run_codegen_benchmark(
 
             summary = CodegenSystemSummary(system_name=sys_name, task_results=sys_results)
             all_summaries.append(summary)
-            print(f"  -> {sys_name} 平均综合分: {_pct(summary.avg_score)}")
+            # v2.0: 主指标展示 Pass@1 和 Resolve Rate
+            print(
+                f"  -> {sys_name}  Pass@1={_pct(summary.pass_at_1_rate)}"
+                f"  ResolveRate={_pct(summary.final_resolve_rate)}"
+                f"  AvgFeedbackRounds={summary.avg_feedback_rounds:.1f}"
+                f"  [Legacy Score={_pct(summary.avg_score)}]"
+            )
     finally:
         raw_f.close()
 
@@ -361,21 +369,29 @@ def run_codegen_benchmark(
 
 
 def _print_summary(summaries: List[CodegenSystemSummary]) -> None:
-    """打印终端摘要表"""
-    from metrics.codegen_quality import compare_systems
-    comparison = compare_systems(summaries)
-    winner = comparison.get("winner", "N/A")
+    """打印终端摘要表（v2.0：Pass@1 + Resolve Rate 为主指标）"""
+    if not summaries:
+        return
 
-    print(f"\n综合最优系统: {winner}")
-    print(f"\n{'系统':<15} {'综合分':>8} {'L1 语法':>8} {'L2 契约':>8} {'成本效率':>10}")
-    print("-" * 55)
-    for ranking in comparison.get("rankings", []):
+    # 按 Pass@1 排序（主指标）
+    sorted_s = sorted(
+        summaries,
+        key=lambda s: s.pass_at_1_rate if s.pass_at_1_rate == s.pass_at_1_rate else -1,
+        reverse=True,
+    )
+    winner = sorted_s[0].system_name if sorted_s else "N/A"
+
+    print(f"\n综合最优系统（按 Pass@1）: {winner}")
+    print(f"\n{'系统':<15} {'Pass@1':>8} {'ResolveRate':>12} {'Avg反馈轮':>10} {'L1语法':>8} {'[Legacy]':>10}")
+    print("-" * 70)
+    for s in sorted_s:
         print(
-            f"{ranking['system']:<15} "
-            f"{_pct(ranking.get('avg_score')):>8} "
-            f"{_pct(ranking.get('syntax_pass_rate')):>8} "
-            f"{_pct(ranking.get('contract_pass_rate')):>8} "
-            f"{_fmt(ranking.get('avg_cost_efficiency')):>10}"
+            f"{s.system_name:<15} "
+            f"{_pct(s.pass_at_1_rate):>8} "
+            f"{_pct(s.final_resolve_rate):>12} "
+            f"{s.avg_feedback_rounds:>10.1f} "
+            f"{_pct(s.syntax_pass_rate):>8} "
+            f"{_pct(s.avg_score):>10}"
         )
 
 

@@ -1,13 +1,16 @@
 """
-dep_sniffer.py — 技术栈依赖嗅探器（EP-130）
+dep_sniffer.py — 技术栈依赖嗅探器（EP-130 v2.0）
 
 零 LLM 消耗地识别项目技术栈，为 seed_packs 的自动选择提供依据。
 
 扫描策略（按优先级）：
-  1. pyproject.toml   (Python 现代项目)
-  2. requirements.txt  (Python 传统项目)
-  3. package.json      (Node.js / 前端)
-  4. 目录特征嗅探      (fallback：通过目录名推断)
+  1. pyproject.toml      (Python 现代项目)
+  2. requirements.txt    (Python 传统项目)
+  3. package.json        (Node.js / 前端)
+  4. pom.xml             (Java Maven 项目) ← v2.0 新增
+  5. build.gradle        (Java/Kotlin Gradle 项目) ← v2.0 新增
+  6. go.mod              (Go Module 项目) ← v2.0 新增
+  7. 目录特征嗅探        (fallback：通过目录名推断)
 
 离线约束：
   - 禁止 import tomllib（Python 3.11+ 限定，环境可能不满足）
@@ -145,6 +148,112 @@ def _parse_package_json(content: str) -> Set[str]:
     return deps
 
 
+def _parse_pom_xml(content: str) -> Set[str]:
+    """
+    从 Maven pom.xml 中提取 artifactId（不依赖 xml.etree，用正则）。
+
+    提取目标：
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+
+    返回：{"spring_boot_starter_web", "spring_boot_starter_data_jpa", ...}
+    """
+    deps: Set[str] = set()
+    # Extract artifactId values
+    for m in re.finditer(r'<artifactId>\s*([\w.\-]+)\s*</artifactId>', content):
+        artifact = m.group(1).lower().replace("-", "_").replace(".", "_")
+        deps.add(artifact)
+    # Also extract groupId prefix for stack detection
+    for m in re.finditer(r'<groupId>\s*([\w.\-]+)\s*</groupId>', content):
+        group = m.group(1).lower()
+        # Normalize to key identifiers
+        if 'spring' in group:
+            deps.add('spring')
+        elif 'hibernate' in group:
+            deps.add('hibernate')
+        elif 'junit' in group:
+            deps.add('junit')
+        elif 'mybatis' in group:
+            deps.add('mybatis')
+    return deps
+
+
+def _parse_build_gradle(content: str) -> Set[str]:
+    """
+    从 Gradle build.gradle / build.gradle.kts 中提取依赖名。
+
+    支持格式：
+      implementation 'org.springframework.boot:spring-boot-starter-web:3.x.x'
+      implementation("com.fasterxml.jackson.core:jackson-databind")
+      testImplementation 'junit:junit:4.13'
+    """
+    deps: Set[str] = set()
+    # Pattern: groupId:artifactId[:version] — capture only the artifactId (2nd segment)
+    patterns = [
+        r"""(?:implementation|api|compile|testImplementation|runtimeOnly)\s+['"][\w.\-]+:([\w.\-]+)(?::[\d.][^'"]*)?['"]""",
+        r"""(?:implementation|api|compile)\s*\(\s*['"][\w.\-]+:([\w.\-]+)(?::[\d.][^'"]*)?['"]\s*\)""",
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, content):
+            artifact = m.group(1).lower().replace("-", "_")
+            # Skip pure version strings like "3.2.0"
+            if not re.match(r'^[\d.]+$', artifact):
+                deps.add(artifact)
+
+    # Detect Spring Boot plugin
+    if 'spring-boot' in content or 'org.springframework.boot' in content:
+        deps.add('spring')
+        deps.add('spring_boot')
+    if 'org.jetbrains.kotlin' in content or 'kotlin' in content:
+        deps.add('kotlin')
+
+    return deps
+
+
+def _parse_go_mod(content: str) -> Set[str]:
+    """
+    从 go.mod 中提取 require 的模块名（只取路径最后一段）。
+
+    格式：
+      require (
+          github.com/gin-gonic/gin v1.9.1
+          gorm.io/gorm v1.25.5
+      )
+    """
+    deps: Set[str] = set()
+    in_require = False
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith('require ('):
+            in_require = True
+            continue
+        if in_require and line == ')':
+            in_require = False
+            continue
+        # Single line: require github.com/pkg/name v1.2.3
+        m = re.match(r'(?:require\s+)?([^\s]+)\s+v[\d.]+', line)
+        if m:
+            module_path = m.group(1)
+            # Take last segment of module path
+            last = module_path.rstrip('/').split('/')[-1]
+            # Normalize
+            pkg = last.lower().replace("-", "_").replace(".", "_")
+            deps.add(pkg)
+            # Also detect well-known frameworks
+            if 'gin' in module_path:
+                deps.add('gin')
+            elif 'echo' in module_path:
+                deps.add('echo')
+            elif 'fiber' in module_path:
+                deps.add('fiber')
+            elif 'gorm' in module_path:
+                deps.add('gorm')
+            elif 'grpc' in module_path:
+                deps.add('grpc')
+
+    return deps
+
+
 # ── 技术栈匹配规则 ────────────────────────────────────────────────────────────
 
 # 每个栈的匹配规则：{stack_id: (required_packages, optional_packages, dir_hints)}
@@ -177,6 +286,32 @@ _STACK_RULES: Dict[str, dict] = {
             "docs/memory",
         ],
         "description": "Palantir 风格分层架构（L1-L5 + CQRS + RLS）",
+    },
+    # ── Java 栈 ───────────────────────────────────────────────────────────────
+    "spring_boot": {
+        "required": {"spring_boot"},
+        "optional": {"spring", "hibernate", "mybatis", "spring_data_jpa", "spring_boot_starter_web"},
+        "dir_hints": ["src/main/java", "src/main/resources"],
+        "description": "Spring Boot Java 后端栈",
+    },
+    "spring_boot_microservices": {
+        "required": {"spring_boot"},
+        "optional": {"spring_cloud", "eureka", "ribbon", "feign", "hystrix", "gateway"},
+        "dir_hints": ["src/main/java"],
+        "description": "Spring Boot 微服务架构栈（含 Spring Cloud）",
+    },
+    # ── Go 栈 ────────────────────────────────────────────────────────────────
+    "go_gin": {
+        "required": {"gin"},
+        "optional": {"gorm", "grpc", "fiber"},
+        "dir_hints": ["cmd", "internal", "pkg"],
+        "description": "Go + Gin Web 框架栈",
+    },
+    "go_grpc": {
+        "required": {"grpc"},
+        "optional": {"gin", "gorm", "protobuf"},
+        "dir_hints": ["proto", "api", "internal"],
+        "description": "Go + gRPC 微服务栈",
     },
 }
 
@@ -279,7 +414,57 @@ class DependencySniffer:
                     pass
                 break
 
-        # 4. 目录特征嗅探（fallback：即使没有 requirements.txt 也能识别）
+        # 4. pom.xml（Java Maven）
+        for pom_path in [
+            self.root / "pom.xml",
+            self.root / "backend" / "pom.xml",
+        ]:
+            if pom_path.exists():
+                try:
+                    content = pom_path.read_text(encoding="utf-8", errors="ignore")
+                    pkgs = _parse_pom_xml(content)
+                    all_packages |= pkgs
+                    profile.backend_packages.extend(sorted(pkgs))
+                    profile.scan_sources.append(str(pom_path.relative_to(self.root)))
+                except OSError:
+                    pass
+                break
+
+        # 5. build.gradle / build.gradle.kts（Java/Kotlin Gradle）
+        for gradle_path in [
+            self.root / "build.gradle",
+            self.root / "build.gradle.kts",
+            self.root / "backend" / "build.gradle",
+            self.root / "backend" / "build.gradle.kts",
+        ]:
+            if gradle_path.exists():
+                try:
+                    content = gradle_path.read_text(encoding="utf-8", errors="ignore")
+                    pkgs = _parse_build_gradle(content)
+                    all_packages |= pkgs
+                    profile.backend_packages.extend(sorted(pkgs))
+                    profile.scan_sources.append(str(gradle_path.relative_to(self.root)))
+                except OSError:
+                    pass
+                break
+
+        # 6. go.mod（Go 模块）
+        for gomod_path in [
+            self.root / "go.mod",
+            self.root / "backend" / "go.mod",
+        ]:
+            if gomod_path.exists():
+                try:
+                    content = gomod_path.read_text(encoding="utf-8", errors="ignore")
+                    pkgs = _parse_go_mod(content)
+                    all_packages |= pkgs
+                    profile.backend_packages.extend(sorted(pkgs))
+                    profile.scan_sources.append(str(gomod_path.relative_to(self.root)))
+                except OSError:
+                    pass
+                break
+
+        # 7. 目录特征嗅探（fallback：即使没有 requirements.txt 也能识别）
         if not profile.backend_packages:
             if (self.root / "backend" / "app").exists():
                 all_packages.add("fastapi")  # 目录结构强烈暗示 FastAPI

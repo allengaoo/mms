@@ -92,6 +92,8 @@ _IGNORE_DIRS = {
 
 _PYTHON_EXTS = {".py"}
 _TS_EXTS = {".ts", ".tsx"}
+_JAVA_EXTS = {".java"}
+_GO_EXTS = {".go"}
 
 
 # ── 数据结构 ─────────────────────────────────────────────────────────────────
@@ -358,17 +360,246 @@ def _parse_typescript(source: str, rel_path: str) -> FileSkeleton:
     return skeleton
 
 
+# ── Java 正则骨架提取器 ───────────────────────────────────────────────────────
+
+def _parse_java(source: str, rel_path: str) -> FileSkeleton:
+    """
+    Java 正则骨架提取器（不依赖 JDK/javalang）。
+
+    提取内容：
+      - 顶层 public class / interface / enum 声明（含 extends/implements）
+      - 方法签名：访问修饰符 + 返回类型 + 方法名 + 参数类型列表
+      - import 语句中的顶层类型名
+
+    局限性：正则不处理嵌套类和泛型复杂情况，适合骨架对比而非完整 AST。
+    """
+    skeleton = FileSkeleton(path=rel_path, lang="java")
+
+    # imports
+    for m in re.finditer(r'^import\s+(?:static\s+)?[\w.]+\.(\w+)\s*;', source, re.MULTILINE):
+        skeleton.imports.append(m.group(1))
+    skeleton.imports = sorted(set(skeleton.imports))
+
+    # class / interface / enum declarations
+    class_pat = re.compile(
+        r'(?:public\s+)?(?:abstract\s+)?(?:final\s+)?'
+        r'(class|interface|enum)\s+(\w+)'
+        r'(?:\s+extends\s+([\w<>, ]+?))?'
+        r'(?:\s+implements\s+([\w<>, ]+?))?'
+        r'\s*\{',
+        re.MULTILINE,
+    )
+    for m in class_pat.finditer(source):
+        kind, name = m.group(1), m.group(2)
+        bases = []
+        if m.group(3):
+            bases.extend(b.strip().split('<')[0] for b in m.group(3).split(','))
+        if m.group(4):
+            bases.extend(b.strip().split('<')[0] for b in m.group(4).split(','))
+        cls_skel = ClassSkeleton(name=name, bases=[b for b in bases if b])
+
+        # methods within approximate class body
+        # Use a simple heuristic: collect methods until next class-level brace
+        cls_start = m.end()
+        # Find methods: access modifier(s) + return type + name + params
+        method_pat = re.compile(
+            r'(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\s+){0,4}'
+            r'(?!class|interface|enum)'
+            r'([\w<>\[\]]+(?:\s*\[\])*)\s+'   # return type
+            r'(\w+)\s*'                        # method name
+            r'\(([^)]*)\)',                    # params
+            re.MULTILINE,
+        )
+        for mm in method_pat.finditer(source[cls_start:cls_start + 8000]):
+            ret_type = mm.group(1).strip()
+            meth_name = mm.group(2)
+            params_raw = mm.group(3).strip()
+            # Extract only types from params (strip param names)
+            param_types = []
+            for part in params_raw.split(','):
+                part = part.strip()
+                if not part:
+                    continue
+                tokens = part.split()
+                # Last token is name, second-to-last (or earlier) is type
+                type_part = tokens[-2] if len(tokens) >= 2 else tokens[0] if tokens else '_'
+                param_types.append(type_part.rstrip('[]'))
+            sig = f"({', '.join(param_types)}) -> {ret_type}"
+            cls_skel.methods.append(MethodSkeleton(name=meth_name, signature=sig))
+
+        skeleton.classes.append(cls_skel)
+
+    return skeleton
+
+
+# ── Go 正则骨架提取器 ─────────────────────────────────────────────────────────
+
+def _parse_go(source: str, rel_path: str) -> FileSkeleton:
+    """
+    Go 正则骨架提取器（不依赖 go/ast）。
+
+    提取内容：
+      - struct / interface 类型声明
+      - func 声明（含 receiver，即方法）
+      - import 的包名
+
+    局限性：正则不处理泛型（Go 1.18+）的复杂情况，适合骨架对比。
+    """
+    skeleton = FileSkeleton(path=rel_path, lang="go")
+
+    # package imports
+    for m in re.finditer(r'^\s+"(?:[\w./]+/)?([\w]+)"', source, re.MULTILINE):
+        skeleton.imports.append(m.group(1))
+    skeleton.imports = sorted(set(skeleton.imports))
+
+    # struct / interface declarations
+    type_pat = re.compile(
+        r'^type\s+(\w+)\s+(struct|interface)\s*\{',
+        re.MULTILINE,
+    )
+    structs: Dict[str, ClassSkeleton] = {}
+    for m in type_pat.finditer(source):
+        name, kind = m.group(1), m.group(2)
+        bases = [kind]  # 用 "struct" 或 "interface" 作为 base 标记
+        structs[name] = ClassSkeleton(name=name, bases=bases)
+
+    # func declarations (包含 receiver 的方法 + 顶层函数)
+    # Pattern: func (recv RecvType) MethodName(params) RetType
+    # or:      func FuncName(params) RetType
+    func_pat = re.compile(
+        r'^func\s+'
+        r'(?:\(\s*\w+\s+\*?(\w+)\s*\)\s*)?'  # optional receiver: (r *RecvType)
+        r'(\w+)\s*'                             # func/method name
+        r'\(([^)]*)\)'                          # params
+        r'(?:\s*(?:\([^)]*\)|[\w\[\]*]+))?',   # optional return type
+        re.MULTILINE,
+    )
+    for m in func_pat.finditer(source):
+        receiver = m.group(1)  # may be None
+        name = m.group(2)
+        params_raw = m.group(3).strip()
+
+        # Extract type-only signature
+        param_types = []
+        for part in params_raw.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            tokens = part.split()
+            # Go params: "name type" or "type" only
+            type_part = tokens[-1] if tokens else '_'
+            type_part = type_part.lstrip('*[]')
+            if type_part:
+                param_types.append(type_part)
+
+        sig = f"({', '.join(param_types)})"
+
+        if receiver and receiver in structs:
+            structs[receiver].methods.append(MethodSkeleton(name=name, signature=sig))
+        elif receiver:
+            # receiver type not yet seen (possibly defined elsewhere)
+            if receiver not in structs:
+                structs[receiver] = ClassSkeleton(name=receiver, bases=["struct"])
+            structs[receiver].methods.append(MethodSkeleton(name=name, signature=sig))
+        else:
+            skeleton.top_level_functions.append(MethodSkeleton(name=name, signature=sig))
+
+    skeleton.classes = list(structs.values())
+    return skeleton
+
+
 # ── 指纹计算 ────────────────────────────────────────────────────────────────
 
+def _semantic_sig(node: "ast.FunctionDef | ast.AsyncFunctionDef") -> str:
+    """
+    语义签名：仅保留参数类型注解和返回类型，剥离参数名和默认值。
+
+    目的：避免因重命名参数或修改默认值（语义不变）导致的"虚假漂移"。
+    格式：(Type1, Type2, *Type3, **Type4) -> RetType
+    """
+    args = node.args
+    type_parts = []
+
+    for arg in args.args:
+        ann = _unparse_annotation(arg.annotation)
+        type_parts.append(ann if ann else "_")
+
+    if args.vararg:
+        ann = _unparse_annotation(args.vararg.annotation)
+        type_parts.append(f"*{ann}" if ann else "*_")
+
+    if args.kwarg:
+        ann = _unparse_annotation(args.kwarg.annotation)
+        type_parts.append(f"**{ann}" if ann else "**_")
+
+    ret = _unparse_annotation(node.returns)
+    ret_str = f" -> {ret}" if ret else ""
+    return f"({', '.join(type_parts)}){ret_str}"
+
+
+def _strip_param_names(sig: str) -> str:
+    """
+    从签名字符串中剥离参数名，只保留类型注解。
+
+    输入:  (self, name: str, value: int = 0, *args: Any, **kw: dict) -> None
+    输出:  (_, str, int, *Any, **dict) -> None
+
+    这样当开发者重命名参数（name→n）或修改默认值时，哈希不变，
+    避免 Black/Ruff 格式化或无意义改动触发"虚假漂移"。
+    """
+    import re as _re
+    # 分离参数体和返回值
+    m = _re.match(r'^\((.*)\)(.*)', sig, _re.DOTALL)
+    if not m:
+        return sig
+    params_str, ret_str = m.group(1), m.group(2)
+    if not params_str.strip():
+        return f"(){ret_str}"
+
+    result_params = []
+    for param in params_str.split(','):
+        param = param.strip()
+        if not param:
+            continue
+        # *args / **kwargs 前缀
+        prefix = ''
+        if param.startswith('**'):
+            prefix = '**'
+            param = param[2:]
+        elif param.startswith('*'):
+            prefix = '*'
+            param = param[1:]
+
+        # 去掉默认值 (= ...) 部分
+        param = _re.sub(r'\s*=.*$', '', param).strip()
+        # 提取类型注解：name: Type → Type
+        if ':' in param:
+            type_part = param.split(':', 1)[1].strip()
+        else:
+            type_part = '_'  # 无类型注解用 _ 占位
+        result_params.append(prefix + type_part)
+
+    return f"({', '.join(result_params)}){ret_str}"
+
+
 def _compute_fingerprint(skeleton: FileSkeleton) -> str:
-    """基于骨架结构计算 SHA-256 指纹（用于 ast_diff 变更检测）。"""
+    """
+    基于语义骨架计算 SHA-256 指纹（用于 ast_diff 变更检测）。
+
+    语义哈希策略（防"虚假漂移"）：
+      - 只对类名、方法名、参数类型注解和返回类型取哈希
+      - 通过 _strip_param_names() 剥离参数名和默认值
+      - 参数重命名、加注释、Black/Ruff 格式化均不影响哈希
+    """
     parts = []
     for cls in sorted(skeleton.classes, key=lambda c: c.name):
         parts.append(f"class:{cls.name}({','.join(cls.bases)})")
         for m in sorted(cls.methods, key=lambda x: x.name):
-            parts.append(f"  method:{m.name}{m.signature}")
+            sem_sig = _strip_param_names(m.signature)
+            parts.append(f"  method:{m.name}{sem_sig}")
     for fn in sorted(skeleton.top_level_functions, key=lambda x: x.name):
-        parts.append(f"func:{fn.name}{fn.signature}")
+        sem_sig = _strip_param_names(fn.signature)
+        parts.append(f"func:{fn.name}{sem_sig}")
     content = "\n".join(parts)
     return "sha256:" + hashlib.sha256(content.encode()).hexdigest()[:16]
 
@@ -413,7 +644,7 @@ class AstSkeletonBuilder:
             if entry.is_dir():
                 yield from self._iter_files(entry)
             elif entry.is_file():
-                if entry.suffix in _PYTHON_EXTS or entry.suffix in _TS_EXTS:
+                if entry.suffix in (_PYTHON_EXTS | _TS_EXTS | _JAVA_EXTS | _GO_EXTS):
                     yield entry
 
     def _parse_file(self, path: Path, rel: str, lang_hint: str) -> Optional[FileSkeleton]:
@@ -430,6 +661,10 @@ class AstSkeletonBuilder:
             return _parse_python(source, rel)
         elif suffix in _TS_EXTS:
             return _parse_typescript(source, rel)
+        elif suffix in _JAVA_EXTS:
+            return _parse_java(source, rel)
+        elif suffix in _GO_EXTS:
+            return _parse_go(source, rel)
         return None
 
 

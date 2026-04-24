@@ -1,0 +1,25 @@
+# spring_boot/constraints/hard_rules.yaml
+rules:
+  - id: no_repository_in_controller
+    description: Controller 禁止直接注入 Repository，必须通过 Service
+    pattern: "@Autowired.*Repository|@Inject.*Repository"
+    scope: ["src/main/java/**/controller"]
+    severity: ERROR
+
+  - id: dto_required_for_api
+    description: REST API 请求/响应必须使用 DTO，不得直接暴露 @Entity
+    pattern: "@RequestBody\s+\w+Entity|ResponseEntity<\w+Entity>"
+    scope: ["src/main/java/**/controller"]
+    severity: ERROR
+
+  - id: transactional_in_service
+    description: 涉及写操作的 Service 方法必须有 @Transactional 注解
+    pattern: "public void (save|update|delete|create)(?!.*@Transactional)"
+    scope: ["src/main/java/**/service"]
+    severity: WARN
+
+  - id: migration_with_schema_change
+    description: 修改 @Entity 字段时必须同步生成 Flyway/Liquibase 迁移脚本
+    trigger_pattern: "@Column.*|@JoinColumn.*"
+    requires: ["src/main/resources/db/migration/**"]
+    severity: CRITICAL

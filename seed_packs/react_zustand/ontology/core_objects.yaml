@@ -1,0 +1,29 @@
+# react_zustand/ontology/core_objects.yaml
+# React + Zustand 前端业务概念
+object_types:
+  - id: ZustandStore
+    description: Zustand 状态切片，管理单一业务域的状态
+    attributes:
+      - name: state
+        type: Record<string, unknown>
+        required: true
+      - name: actions
+        type: Record<string, Function>
+        required: true
+
+  - id: ApiService
+    description: 封装 HTTP 请求的服务对象，统一处理认证和错误
+    attributes:
+      - name: baseUrl
+        type: string
+        required: true
+      - name: headers
+        type: Record<string, string>
+        required: false
+
+  - id: ReactComponent
+    description: 无状态或受控的 React 组件，通过 props 接收数据
+    attributes:
+      - name: props
+        type: Record<string, unknown>
+        required: true

@@ -21,7 +21,7 @@ import pytest
 _MMS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_MMS_DIR))
 
-import unit_compare as _uc
+import mms.execution.unit_compare as _uc
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ class TestApply:
             patch("mms.execution.file_applier.FileApplier", mock_applier_cls),
         ):
             # patch DagState 使其抛出 ImportError（测试 except 分支）
-            import dag_model as _dm
+            import mms.dag.dag_model as _dm
             with patch.object(_dm, "DagState", side_effect=Exception("skip")):
                 code = _uc.apply("EP-120", "U1", source="qwen")
 

@@ -147,7 +147,7 @@ class TestScopeGuard:
 
     def test_apply_rejects_out_of_scope_file(self, tmp_path, capsys):
         """LLM 声明的路径不在 unit.files 中时，apply() 应返回 1"""
-        import unit_compare as _uc
+        import mms.execution.unit_compare as _uc
 
         # 创建最小 DAG（unit.files 只允许 allowed.py）
         dag_dir = tmp_path / "docs" / "memory" / "_system" / "dag"
@@ -197,7 +197,7 @@ class TestScopeGuard:
 
     def test_apply_allows_in_scope_file(self, tmp_path, capsys):
         """LLM 声明的路径在 unit.files 中时，apply() 不应被 Scope Guard 阻止"""
-        import unit_compare as _uc
+        import mms.execution.unit_compare as _uc
         import json
 
         # 创建 DAG（unit.files 允许 target.py）
@@ -252,7 +252,7 @@ class TestArchCheckExceptionPath:
 
     def test_unit_runner_arch_check_exception_returns_false(self):
         """mms.execution.unit_runner._run_arch_check: subprocess 异常 → (False, ...)"""
-        import unit_runner as _ur
+        import mms.execution.unit_runner as _ur
 
         with (
             patch.object(_ur, "_ROOT", Path("/")),
@@ -278,7 +278,7 @@ class TestArchCheckExceptionPath:
 
     def test_postcheck_arch_check_exception_returns_false(self):
         """mms.workflow.postcheck.run_arch_check_post: subprocess 异常 → (False, -1, [msg])"""
-        import postcheck as _pc
+        import mms.workflow.postcheck as _pc
 
         arch_check_path = _MMS_DIR / "src/mms/analysis/arch_check.py"
         if not arch_check_path.exists():
@@ -345,7 +345,7 @@ class TestBailianModelTracker:
 
         with (
             patch("urllib.request.urlopen", return_value=mock_resp),
-            patch("mms.model_tracker.record", side_effect=fake_track),
+            patch("mms.utils.model_tracker.record", side_effect=fake_track),
         ):
             result = provider.complete("测试 prompt", max_tokens=1024)
 
@@ -370,7 +370,7 @@ class TestBailianModelTracker:
 
         with (
             patch("urllib.request.urlopen", side_effect=OSError("网络错误")),
-            patch("mms.model_tracker.record", side_effect=fake_track),
+            patch("mms.utils.model_tracker.record", side_effect=fake_track),
         ):
             with pytest.raises(ProviderUnavailableError):
                 provider.complete("测试 prompt")
@@ -390,7 +390,7 @@ class TestUnitContextLayerAlias:
 
     def test_testing_layer_alias_not_frontend(self):
         """testing 层的别名列表不应包含 '前端层'"""
-        import unit_context as _uc
+        import mms.execution.unit_context as _uc
 
         # 提取 layer_aliases 字典中 testing 的值
         import inspect
@@ -405,7 +405,7 @@ class TestUnitContextLayerAlias:
     def test_testing_layer_alias_contains_l5(self):
         """testing 层别名应包含 L5 相关标记"""
         import inspect
-        import unit_context as _uc
+        import mms.execution.unit_context as _uc
         source = inspect.getsource(_uc)
         # 找 layer_aliases 字典定义并验证 testing 行
         in_aliases = False

@@ -1,0 +1,9 @@
+stack_id: spring_boot
+description: "Spring Boot Java 后端栈（Maven / Gradle）"
+always_inject: false
+match_conditions:
+  - required_packages: ["spring_boot"]
+  - optional_packages: ["spring_boot_starter_web", "hibernate", "mybatis", "spring_data_jpa"]
+    min_hits: 1
+  - dir_hints: ["src/main/java", "src/main/resources"]
+    min_hits: 1

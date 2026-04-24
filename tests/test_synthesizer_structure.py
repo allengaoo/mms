@@ -42,7 +42,7 @@ class TestSynthesizerPromptStructure:
 
     def test_synthesis_user_contains_scope_requirement(self):
         """_SYNTHESIS_USER 必须明确要求 EP 文件包含 ## Scope 节"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "## Scope" in _s._SYNTHESIS_USER, (
             "_SYNTHESIS_USER prompt 中缺少对 '## Scope' 节的要求，"
             "会导致 LLM 生成的 EP 文件缺失 Scope 表格，mms precheck 报 ⚠️"
@@ -50,7 +50,7 @@ class TestSynthesizerPromptStructure:
 
     def test_synthesis_user_contains_testing_plan_requirement(self):
         """_SYNTHESIS_USER 必须明确要求 EP 文件包含 ## Testing Plan 节"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "## Testing Plan" in _s._SYNTHESIS_USER, (
             "_SYNTHESIS_USER prompt 中缺少对 '## Testing Plan' 节的要求，"
             "会导致 LLM 生成的 EP 文件缺失测试声明，mms precheck 报 ⚠️"
@@ -58,7 +58,7 @@ class TestSynthesizerPromptStructure:
 
     def test_synthesis_user_contains_scope_table_format(self):
         """_SYNTHESIS_USER 应包含 Scope 表格格式示例（| Unit | 操作描述 | 涉及文件 |）"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         # 表格必须有 Unit 列和文件列（引导 LLM 生成正确格式）
         assert "Unit" in _s._SYNTHESIS_USER and "涉及文件" in _s._SYNTHESIS_USER, (
             "_SYNTHESIS_USER 缺少 Scope 表格格式示例，LLM 可能生成非标准格式"
@@ -66,7 +66,7 @@ class TestSynthesizerPromptStructure:
 
     def test_synthesis_user_contains_precheck_warning(self):
         """_SYNTHESIS_USER 应提示 Scope/Testing Plan 是 precheck 必要结构"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "precheck" in _s._SYNTHESIS_USER or "mms precheck" in _s._SYNTHESIS_USER, (
             "_SYNTHESIS_USER 未说明 Scope/Testing Plan 是 precheck 必要结构，"
             "LLM 可能不理解为何要生成这两节"
@@ -82,7 +82,7 @@ class TestEpDevopsTemplate:
 
     def test_ep_devops_in_supported_templates(self):
         """ep-devops 必须在 SUPPORTED_TEMPLATES 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-devops" in _s.SUPPORTED_TEMPLATES, (
             "ep-devops 未注册到 SUPPORTED_TEMPLATES，运维类任务无法使用 --template ep-devops"
         )
@@ -112,14 +112,14 @@ class TestEpDevopsTemplate:
 
     def test_ep_devops_in_codemap_sections(self):
         """ep-devops 必须在 _TEMPLATE_CODEMAP_SECTIONS 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-devops" in _s._TEMPLATE_CODEMAP_SECTIONS, (
             "ep-devops 未注册到 _TEMPLATE_CODEMAP_SECTIONS，codemap 截取逻辑会跳过它"
         )
 
     def test_ep_devops_in_e2e_keywords(self):
         """ep-devops 必须在 _TEMPLATE_E2E_KEYWORDS 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-devops" in _s._TEMPLATE_E2E_KEYWORDS, (
             "ep-devops 未注册到 _TEMPLATE_E2E_KEYWORDS，e2e 追踪切片会跳过它"
         )
@@ -134,7 +134,7 @@ class TestEpOthersTemplate:
 
     def test_ep_others_in_supported_templates(self):
         """ep-others 必须在 SUPPORTED_TEMPLATES 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-others" in _s.SUPPORTED_TEMPLATES, (
             "ep-others 未注册到 SUPPORTED_TEMPLATES，通用兜底任务无法使用 --template ep-others"
         )
@@ -164,14 +164,14 @@ class TestEpOthersTemplate:
 
     def test_ep_others_in_codemap_sections(self):
         """ep-others 必须在 _TEMPLATE_CODEMAP_SECTIONS 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-others" in _s._TEMPLATE_CODEMAP_SECTIONS, (
             "ep-others 未注册到 _TEMPLATE_CODEMAP_SECTIONS，codemap 截取逻辑会跳过它"
         )
 
     def test_ep_others_in_e2e_keywords(self):
         """ep-others 必须在 _TEMPLATE_E2E_KEYWORDS 中注册"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         assert "ep-others" in _s._TEMPLATE_E2E_KEYWORDS, (
             "ep-others 未注册到 _TEMPLATE_E2E_KEYWORDS，e2e 追踪切片会跳过它"
         )
@@ -186,7 +186,7 @@ class TestAllTemplatesConsistency:
 
     def test_all_registered_templates_have_files(self):
         """所有 SUPPORTED_TEMPLATES 中的模板必须有对应的 .md 文件"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         templates_dir = _ROOT / "docs" / "memory" / "templates"
         missing = []
         for name in _s.SUPPORTED_TEMPLATES:
@@ -200,7 +200,7 @@ class TestAllTemplatesConsistency:
 
     def test_all_templates_contain_scope_section(self):
         """所有 EP 模板都应包含 ## Scope 节（引导 LLM 生成标准格式）"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         templates_dir = _ROOT / "docs" / "memory" / "templates"
         missing_scope = []
         for name in _s.SUPPORTED_TEMPLATES:
@@ -216,7 +216,7 @@ class TestAllTemplatesConsistency:
 
     def test_all_templates_contain_testing_plan_section(self):
         """所有 EP 模板都应包含 ## Testing Plan 节（引导 LLM 生成标准格式）"""
-        import synthesizer as _s
+        import mms.workflow.synthesizer as _s
         templates_dir = _ROOT / "docs" / "memory" / "templates"
         missing_testing = []
         for name in _s.SUPPORTED_TEMPLATES:

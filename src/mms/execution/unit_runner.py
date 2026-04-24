@@ -418,7 +418,7 @@ def _run_arch_check(files: List[str]) -> tuple:
     运行 arch_check，返回 (passed: bool, output: str)。
     仅检查本次涉及的文件（精准模式）。
     """
-    arch_check = _HERE / "mms.analysis.arch_check.py"
+    arch_check = _HERE.parent / "analysis" / "arch_check.py"
     if not arch_check.exists():
         return True, "（arch_check.py 不存在，跳过）"
 
@@ -865,6 +865,26 @@ class UnitRunner:
                 continue
 
             print(f"  {_G}✅{_X} 解析到 {len(changes)} 个文件变更")
+
+            # Step 3.5: 双角色内部评审（feature flag，默认关闭）
+            try:
+                from mms.execution.internal_reviewer import maybe_review  # type: ignore[import]
+                _, ir_accepted, ir_feedback = maybe_review(
+                    diff_content=raw_response,
+                    ontology_context=unit_context[:3000],
+                    unit_meta={"ep_id": ep_id, "unit_id": unit_id},
+                )
+                if not ir_accepted:
+                    attempt_log.error = f"InternalReviewer 打回：{ir_feedback[:200]}"
+                    result.attempt_logs.append(attempt_log)
+                    error_context = (
+                        f"## 内部评审拒绝\n"
+                        f"Reviewer（qwen3-32b）发现以下违规，请修复后重新生成：\n{ir_feedback}"
+                    )
+                    print(f"  {_Y}⚠️{_X}  InternalReviewer 打回，进入重试")
+                    continue
+            except ImportError:
+                pass
 
             # save-output 模式（EP-120）：存盘 qwen.txt + context.md，不写业务文件
             if save_output:

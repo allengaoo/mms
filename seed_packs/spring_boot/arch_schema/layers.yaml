@@ -1,0 +1,32 @@
+# spring_boot/arch_schema/layers.yaml
+extends: base
+layers_override:
+  - id: L1_entity
+    name: Entity / Domain Model
+    keywords: [entity, model, domain, value_object]
+    path_prefixes: ["src/main/java/**/domain", "src/main/java/**/model", "src/main/java/**/entity"]
+    description: JPA 实体和领域对象
+
+  - id: L2_repository
+    name: Repository
+    keywords: [repository, dao, mapper]
+    path_prefixes: ["src/main/java/**/repository", "src/main/java/**/dao"]
+    description: Spring Data JPA / MyBatis 数据访问层
+
+  - id: L3_service
+    name: Service
+    keywords: [service, serviceimpl, application]
+    path_prefixes: ["src/main/java/**/service"]
+    description: 带 @Service 注解的业务逻辑层
+
+  - id: L4_controller
+    name: Controller / REST API
+    keywords: [controller, restcontroller, resource, api]
+    path_prefixes: ["src/main/java/**/controller", "src/main/java/**/api"]
+    description: Spring MVC @RestController 接口层
+
+  - id: L5_config
+    name: Configuration / Infrastructure
+    keywords: [config, configuration, bean, kafka, redis]
+    path_prefixes: ["src/main/java/**/config", "src/main/java/**/infrastructure"]
+    description: Spring @Configuration 和基础设施 Bean

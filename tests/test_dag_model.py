@@ -163,7 +163,7 @@ class TestDagState:
 
     def test_save_and_load(self, tmp_path, monkeypatch):
         """测试 save/load 序列化往返"""
-        import dag_model as dm
+        import mms.dag.dag_model as dm
         monkeypatch.setattr(dm, "_DAG_DIR", tmp_path)
 
         dag = _make_simple_dag()

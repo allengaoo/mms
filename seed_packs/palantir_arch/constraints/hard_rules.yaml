@@ -1,0 +1,26 @@
+# palantir_arch/constraints/hard_rules.yaml
+# Palantir 风格强制架构约束
+rules:
+  - id: no_orm_in_domain
+    description: 领域层（L1_core）禁止直接引用 ORM 框架（SQLModel/SQLAlchemy）
+    pattern: "from (sqlmodel|sqlalchemy|models).*import"
+    scope: ["backend/app/core/domain", "backend/app/domain"]
+    severity: CRITICAL
+    
+  - id: dependency_inversion
+    description: Use Case 必须通过 Port 接口访问外部，不得直接实例化 Repository
+    pattern: "from.*infrastructure.*import.*Repository|= \w+Repository()"
+    scope: ["backend/app/services/control", "backend/app/application"]
+    severity: ERROR
+    
+  - id: no_http_in_usecase
+    description: Use Case 禁止导入任何 HTTP 框架（FastAPI/Starlette）
+    pattern: "from fastapi|from starlette"
+    scope: ["backend/app/services/control", "backend/app/application"]
+    severity: ERROR
+    
+  - id: event_sourcing_required
+    description: AggregateRoot 的状态变更必须通过 domain_events 发布，不得静默修改字段
+    pattern: "self\.(?!domain_events|id|version)\w+\s*="
+    scope: ["backend/app/core/domain", "backend/app/domain"]
+    severity: WARN

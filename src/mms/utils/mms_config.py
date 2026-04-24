@@ -126,6 +126,15 @@ class MmsConfig:
         # fallback: config.yaml → runner.retry.max_retries (default=2)
         return int(_get(self._raw, "runner", "retry", "max_retries", default=2))
 
+    # ── runner.internal_review ────────────────────────────────────────────
+
+    @property
+    def runner_enable_internal_review(self) -> bool:
+        # fallback: config.yaml → runner.enable_internal_review (default=False)
+        # 也可通过环境变量 MMS_ENABLE_INTERNAL_REVIEW=true 开启
+        val = _get(self._raw, "runner", "enable_internal_review", default=False)
+        return bool(val)
+
     # ── runner.scope_guard ────────────────────────────────────────────────
 
     @property

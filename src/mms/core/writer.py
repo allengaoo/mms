@@ -4,6 +4,10 @@
 策略：先写 .tmp 临时文件，成功后 os.rename()（POSIX 原子操作）。
 保证：写入中途崩溃不会产生半写入的损坏文件。
 
+SanitizationGate（脱敏屏障）：
+  在写入 docs/memory/ 路径下的文件前，自动扫描并替换敏感凭证。
+  可通过环境变量 MMS_SANITIZE_DISABLE=1 关闭（仅用于测试/调试）。
+
 适用场景：
   - MEM-*.md 记忆文件写入
   - MEMORY_INDEX.json 索引更新
@@ -13,6 +17,17 @@
 import os
 import tempfile
 from pathlib import Path
+
+# SanitizationGate 对 docs/memory/ 路径下的文件强制生效
+_MEMORY_PATH_MARKER = str(Path("docs") / "memory")
+
+
+def _should_sanitize(path: Path) -> bool:
+    """判断路径是否属于记忆库，需要脱敏扫描"""
+    if os.environ.get("MMS_SANITIZE_DISABLE") == "1":
+        return False
+    path_str = str(path)
+    return _MEMORY_PATH_MARKER in path_str or "shared" in path_str
 
 
 def atomic_write(path, content: str, encoding: str = "utf-8") -> None:
@@ -38,6 +53,15 @@ def atomic_write(path, content: str, encoding: str = "utf-8") -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    # SanitizationGate：对记忆库路径执行脱敏扫描
+    if _should_sanitize(path):
+        try:
+            from mms.core.sanitize import sanitize_or_raise
+            content = sanitize_or_raise(content, path_hint=str(path))
+        except ImportError:
+            pass  # sanitize 模块不可用时静默跳过
+
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     try:
         tmp_path.write_text(content, encoding=encoding)

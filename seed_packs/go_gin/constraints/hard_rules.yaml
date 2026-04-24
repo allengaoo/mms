@@ -1,0 +1,26 @@
+# go_gin/constraints/hard_rules.yaml
+rules:
+  - id: no_db_in_handler
+    description: Gin Handler 禁止直接操作数据库，必须通过 Use Case / Service
+    pattern: "db\.Where|gorm\.DB.*in.*handler"
+    scope: ["internal/handler", "cmd"]
+    severity: ERROR
+
+  - id: interface_for_repository
+    description: Repository 必须定义为 interface，不得在 Use Case 中直接依赖具体实现
+    pattern: "type.*Repository struct"
+    scope: ["internal/usecase", "internal/service"]
+    severity: ERROR
+
+  - id: error_wrapping_required
+    description: 函数返回 error 时必须使用 fmt.Errorf("...%%w", err) 包裹上下文
+    pattern: "return err$"
+    scope: ["internal"]
+    severity: WARN
+    message: "裸 return err 缺少上下文信息，使用 fmt.Errorf 包裹"
+
+  - id: migration_with_gorm_model_change
+    description: 修改 GORM 模型字段时必须同步提供迁移脚本
+    trigger_pattern: "gorm:"column:"
+    requires: ["migrations/**/*.go"]
+    severity: CRITICAL

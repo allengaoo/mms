@@ -61,21 +61,14 @@ class LevelResult:
 @dataclass
 class CodegenMetricResult:
     """
-    单条任务的完整代码生成质量评估结果（EP-132）
+    单条任务的完整代码生成质量评估结果（EP-132 v2.0）
 
-    字段扩展方式：
-      - 添加新字段到此 dataclass
-      - 在 calc_codegen_score 中更新加权公式
-      - 在 CodeGenEvaluator 中添加对应评估逻辑
+    核心指标（v2.0）：
+      pass_at_1:    一次执行即通过 pytest 的概率（布尔值→同批次内统计）
+      resolve_rate: 在 3 级 Feedback 回退机制下的最终问题修复率
 
-    综合分计算公式（EP-132 v1.0）：
-      codegen_score = (
-          syntax_pass_rate * 0.10
-        + contract_pass_rate * 0.30
-        + arch_check_pass_rate * 0.30
-        + test_pass_rate * 0.30
-      )
-      其中：NaN 级别的权重重新分配给其他有效级别（等比分配）
+    Legacy 指标（保留兼容性）：
+      codegen_score: 旧版加权公式评分（已降级为参考指标，不作为主评分）
     """
     task_id: str                        # 任务 ID（如 CG-001）
     category: str                       # 任务类别
@@ -90,6 +83,40 @@ class CodegenMetricResult:
     retrieval_tokens: int = 0           # 检索/上下文 token 数
     latency_ms: float = 0.0             # 端到端延迟（毫秒）
     system_name: str = ""               # 索引系统名（pageindex/hybrid_rag/ontology）
+
+    # ── 核心指标（v2.0）────────────────────────────────────────────────────────
+    # Pass@1：首次 pytest 执行是否通过（True = 一次成功）
+    # 由 CodeGenEvaluator 在 level4_test 评估后设置
+    _first_attempt_passed: bool = field(default=False)
+
+    # Resolve Rate：经过 ≤ 3 次 Feedback 回退后是否最终通过
+    # True = 在 max_retries 次内成功修复，False = 全部失败
+    _resolved: bool = field(default=False)
+
+    # 实际使用的回退次数（0 = 首次即过，1~3 = 经过N次反馈）
+    _feedback_rounds: int = field(default=0)
+
+    @property
+    def pass_at_1(self) -> bool:
+        """
+        Pass@1：首次执行即通过 pytest 的概率。
+
+        定义：首次代码生成后，不经过任何 Feedback 回退，直接通过 L4 测试。
+        计算：_first_attempt_passed 在评估器首次 pytest 调用成功时置 True。
+        """
+        return self._first_attempt_passed
+
+    @property
+    def resolve_rate(self) -> bool:
+        """
+        Resolve Rate：在 3 级 Feedback 回退机制下的最终修复成功率。
+
+        定义：经过至多 max_retries（通常为 3）次 Feedback 修正后，最终通过 pytest。
+        解读：
+          True  → 问题已解决（可能首次，也可能经过1~3轮反馈）
+          False → 3次反馈后仍未通过
+        """
+        return self._resolved
 
     @property
     def codegen_score(self) -> float:
@@ -165,6 +192,11 @@ class CodegenMetricResult:
                 "errors": self.level4_test.errors,
                 "skipped": self.level4_test.skipped,
             },
+            # v2.0 核心指标（Pass@1 + Resolve Rate）
+            "pass_at_1": self.pass_at_1,
+            "resolve_rate": self.resolve_rate,
+            "feedback_rounds": self._feedback_rounds,
+            # Legacy 参考指标
             "codegen_score": _safe_float(self.codegen_score),
             "cost_efficiency": _safe_float(self.cost_efficiency),
             "generated_tokens": self.generated_tokens,
@@ -176,22 +208,50 @@ class CodegenMetricResult:
 @dataclass
 class CodegenSystemSummary:
     """
-    一个索引系统在所有任务上的聚合统计（EP-132）
+    一个索引系统在所有任务上的聚合统计（EP-132 v2.0）
 
-    指标计算公式：
+    核心指标（v2.0）：
+      pass_at_1_rate:  Pass@1 通过率 = 首次即通过的任务数 / 总任务数
+      resolve_rate:    Resolve Rate = 最终解决的任务数 / 总任务数
+
+    Legacy 参考指标（保留兼容性）：
       avg_score = mean(codegen_score for all tasks where not NaN)
-      by_category = {cat: mean(score) for each category}
-      by_difficulty = {diff: mean(score) for each difficulty}
-      avg_efficiency = mean(cost_efficiency for all tasks where not NaN)
-      syntax_pass_rate = sum(L1.passed) / sum(L1.total)
-      contract_pass_rate = sum(L2.passed) / sum(L2.total)
     """
     system_name: str
     task_results: List[CodegenMetricResult] = field(default_factory=list)
 
     @property
+    def pass_at_1_rate(self) -> float:
+        """
+        Pass@1 通过率：首次执行即通过 pytest 的任务比例。
+
+        公式：pass_at_1_rate = count(pass_at_1 == True) / total_tasks
+        """
+        if not self.task_results:
+            return float("nan")
+        return sum(1 for r in self.task_results if r.pass_at_1) / len(self.task_results)
+
+    @property
+    def final_resolve_rate(self) -> float:
+        """
+        最终修复率：经过至多 3 次 Feedback 后最终成功的任务比例。
+
+        公式：resolve_rate = count(resolve_rate == True) / total_tasks
+        """
+        if not self.task_results:
+            return float("nan")
+        return sum(1 for r in self.task_results if r.resolve_rate) / len(self.task_results)
+
+    @property
+    def avg_feedback_rounds(self) -> float:
+        """平均反馈轮次（0 = 首次即过，越低越好）"""
+        if not self.task_results:
+            return float("nan")
+        return sum(r._feedback_rounds for r in self.task_results) / len(self.task_results)
+
+    @property
     def avg_score(self) -> float:
-        """平均综合分"""
+        """平均综合分（Legacy 参考指标）"""
         valid = [r.codegen_score for r in self.task_results if not math.isnan(r.codegen_score)]
         return sum(valid) / len(valid) if valid else float("nan")
 

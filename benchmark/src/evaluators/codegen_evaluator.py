@@ -173,8 +173,23 @@ class CodeGenEvaluator:
             result.level3_arch = LevelResult(3, "arch_check", 0, 0, skipped=True, skip_reason="配置跳过")
 
         # Level 4: 参考测试（依赖 pytest + 参考测试文件）
+        # v2.0: 同时计算 Pass@1 和 Resolve Rate
         if 4 not in self.config.skip_levels:
-            result.level4_test = self._run_reference_tests(generated_source, task_spec, task_id)
+            l4 = self._run_reference_tests(generated_source, task_spec, task_id)
+            result.level4_test = l4
+            # Pass@1: 首次 L4 测试通过 = pass_rate == 1.0（全部 pytest 通过）
+            if not l4.skipped and l4.pass_rate == 1.0:
+                result._first_attempt_passed = True
+                result._resolved = True
+                result._feedback_rounds = 0
+            else:
+                # Resolve Rate: 模拟 Feedback 回退（Benchmark 中以 L4 结果代理）
+                # 在真实 UnitRunner 集成中，_feedback_rounds 由 runner 设置
+                # Benchmark 简化：若 L4 不通过，resolve=False，feedback_rounds=max_retries
+                max_fb = getattr(self.config, 'max_feedback_rounds', 3)
+                result._first_attempt_passed = False
+                result._resolved = False
+                result._feedback_rounds = max_fb
         else:
             result.level4_test = LevelResult(4, "test_pass", 0, 0, skipped=True, skip_reason="配置跳过")
 
