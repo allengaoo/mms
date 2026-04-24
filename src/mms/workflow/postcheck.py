@@ -458,6 +458,35 @@ def run_postcheck(
         results["doc_drift"] = {"status": "WARN", "summary": doc_summary}
         warnings += 1
 
+    # ── 4.5. 记忆新鲜度检测（Phase 4-A）────────────────────────────────────────
+    print(f"\n{_C}▶ Step 4.5 · 记忆新鲜度检测（freshness_checker）{_X}")
+    try:
+        from mms.memory.freshness_checker import check_freshness
+        freshness_report = check_freshness(scope_files)
+        results["freshness"] = {
+            "status": "WARN" if not freshness_report.is_clean else "PASS",
+            "stale_count": len(freshness_report.stale_ids),
+            "propagated_count": len(freshness_report.propagated_ids),
+            "stale_ids": freshness_report.stale_ids,
+            "propagated_ids": freshness_report.propagated_ids,
+            "summary": (
+                f"发现 {len(freshness_report.stale_ids)} 条记忆可能已过时"
+                if not freshness_report.is_clean
+                else "所有记忆新鲜度正常"
+            ),
+        }
+        for line in freshness_report.summary_lines():
+            if "⚠️" in line or "⚡" in line:
+                _warn(line.strip())
+                warnings += 1
+            elif "✅" in line:
+                _ok(line.strip())
+            else:
+                _info(line.strip())
+    except Exception as _fe:  # noqa: BLE001
+        results["freshness"] = {"status": "SKIPPED", "summary": f"模块未加载：{_fe}"}
+        _info(f"freshness_checker：跳过（{_fe}）")
+
     # ── 5. 保存报告 ──────────────────────────────────────────────────────────
     if failures > 0:
         results["overall"] = "FAIL"

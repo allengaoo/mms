@@ -500,6 +500,17 @@ def cmd_status(args: argparse.Namespace) -> int:
                 )
             info("运行 `mms usage` 查看详细报告（Token 分布 / 场景明细）")
 
+    # 记忆图健康监控（Phase 4-B）
+    print(f"\n{c('【记忆图健康（Memory Graph Health）】', _CYAN)}")
+    try:
+        from mms.memory.graph_health import compute_health_metrics
+        health = compute_health_metrics()
+        use_color = True
+        for line in health.format_lines(use_color=use_color):
+            print(line)
+    except Exception as _gh_err:  # noqa: BLE001
+        info(f"记忆图健康读取失败：{_gh_err}")
+
     print()
     return 0
 

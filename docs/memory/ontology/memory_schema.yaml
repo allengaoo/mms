@@ -152,6 +152,47 @@ fields:
       - "MEM-L-024"
       - "BIZ-001"
 
+  # ── v4.0 新增：Layer 2 图边字段（by _auto_link()）──────────────────────────
+
+  about_concepts:
+    type: list[string]
+    required: false
+    optional: true
+    v4_new: true
+    description: |
+      本记忆描述的领域概念 ID 列表（DomainConcept 节点的 ID）。
+      由 _auto_link() 根据 _system/routing/layers.yaml 的 keywords 字段
+      自动匹配填充，也可人工添加。
+      是 find_by_concept() 的 O(1) 检索入口（通过 _concept_to_ids 反向索引）。
+    example:
+      - "l3-domain"
+      - "l2-infrastructure"
+
+  contradicts:
+    type: list[string]
+    required: false
+    optional: true
+    v4_new: true
+    description: |
+      与本记忆在技术判断上存在矛盾的其他记忆 ID 列表。
+      矛盾关系是对称的（A contradicts B = B contradicts A）。
+      当前版本需人工填写；未来版本计划 LLM 辅助检测。
+    example:
+      - "AD-002-REST-FIRST"
+
+  derived_from:
+    type: list[string]
+    required: false
+    optional: true
+    v4_new: true
+    description: |
+      本记忆提炼自哪些记忆（来源）的 ID 列表。
+      典型场景：Pattern 从多条 Lesson 归纳而来时，填写来源 Lesson 的 ID。
+      用于知识溯源（knowledge_provenance 遍历路径）。
+    example:
+      - "MEM-L-0031"
+      - "MEM-L-0042"
+
   # ── EP-130 新增：AST 物理绑定字段 ──────────────────────────────────────────
 
   ast_pointer:

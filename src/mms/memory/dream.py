@@ -311,6 +311,190 @@ def _next_draft_path(ep_id: str) -> Path:
     return _DREAM_DIR / f"{prefix}{n:02d}.md"
 
 
+# ── Auto-Link：自动建边（Phase 3, MMS v4.0）─────────────────────────────────
+
+_FILE_PATH_RE = re.compile(
+    r"(?:^|\s|[`'\"])("
+    r"[\w./\-]+"
+    r"\.(?:py|ts|tsx|js|java|go|yaml|yml|json|toml|md)"
+    r")(?:\s|[`'\"]|$)",
+    re.MULTILINE,
+)
+
+
+def _extract_file_paths(content: str) -> List[str]:
+    """从文本中提取代码/配置文件路径（零 LLM，正则匹配）。"""
+    matches = _FILE_PATH_RE.findall(content)
+    result = []
+    seen: set = set()
+    for m in matches:
+        m = m.strip("\"'`")
+        if m and m not in seen and len(m) > 4:
+            seen.add(m)
+            result.append(m)
+    return result
+
+
+def _match_domain_concepts(content: str, tags: List[str]) -> List[str]:
+    """
+    从 _system/routing/layers.yaml 的 keywords 字段匹配领域概念 ID。
+    零 LLM，基于关键词规则。
+    """
+    try:
+        import yaml  # type: ignore[import]
+        routing_dir = _MEMORY_ROOT / "_system" / "routing"
+        layers_file = routing_dir / "layers.yaml"
+        if not layers_file.exists():
+            return []
+        data = yaml.safe_load(layers_file.read_text(encoding="utf-8")) or {}
+        layers = data.get("layers", {})
+
+        content_lower = content.lower()
+        tags_lower = [t.lower() for t in tags]
+        matched: List[str] = []
+
+        for layer_id, layer_data in layers.items():
+            if not isinstance(layer_data, dict):
+                continue
+            keywords = layer_data.get("keywords", []) or []
+            for kw in keywords:
+                kw_lower = kw.lower()
+                if kw_lower in content_lower or kw_lower in tags_lower:
+                    concept_id = layer_id.lower().replace("_", "-")
+                    if concept_id not in matched:
+                        matched.append(concept_id)
+                    break
+        return matched
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _find_tag_overlapping_memories(tags: List[str]) -> List[str]:
+    """
+    轻量 impacts 边候选：找到与当前记忆 tags 高度重叠的其他 hot 记忆。
+    返回记忆 ID 列表。只在 runner_enable_auto_impacts=True 时调用。
+    """
+    try:
+        from mms.memory.graph_resolver import MemoryGraph
+        graph = MemoryGraph()
+        all_hot = graph.all_hot()
+        tags_set = set(t.lower() for t in tags)
+        overlapping = []
+        for node in all_hot:
+            node_tags = set(t.lower() for t in node.tags)
+            intersection = tags_set & node_tags
+            if len(intersection) >= 2 and len(intersection) / max(len(tags_set), 1) >= 0.5:
+                overlapping.append(node.id)
+        return overlapping[:5]  # 最多 5 个，避免过度建边
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _auto_link(content: str, fm: dict) -> dict:
+    """
+    三步自动建边（纯函数：不修改传入 fm，返回需要合并的字段 dict）。
+
+    Step 1: cites_files  — 正则提取文件路径（零 LLM，< 1ms）
+    Step 2: about_concepts — 从 layers.yaml keywords 匹配领域概念（零 LLM）
+    Step 3: impacts       — tag 重叠检测（可选，受 enable_auto_impacts 控制）
+
+    参数：
+        content : 记忆文件内容（包含正文）
+        fm      : 当前 front-matter dict（只读）
+
+    返回：
+        需要合并回 front-matter 的字段 dict（调用方负责写入）
+    """
+    updates: dict = {}
+
+    # Step 1: cites_files（零 LLM，正则）
+    found_files = _extract_file_paths(content)
+    if found_files:
+        existing = fm.get("cites_files", []) or []
+        if isinstance(existing, str):
+            existing = [existing]
+        merged = sorted(set(list(existing) + found_files))
+        if merged != list(existing):
+            updates["cites_files"] = merged
+
+    # Step 2: about_concepts（零 LLM，keywords 匹配）
+    concepts = _match_domain_concepts(content, fm.get("tags", []) or [])
+    if concepts:
+        existing_concepts = fm.get("about_concepts", []) or []
+        if isinstance(existing_concepts, str):
+            existing_concepts = [existing_concepts]
+        merged_concepts = sorted(set(list(existing_concepts) + concepts))
+        if merged_concepts != list(existing_concepts):
+            updates["about_concepts"] = merged_concepts
+
+    # Step 3: impacts（可选，tag 重叠，受 feature flag 控制）
+    try:
+        enable_auto_impacts = False
+        if _cfg:
+            enable_auto_impacts = getattr(_cfg, "runner_enable_auto_impacts", False)
+    except Exception:  # noqa: BLE001
+        enable_auto_impacts = False
+
+    if enable_auto_impacts and fm.get("tier") == "hot":
+        overlaps = _find_tag_overlapping_memories(fm.get("tags", []) or [])
+        if overlaps:
+            existing_impacts = fm.get("impacts", []) or []
+            if isinstance(existing_impacts, str):
+                existing_impacts = [existing_impacts]
+            merged_impacts = sorted(set(list(existing_impacts) + overlaps))
+            if merged_impacts != list(existing_impacts):
+                updates["impacts"] = merged_impacts
+
+    return updates
+
+
+def _apply_auto_link_to_file(path: Path) -> None:
+    """
+    读取已存在的记忆文件，运行 _auto_link，将更新写回 front-matter。
+    写回前经过 SanitizationGate。
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+        # 简单提取 front-matter dict（复用 graph_resolver 的解析逻辑）
+        from mms.memory.graph_resolver import _parse_frontmatter
+        fm = _parse_frontmatter(content)
+        updates = _auto_link(content, fm)
+
+        if not updates:
+            return  # 无需更新
+
+        # 将更新注入 front-matter（追加新字段，不修改已有字段）
+        def _yaml_list(name: str, items: list) -> str:
+            lines = [f"{name}:"]
+            for item in items:
+                lines.append(f"  - {item}")
+            return "\n".join(lines)
+
+        extra_lines = []
+        for field_name, value in updates.items():
+            if isinstance(value, list):
+                extra_lines.append(_yaml_list(field_name, value))
+            else:
+                extra_lines.append(f"{field_name}: {value}")
+
+        # 在 closing --- 之前插入新字段
+        new_content = re.sub(
+            r"(\n---\n)",
+            "\n" + "\n".join(extra_lines) + r"\1",
+            content,
+            count=1,
+        )
+
+        try:
+            from mms.core.sanitize import sanitize_or_raise
+            new_content = sanitize_or_raise(new_content, path_hint=str(path))
+        except ImportError:
+            pass
+        path.write_text(new_content, encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def save_draft(ep_id: str, draft: Dict) -> Path:
     """将单条草稿保存为标准 MEM 格式的 Markdown 文件"""
     path = _next_draft_path(ep_id)
@@ -350,6 +534,10 @@ access_count: 0
     except ImportError:
         pass
     path.write_text(content, encoding="utf-8")
+
+    # Auto-Link：写入后自动建立图边（cites_files, about_concepts）
+    _apply_auto_link_to_file(path)
+
     return path
 
 
@@ -429,6 +617,9 @@ def promote_draft(draft_path: Path) -> Optional[Path]:
         pass
     target_path.write_text(new_content, encoding="utf-8")
     draft_path.unlink()
+
+    # Auto-Link：promote 后自动建立图边（cites_files, about_concepts）
+    _apply_auto_link_to_file(target_path)
 
     _ok(f"已提升：{target_path.relative_to(_ROOT)}")
     print(f"  {_D}下一步：mms validate + mms gc 更新索引{_X}")
