@@ -1,0 +1,50 @@
+# ObjectTypeDef: Lesson — 经验教训（从执行中提炼）
+# ─────────────────────────────────────────────────
+# MemoryNode 的子类型（type: lesson）
+# 由 `mms dream` 或 `mms distill` 从 EP 执行日志自动提炼。
+# 是 MMS 最高频写入的记忆类型。
+
+id: Lesson
+label: "经验教训"
+type: object
+layer: L2_memory_graph
+parent_type: MemoryNode
+version: "1.0"
+
+description: |
+  从代码生成、postcheck 失败、反馈循环中提炼的可复用经验。
+  通常由 dream.py 自动生成（草稿 → promote → hot tier）。
+  Lesson 通过 derived_from 链接到触发它的 ArchDecision 或 Pattern，
+  通过 cites_files 绑定到相关代码文件（_auto_link 自动填充）。
+
+properties_extends: MemoryNode
+
+additional_properties:
+  root_cause:
+    type: string
+    required: false
+    description: "导致问题的根因（对于负面教训）"
+
+  trigger_ep:
+    type: string
+    required: false
+    description: "触发此 Lesson 生成的 EP ID（如 EP-0231）"
+
+  feedback_rounds:
+    type: integer
+    required: false
+    description: "解决问题花费的反馈轮次（Pass@N 的 N）"
+
+lifecycle:
+  default_tier: warm
+  gc_rules:
+    - "created_at < 90d AND tier == 'cold' → 降级为 archive"
+    - "accessed_count > 5 → 升级为 hot"
+
+id_prefix: "MEM-L-"
+example_ids: ["MEM-L-0031-DTO-NULL-CHECK", "MEM-L-0089-GRPC-RETRY"]
+
+auto_population:
+  trigger: action_dream
+  method: dream_promote_draft
+  source: "EP 执行日志 / git diff"

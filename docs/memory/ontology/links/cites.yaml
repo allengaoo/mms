@@ -1,0 +1,33 @@
+# LinkTypeDef: link_cites — 记忆节点引用代码文件
+# ────────────────────────────────────────────────
+# 当 MemoryNode 的内容中提到了某个代码文件路径时，建立此边。
+# 用于：代码文件发生变更时，找到所有受影响的记忆（新鲜度检测）。
+
+id: link_cites
+label: "引用代码文件"
+version: "1.0"
+
+source_type: MemoryNode
+target_type: CodeFile       # 代码文件（非 MemoryNode，是 Layer 0 物理实体）
+cardinality: M:N            # 一条记忆可引用多个文件；一个文件可被多条记忆引用
+inverse: cited_by           # CodeFile.cited_by → 引用该文件的所有 MemoryNode
+
+storage:
+  field_name: cites_files   # 存储在 MemoryNode 的 front-matter 字段
+  field_type: list[string]  # 存储文件路径字符串（相对项目根目录）
+
+auto_population:
+  trigger: action_distill   # distill / dream 写入记忆时触发
+  method: regex_extract_file_paths
+  description: |
+    正则扫描记忆内容，提取所有 *.py, *.ts, *.java, *.go, *.yaml 文件路径。
+    模式: r'(?:^|\s)([\w./\-]+\.(?:py|ts|java|go|yaml|yml|json))'
+
+traversal_usage:
+  - path_id: code_change_impact
+    description: "代码文件变更时，通过 cites 反向边找到 drift_suspected 记忆"
+
+freshness_check:
+  enabled: true
+  trigger: "AST fingerprint 变更"
+  action: "标记引用该文件的 MemoryNode 为 drift_suspected=true"

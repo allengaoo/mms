@@ -39,7 +39,7 @@ try:
     from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
 except ImportError:
     _ROOT = _HERE.parent.parent
-_SCHEMA_DIR = _ROOT / "docs" / "memory" / "ontology" / "arch_schema"
+_SCHEMA_DIR = _ROOT / "docs" / "memory" / "_system" / "routing"
 _INTENT_MAP_PATH = _SCHEMA_DIR / "intent_map.yaml"
 _LAYERS_PATH = _SCHEMA_DIR / "layers.yaml"
 

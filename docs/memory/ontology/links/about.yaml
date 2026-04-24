@@ -1,0 +1,35 @@
+# LinkTypeDef: link_about — 记忆节点描述领域概念
+# ──────────────────────────────────────────────────
+# 当 MemoryNode 的内容涉及某个领域概念（DomainConcept）时，建立此边。
+# 是概念级语义检索（find_by_concept）的核心边类型。
+
+id: link_about
+label: "描述领域概念"
+version: "1.0"
+
+source_type: MemoryNode
+target_type: DomainConcept  # 图锚点节点（由 layers.yaml keywords 驱动）
+cardinality: M:N            # 一条记忆可描述多个概念；一个概念有多条相关记忆
+inverse: cited_by_memories  # DomainConcept 的反向索引：找到所有描述该概念的记忆
+
+storage:
+  field_name: about_concepts  # 存储在 MemoryNode 的 front-matter 字段
+  field_type: list[string]    # 存储 DomainConcept.id（如 "grpc", "dto-isolation"）
+
+auto_population:
+  trigger: action_distill
+  method: keyword_match_from_layers_yaml
+  description: |
+    对记忆内容执行关键词匹配，利用 _system/routing/layers.yaml 的 keywords
+    字段，若内容包含某层的关键词，则建立到对应 DomainConcept 节点的 about 边。
+    这是零 LLM 的轻量建边策略。
+
+traversal_usage:
+  - path_id: concept_lookup
+    description: "查找某概念相关知识：通过 about 边找到所有相关 MemoryNode"
+  - path_id: knowledge_expand
+    description: "扩展相关知识：沿 about 边找到 DomainConcept，再找相邻记忆"
+
+index:
+  reverse_index: _concept_to_ids   # Dict[concept_id, List[node_id]]，在 _load_all 构建
+  lookup_complexity: O(1)          # 直接字典查询，无需遍历

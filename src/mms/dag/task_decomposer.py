@@ -263,7 +263,7 @@ RBO_RULES: List[Dict] = [
         "description_template": "修改系统配置 / Feature Flag",
         "token_budget": 1500,
         "model_hint": "fast",
-        "files_hint": ["backend/app/core/", "docs/memory/ontology/arch_schema/"],
+        "files_hint": ["backend/app/core/", "docs/memory/_system/routing/"],
     },
 ]
 

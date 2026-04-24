@@ -1,0 +1,34 @@
+# LinkTypeDef: link_derived_from — 知识提炼来源
+# ─────────────────────────────────────────────
+# 一条记忆是从另一条记忆提炼（上升归纳）而来的。
+# 典型场景：多条 Lesson → 归纳为 Pattern；Lesson → 验证了 ArchDecision。
+
+id: link_derived_from
+label: "知识提炼来源"
+version: "1.0"
+
+source_type: MemoryNode     # 提炼出的知识（如 Pattern）
+target_type: MemoryNode     # 来源知识（如 Lesson 或 ArchDecision）
+cardinality: N:M            # 一个 Pattern 可从多个 Lesson 提炼
+inverse: has_derived        # Lesson.has_derived → 被哪些 Pattern/Decision 引用
+
+storage:
+  field_name: derived_from  # 存储在 MemoryNode 的 front-matter 字段
+  field_type: list[string]  # 存储来源 MemoryNode 的 id
+
+auto_population:
+  trigger: null             # 不自动建边（需语义判断）
+  method: manual
+  description: |
+    当用户通过 mms distill 归纳多条记忆为 Pattern 时，
+    应在新 Pattern 的 front-matter 中手动填写 derived_from 字段。
+    未来版本计划在 dream.py 的 promote 阶段自动询问 LLM 填充。
+
+traversal_usage:
+  - path_id: knowledge_expand
+    description: "沿 derived_from 链追溯知识来源，找到根基 ArchDecision"
+
+lifecycle_coupling:
+  description: |
+    若来源 MemoryNode 被 retire（降级为 archive），
+    系统应警告 derived_from 指向它的节点可能需要重新评估。

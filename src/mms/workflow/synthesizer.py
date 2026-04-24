@@ -278,7 +278,7 @@ def synthesize(
         # 图遍历：通过文件 + 意图层的 hot_memories 找到关联记忆
         try:
             import yaml  # type: ignore[import]
-            layers_path = _HERE.parent.parent / "docs" / "memory" / "ontology" / "arch_schema" / "layers.yaml"
+            layers_path = _HERE.parent.parent / "docs" / "memory" / "_system" / "routing" / "layers.yaml"
             layers_data = yaml.safe_load(layers_path.read_text(encoding="utf-8")) or {} if layers_path.exists() else {}
             layer_hot_mems: List[str] = layers_data.get("layers", {}).get(arch_layer, {}).get("hot_memories", [])
         except Exception:  # noqa: BLE001

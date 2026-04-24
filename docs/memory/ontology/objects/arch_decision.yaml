@@ -1,0 +1,59 @@
+# ObjectTypeDef: ArchDecision — 架构决策记录（ADR）
+# ─────────────────────────────────────────────────
+# MemoryNode 的子类型（type: decision）
+# 记录经过反复论证后确定的架构决定，是最高优先级的 hot-tier 记忆。
+# 由 `mms distill --type=decision` 或 EP 执行后人工录入。
+
+id: ArchDecision
+label: "架构决策记录"
+type: object
+layer: L2_memory_graph
+parent_type: MemoryNode
+version: "1.0"
+
+description: |
+  架构级别的关键决策记录（Architecture Decision Record, ADR）。
+  继承 MemoryNode 的全部字段，并额外要求：
+    - context：做出决策时的背景
+    - decision：决策内容
+    - rationale：决策理由
+    - status：状态（accepted / superseded / deprecated）
+  ADR 通常被多个 Lesson 和 Pattern 通过 derived_from 链接引用。
+
+properties_extends: MemoryNode
+
+additional_properties:
+  decision_context:
+    type: string
+    required: true
+    description: "做出此决策时面临的技术/业务背景"
+
+  rationale:
+    type: string
+    required: true
+    description: "选择此方案而非备选方案的核心理由"
+
+  decision_status:
+    type: string
+    required: true
+    enum: [proposed, accepted, superseded, deprecated]
+    default: accepted
+
+  alternatives_considered:
+    type: list[string]
+    required: false
+    description: "曾考虑过的备选方案（简要描述）"
+
+  superseded_by:
+    type: string
+    required: false
+    description: "若此决策已过时，指向替代它的 ArchDecision ID"
+
+lifecycle:
+  default_tier: hot
+  gc_rules:
+    - "decision_status == 'superseded' → 降级为 cold"
+    - "decision_status == 'deprecated' → 降级为 archive"
+
+id_prefix: "AD-"
+example_ids: ["AD-001-GRPC-FIRST", "AD-002-DTO-ISOLATION"]
