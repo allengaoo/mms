@@ -442,6 +442,10 @@ runner:
   #   MMS_ENABLE_INTERNAL_REVIEW=true
   enable_internal_review: false
 
+  # Feature flag（默认关闭）：distill/dream 写入记忆时，自动检测 tags 重叠度
+  # 较高的记忆对，建立 impacts 边。开启后会增加写入延迟。
+  enable_auto_impacts: false
+
   # ── 沙箱与安全 ────────────────────────────────────────────────────────────
   sandbox:
     enabled: true               # 始终启用沙箱（禁用会导致失败后无法自动回滚，不推荐）
@@ -602,3 +606,9 @@ trace:
     auto_save: true           # show/summary 时是否自动保存报告到 report/ 目录
     waterfall_width: 30       # 耗时瀑布图宽度（字符数）
     use_color: true           # 终端报告是否使用 ANSI 颜色（CI 环境下建议 false）
+
+# ── 记忆图（graph）配置 ────────────────────────────────────────────────────────
+graph:
+  # hybrid_search 的图置信度阈值：图检索结果少于此数时触发 keyword fallback。
+  # 调小可更多使用图结果；调大则更多使用 keyword 补充。
+  confidence_threshold: 3

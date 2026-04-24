@@ -119,3 +119,15 @@
 {"ts": "2026-04-24T17:19:03.807189+00:00", "model": "qwen3-coder-next", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
 {"ts": "2026-04-24T17:19:03.808458+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
 {"ts": "2026-04-24T17:19:03.808953+00:00", "model": "qwen-plus", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.659338+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.660082+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.671085+00:00", "model": "qwen-plus", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.671743+00:00", "model": "qwen3-coder-next", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.672973+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:22.673481+00:00", "model": "qwen-plus", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.729901+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.730498+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.740501+00:00", "model": "qwen-plus", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.741153+00:00", "model": "qwen3-coder-next", "provider": "bailian", "task_type": "mms_inject", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.742394+00:00", "model": "qwen3-32b", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}
+{"ts": "2026-04-24T17:23:28.742926+00:00", "model": "qwen-plus", "provider": "bailian", "task_type": "unknown", "prompt_tok": 10, "output_tok": 20, "latency_ms": 0.0, "success": true, "error": null}

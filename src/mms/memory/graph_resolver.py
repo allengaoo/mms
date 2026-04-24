@@ -119,16 +119,26 @@ def _parse_frontmatter(text: str) -> dict:
 
 @dataclass
 class MemoryNode:
-    """记忆节点，对应一个 .md 文件。"""
+    """
+    记忆节点，对应一个 .md 文件。
+
+    Layer 2 图边字段（v4.0 新增，向后兼容，默认为空列表）：
+      about_concepts : DomainConcept ID 列表（about 边，由 _auto_link 填充）
+      contradicts    : 矛盾记忆 ID 列表（手动填写）
+      derived_from   : 来源记忆 ID 列表（手动填写）
+    """
 
     id: str
     path: Path
     tier: str = "warm"
     layer: str = ""
     tags: List[str] = field(default_factory=list)
-    related_to: List[Dict] = field(default_factory=list)   # [{id, reason}]
-    cites_files: List[str] = field(default_factory=list)   # 引用的代码文件路径
-    impacts: List[str] = field(default_factory=list)        # 变更时需检查的记忆 ID
+    related_to: List[Dict] = field(default_factory=list)    # [{id, reason}]
+    cites_files: List[str] = field(default_factory=list)    # cites 边：引用的代码文件路径
+    impacts: List[str] = field(default_factory=list)        # impacts 边：变更时需检查的记忆 ID
+    about_concepts: List[str] = field(default_factory=list) # about 边：描述的领域概念 ID
+    contradicts: List[str] = field(default_factory=list)    # contradicts 边：矛盾记忆 ID
+    derived_from: List[str] = field(default_factory=list)   # derived_from 边：来源记忆 ID
     title: str = ""
 
     @property
@@ -167,7 +177,8 @@ class MemoryGraph:
     def __init__(self, memory_root: Optional[Path] = None) -> None:
         self._root = memory_root or _MEMORY_ROOT
         self._nodes: Dict[str, MemoryNode] = {}
-        self._file_to_ids: Dict[str, List[str]] = {}  # 文件路径 → 引用它的记忆 ID 列表
+        self._file_to_ids: Dict[str, List[str]] = {}       # 文件路径 → 记忆 ID（cites 反向索引）
+        self._concept_to_ids: Dict[str, List[str]] = {}    # DomainConcept → 记忆 ID（about 反向索引）
         self._loaded = False
 
     def _ensure_loaded(self) -> None:
@@ -222,6 +233,19 @@ class MemoryGraph:
                 if isinstance(impacts, str):
                     impacts = [impacts]
 
+                # 解析 v4.0 新增 Layer 2 图边字段（向后兼容：缺失时为空列表）
+                about_concepts = fm.get("about_concepts", []) or []
+                if isinstance(about_concepts, str):
+                    about_concepts = [about_concepts]
+
+                contradicts = fm.get("contradicts", []) or []
+                if isinstance(contradicts, str):
+                    contradicts = [contradicts]
+
+                derived_from = fm.get("derived_from", []) or []
+                if isinstance(derived_from, str):
+                    derived_from = [derived_from]
+
                 node = MemoryNode(
                     id=mem_id,
                     path=md,
@@ -231,15 +255,24 @@ class MemoryGraph:
                     related_to=related_list,
                     cites_files=[str(f) for f in cites] if cites else [],
                     impacts=[str(i) for i in impacts] if impacts else [],
+                    about_concepts=[str(c) for c in about_concepts],
+                    contradicts=[str(c) for c in contradicts],
+                    derived_from=[str(d) for d in derived_from],
                     title=title,
                 )
                 self._nodes[mem_id] = node
 
-                # 建立文件→记忆的反向索引
+                # 建立文件→记忆的反向索引（cites 边）
                 for fpath in node.cites_files:
                     norm = fpath.strip()
                     if norm:
                         self._file_to_ids.setdefault(norm, []).append(mem_id)
+
+                # 建立 DomainConcept→记忆的反向索引（about 边）
+                for concept_id in node.about_concepts:
+                    concept_id = concept_id.strip()
+                    if concept_id:
+                        self._concept_to_ids.setdefault(concept_id, []).append(mem_id)
 
             except Exception:  # noqa: BLE001
                 continue
@@ -410,6 +443,229 @@ class MemoryGraph:
             if node.related_ids:
                 lines.append(f"  → 关联: {', '.join(node.related_ids[:4])}")
         return "\n".join(lines)
+
+    # ── Phase 2：语义有向图遍历新方法（保持向后兼容，不删旧方法）──────────────
+
+    def typed_explore(
+        self,
+        start_id: str,
+        path_intent: str = "concept_lookup",
+        depth: Optional[int] = None,
+    ) -> List[MemoryNode]:
+        """
+        按 traversal_paths.yaml 配置的路径，沿指定 LinkType 边有向遍历。
+
+        比 explore() 更精准：只走配置中指定类型的边，不混合无关边。
+
+        参数：
+            start_id    : 起始记忆 ID
+            path_intent : 遍历路径 ID（"concept_lookup"|"code_change_impact"|"knowledge_expand"）
+            depth       : 覆盖 YAML 中的 max_depth（可选）
+
+        返回：
+            按遍历层级排列的 MemoryNode 列表（不含起始节点）
+        """
+        self._ensure_loaded()
+
+        from mms.memory.link_registry import get_registry  # 延迟导入
+        registry = get_registry()
+        path_def = registry.traversal_path_def(path_intent)
+
+        if path_def is None:
+            return self.explore(start_id, depth=depth or 2)
+
+        max_depth = depth if depth is not None else path_def.max_depth
+        edge_types = path_def.edge_types
+        include_inverse = path_def.include_inverse
+
+        if start_id not in self._nodes:
+            return []
+
+        visited: Set[str] = {start_id}
+        queue: deque = deque([(start_id, 0)])
+        result: List[MemoryNode] = []
+
+        while queue:
+            current_id, current_depth = queue.popleft()
+            if current_depth >= max_depth:
+                continue
+
+            node = self._nodes.get(current_id)
+            if not node:
+                continue
+
+            neighbor_ids: List[str] = []
+
+            for edge_type in edge_types:
+                if edge_type in ("related_to", "related"):
+                    neighbor_ids.extend(node.related_ids)
+                elif edge_type == "cites":
+                    # cites 边正向（文件路径，不是记忆 ID，跳过）
+                    pass
+                elif edge_type == "impacts":
+                    neighbor_ids.extend(node.impacts)
+                elif edge_type == "about":
+                    # about 正向：概念 ID，不是记忆 ID，跳过正向遍历
+                    if include_inverse:
+                        # 反向：找所有 about_concepts 包含本节点概念的记忆
+                        for concept_id in node.about_concepts:
+                            neighbor_ids.extend(self._concept_to_ids.get(concept_id, []))
+                elif edge_type == "derived_from":
+                    neighbor_ids.extend(node.derived_from)
+                elif edge_type == "contradicts":
+                    neighbor_ids.extend(node.contradicts)
+
+            for nid in neighbor_ids:
+                if nid and nid not in visited and nid != current_id:
+                    visited.add(nid)
+                    neighbor_node = self._nodes.get(nid)
+                    if neighbor_node:
+                        result.append(neighbor_node)
+                        queue.append((nid, current_depth + 1))
+
+        return result
+
+    def find_by_concept(self, keywords: List[str]) -> List[MemoryNode]:
+        """
+        零 LLM 的概念级语义检索：
+
+        算法：
+          1. 从 _system/routing/layers.yaml 的 keywords 字段做规则匹配
+          2. 通过 _concept_to_ids 反向索引，O(1) 定位所有相关 MemoryNode
+          3. 同时在 node.tags 和 node.about_concepts 中做关键词匹配补充
+
+        参数：
+            keywords: 关键词列表（如 ["gRPC", "服务层"]）
+
+        返回：
+            匹配的 MemoryNode 列表（按 tier 排序）
+        """
+        self._ensure_loaded()
+
+        matched_ids: Set[str] = set()
+        kw_lower = [k.lower() for k in keywords]
+
+        # Step 1: 通过 about_concepts 反向索引快速匹配
+        for concept_id, node_ids in self._concept_to_ids.items():
+            for kw in kw_lower:
+                if kw in concept_id.lower():
+                    matched_ids.update(node_ids)
+                    break
+
+        # Step 2: 在每个节点的 tags 中做关键词匹配
+        for node in self._nodes.values():
+            if node.id in matched_ids:
+                continue
+            node_tags_lower = [t.lower() for t in node.tags]
+            if any(kw in tag for kw in kw_lower for tag in node_tags_lower):
+                matched_ids.add(node.id)
+
+        # Step 3: 在 layers.yaml keywords 中匹配，找到相关 DomainConcept 名
+        layer_concepts = self._get_layer_concepts(kw_lower)
+        for concept_id in layer_concepts:
+            matched_ids.update(self._concept_to_ids.get(concept_id, []))
+
+        result = [self._nodes[nid] for nid in matched_ids if nid in self._nodes]
+        tier_order = {"hot": 0, "warm": 1, "cold": 2, "archive": 3}
+        result.sort(key=lambda n: (tier_order.get(n.tier, 9), n.id))
+        return result
+
+    def _get_layer_concepts(self, kw_lower: List[str]) -> List[str]:
+        """从 layers.yaml 中找到关键词命中的层 ID，作为 DomainConcept 标识符。"""
+        try:
+            import yaml  # type: ignore[import]
+            routing_dir = _ROOT / "docs" / "memory" / "_system" / "routing"
+            layers_file = routing_dir / "layers.yaml"
+            if not layers_file.exists():
+                return []
+            data = yaml.safe_load(layers_file.read_text(encoding="utf-8")) or {}
+            layers = data.get("layers", {})
+            matched_concepts = []
+            for layer_id, layer_data in layers.items():
+                if not isinstance(layer_data, dict):
+                    continue
+                layer_keywords = [k.lower() for k in (layer_data.get("keywords") or [])]
+                if any(kw in layer_kw or layer_kw in kw for kw in kw_lower for layer_kw in layer_keywords):
+                    matched_concepts.append(layer_id.lower())
+            return matched_concepts
+        except Exception:  # noqa: BLE001
+            return []
+
+    def hybrid_search(
+        self,
+        keywords: List[str],
+        use_graph: bool = True,
+        fallback_to_keyword: bool = True,
+        graph_confidence_threshold: Optional[int] = None,
+    ) -> List[MemoryNode]:
+        """
+        混合检索（图 + 关键词降级）：
+
+        算法：
+          1. 先执行 find_by_concept（图路径）
+          2. 若结果数 >= 阈值，直接返回
+          3. 否则补充关键词全文检索，取并集排序
+
+        参数：
+            keywords                  : 检索关键词列表
+            use_graph                 : 是否启用图检索（默认 True）
+            fallback_to_keyword       : 图结果不足时是否 fallback（默认 True）
+            graph_confidence_threshold: 图结果最小数量阈值（默认从 config 读取，否则 3）
+
+        返回：
+            混合检索结果（每个节点有 is_graph_result 属性标注来源）
+        """
+        self._ensure_loaded()
+
+        threshold = graph_confidence_threshold
+        if threshold is None:
+            try:
+                from mms.utils.mms_config import MmsConfig
+                threshold = getattr(MmsConfig(), "graph_confidence_threshold", 3)
+            except Exception:  # noqa: BLE001
+                threshold = 3
+
+        graph_results: List[MemoryNode] = []
+        if use_graph:
+            graph_results = self.find_by_concept(keywords)
+
+        if len(graph_results) >= threshold:
+            return graph_results
+
+        if not fallback_to_keyword:
+            return graph_results
+
+        # Fallback：关键词全文检索
+        keyword_results = self._keyword_fallback(keywords)
+
+        # 合并去重（图结果优先）
+        seen: Set[str] = {n.id for n in graph_results}
+        combined = list(graph_results)
+        for node in keyword_results:
+            if node.id not in seen:
+                seen.add(node.id)
+                combined.append(node)
+
+        return combined
+
+    def _keyword_fallback(self, keywords: List[str]) -> List[MemoryNode]:
+        """
+        简单的关键词全文检索（通过节点标题和标签匹配）。
+        作为图检索的补充手段。
+        """
+        kw_lower = [k.lower() for k in keywords]
+        results: List[MemoryNode] = []
+
+        for node in self._nodes.values():
+            title_lower = node.title.lower()
+            tags_lower = [t.lower() for t in node.tags]
+            if any(kw in title_lower for kw in kw_lower) or \
+               any(kw in tag for kw in kw_lower for tag in tags_lower):
+                results.append(node)
+
+        tier_order = {"hot": 0, "warm": 1, "cold": 2, "archive": 3}
+        results.sort(key=lambda n: (tier_order.get(n.tier, 9), n.id))
+        return results
 
     def get(self, memory_id: str) -> Optional[MemoryNode]:
         """获取单个记忆节点。"""

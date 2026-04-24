@@ -135,6 +135,26 @@ class MmsConfig:
         val = _get(self._raw, "runner", "enable_internal_review", default=False)
         return bool(val)
 
+    @property
+    def runner_enable_auto_impacts(self) -> bool:
+        """是否自动建 impacts 边（tag 集合重叠检测）。默认 false，避免无谓计算。"""
+        val = _get(self._raw, "runner", "enable_auto_impacts", default=False)
+        return bool(val)
+
+    # ── graph.confidence_threshold ────────────────────────────────────────
+
+    @property
+    def graph_confidence_threshold(self) -> int:
+        """
+        hybrid_search 的图置信度阈值：图检索结果少于此数时触发 keyword fallback。
+        默认 3。可通过 config.yaml 的 graph.confidence_threshold 配置。
+        """
+        val = _get(self._raw, "graph", "confidence_threshold", default=3)
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return 3
+
     # ── runner.scope_guard ────────────────────────────────────────────────
 
     @property
