@@ -1,0 +1,74 @@
+##############################################################################
+# Layer 2 · 记忆漂移检测任务集（通用 Python 域）
+# 完全离线可运行
+##############################################################################
+
+schema_version: "1.0"
+domain: "generic_python"
+category: "drift"
+
+cases:
+
+  - id: gp_drift_001
+    description: "函数签名变更后，引用该文件的记忆应标记 drift"
+    memory_content: |
+      ---
+      id: MEM-DRIFT-001
+      layer: L3_domain
+      tier: warm
+      cites_files:
+        - "{cited_file}"
+      ---
+      # 用户服务 get_by_id 规范
+      get_by_id 函数接收 user_id: str 参数，返回 UserDTO。
+    cited_file_content: |
+      async def get_by_id(user_id: str) -> UserDTO:
+          return await db.get(UserDTO, user_id)
+    modified_content: |
+      async def get_by_id(user_id: uuid.UUID, tenant_id: str) -> UserDTO:
+          return await db.get(UserDTO, user_id, tenant_id)
+    should_drift: true
+    notes: "函数签名发生了实质变化（参数类型 + 数量），记忆应被标记"
+
+  - id: gp_drift_002
+    description: "仅格式化（空行/注释），记忆不应标记 drift"
+    memory_content: |
+      ---
+      id: MEM-DRIFT-001
+      layer: L3_domain
+      tier: warm
+      cites_files:
+        - "{cited_file}"
+      ---
+      # 用户服务规范
+      get_by_id 函数接收 user_id: str 参数。
+    cited_file_content: |
+      async def get_by_id(user_id: str) -> UserDTO:
+          return await db.get(UserDTO, user_id)
+    modified_content: |
+      # 用户查询服务
+
+      async def get_by_id(user_id: str) -> UserDTO:
+          """根据 ID 查询用户。"""
+          return await db.get(UserDTO, user_id)
+    should_drift: false
+    notes: "只添加了注释和空行，语义哈希不变，不应触发 drift"
+
+  - id: gp_drift_003
+    description: "文件被删除，引用该文件的记忆应标记 drift"
+    memory_content: |
+      ---
+      id: MEM-DRIFT-001
+      layer: L2_infrastructure
+      tier: hot
+      cites_files:
+        - "{cited_file}"
+      ---
+      # 老版 Redis 客户端
+      旧版 connect() 方法使用连接池配置。
+    cited_file_content: |
+      def connect(host: str, port: int = 6379) -> RedisClient:
+          return RedisClient(host=host, port=port)
+    modified_content: ""
+    should_drift: true
+    notes: "文件内容清空（模拟删除），应检测到漂移"

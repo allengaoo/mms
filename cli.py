@@ -1406,6 +1406,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="覆盖同名已有种子包",
     )
 
+    # ── benchmark — 三层模块化评测（v2）────────────────────────────────────────
+    p_bench = sub.add_parser(
+        "benchmark",
+        help="三层 Benchmark 评测（离线安全门控 / 记忆质量 / SWE-bench 信用锚）",
+    )
+    p_bench.add_argument(
+        "--level", choices=["offline", "fast", "full"], default="offline",
+        help="运行级别：offline=仅 L3 无需LLM，fast=L2+L3，full=全部三层",
+    )
+    p_bench.add_argument(
+        "--layer", type=int, choices=[1, 2, 3], default=None,
+        help="仅运行指定单层（1=SWE-bench, 2=记忆质量, 3=安全门控）",
+    )
+    p_bench.add_argument(
+        "--domain", nargs="+", default=["generic_python"],
+        metavar="DOMAIN",
+        help="评测 domain（可多选），默认: generic_python",
+    )
+    p_bench.add_argument(
+        "--llm", action="store_true", default=False,
+        help="声明 LLM API 可用（开启注入提升等在线评测维度）",
+    )
+    p_bench.add_argument(
+        "--dry-run", action="store_true", default=False,
+        help="仅打印任务列表，不实际执行评测",
+    )
+    p_bench.add_argument(
+        "--output", choices=["console", "json", "markdown"], default="console",
+        help="报告输出格式（默认 console）",
+    )
+    p_bench.add_argument(
+        "--output-path", dest="output_path", default=None,
+        help="报告保存路径（json/markdown 格式时有效）",
+    )
+    p_bench.add_argument(
+        "--max-tasks", dest="max_tasks", type=int, default=None,
+        help="每层最多运行任务数（调试用）",
+    )
+    p_bench.add_argument("-v", "--verbose", action="store_true", default=False)
+
     return parser
 
 
@@ -2379,6 +2419,53 @@ def cmd_trace(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    """benchmark 子命令：三层模块化评测（离线/快速/全量）"""
+    _repo_root = Path(__file__).parent
+    bench_dir  = _repo_root / "benchmark"
+    if str(_repo_root) not in sys.path:
+        sys.path.insert(0, str(_repo_root))
+
+    try:
+        from benchmark.v2.runner import main as bench_main
+    except ImportError as e:
+        err(f"无法加载 benchmark v2 模块：{e}")
+        err("请确认 benchmark/v2/ 目录存在，并已安装 pyyaml（pip install pyyaml）")
+        return 1
+
+    bench_argv = []
+    level = getattr(args, "level", "offline")
+    bench_argv += ["--level", level]
+
+    layer = getattr(args, "layer", None)
+    if layer:
+        bench_argv += ["--layer", str(layer)]
+
+    domains = getattr(args, "domain", None)
+    if domains:
+        bench_argv += ["--domain"] + (domains if isinstance(domains, list) else [domains])
+
+    if getattr(args, "llm", False):
+        bench_argv.append("--llm")
+    if getattr(args, "dry_run", False):
+        bench_argv.append("--dry-run")
+    if getattr(args, "verbose", False):
+        bench_argv.append("--verbose")
+
+    output = getattr(args, "output", "console")
+    bench_argv += ["--output", output]
+
+    output_path = getattr(args, "output_path", None)
+    if output_path:
+        bench_argv += ["--output-path", output_path]
+
+    max_tasks = getattr(args, "max_tasks", None)
+    if max_tasks:
+        bench_argv += ["--max-tasks", str(max_tasks)]
+
+    return bench_main(bench_argv)
+
+
 _COMMAND_HANDLERS = {
     "help":          cmd_help,
     "status":        cmd_status,
@@ -2409,6 +2496,7 @@ _COMMAND_HANDLERS = {
     "bootstrap":     cmd_bootstrap,    # EP-130: 离线冷启动
     "ast-diff":      cmd_ast_diff,     # EP-130: AST 契约变更检测
     "seed":          cmd_seed,         # EP-131: 种子包管理 + Rule Absorber
+    "benchmark":     cmd_benchmark,    # v2 三层 Benchmark
 }
 
 

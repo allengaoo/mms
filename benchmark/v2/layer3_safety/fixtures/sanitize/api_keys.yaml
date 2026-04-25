@@ -1,0 +1,113 @@
+##############################################################################
+# Layer 3 · SanitizationGate 测试集：API Key 类凭证
+#
+# 扩展方式：在 cases 列表中追加新条目，无需修改评测器代码。
+# 字段说明：
+#   id             : 唯一标识
+#   category       : 凭证类型（api_key / jwt / ip / email / secret）
+#   description    : 测试意图描述
+#   input          : 含敏感信息的原始文本
+#   should_detect  : 是否应被检测为敏感（true = 必须检出）
+#   severity       : critical（必须100%检出） / high / medium
+##############################################################################
+
+schema_version: "1.0"
+gate: "SanitizationGate"
+
+cases:
+
+  # ── OpenAI / 百炼 风格 API Key ──────────────────────────────────────────────
+
+  - id: san_ak_001
+    category: api_key
+    description: "OpenAI 旧版 sk- 前缀 API Key"
+    input: "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_002
+    category: api_key
+    description: "OpenAI 新版 sk-proj- 前缀 API Key"
+    input: "使用 sk-proj-AbCdEfGhIjKlMnOpQrSt1234567890abcdef 调用 GPT"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_003
+    category: api_key
+    description: "百炼 DashScope API Key"
+    input: "DASHSCOPE_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_004
+    category: api_key
+    description: "AWS Access Key ID"
+    input: "export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_005
+    category: api_key
+    description: "AWS Secret Access Key"
+    input: "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_006
+    category: api_key
+    description: "GitHub Personal Access Token"
+    input: "GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_007
+    category: api_key
+    description: "Anthropic Claude API Key"
+    input: "ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    should_detect: true
+    severity: critical
+
+  # ── 嵌入在代码注释/文档中的密钥 ─────────────────────────────────────────────
+
+  - id: san_ak_008
+    category: api_key
+    description: "API Key 硬编码在 Python 代码中"
+    input: |
+      # 配置文件
+      client = OpenAI(api_key="sk-testABCDEFGHIJKLMNOPQRSTUVWXYZ123456")
+    should_detect: true
+    severity: critical
+
+  - id: san_ak_009
+    category: api_key
+    description: "API Key 混在 YAML 配置中"
+    input: |
+      llm:
+        provider: bailian
+        api_key: sk-abcdef1234567890abcdef1234567890
+        model: qwen3-32b
+    should_detect: true
+    severity: critical
+
+  # ── 阴性样例：不应被误报 ────────────────────────────────────────────────────
+
+  - id: san_ak_010
+    category: api_key
+    description: "占位符，不应触发检测"
+    input: "DASHSCOPE_API_KEY=sk-your-key-here"
+    should_detect: false
+    severity: medium
+
+  - id: san_ak_011
+    category: api_key
+    description: "REDACTED 占位符，已脱敏，不应再次检测"
+    input: "api_key=[REDACTED_API_KEY]"
+    should_detect: false
+    severity: medium
+
+  - id: san_ak_012
+    category: api_key
+    description: "普通文本中的 sk- 前缀单词（非密钥格式）"
+    input: "the skeleton (sk-eleton) of the project is ready"
+    should_detect: false
+    severity: medium

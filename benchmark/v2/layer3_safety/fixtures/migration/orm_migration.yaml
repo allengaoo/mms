@@ -1,0 +1,119 @@
+##############################################################################
+# Layer 3 · MigrationGate 测试集：ORM 变更与迁移脚本对齐检查
+#
+# 扩展方式：在 cases 中添加新条目，通过 orm_diff 描述模型变更，
+#           migration_files 列出对应的迁移脚本片段。
+##############################################################################
+
+schema_version: "1.0"
+gate: "MigrationGate"
+
+cases:
+
+  # ── 应被阻断的场景（ORM 变更但无迁移脚本）──────────────────────────────────
+
+  - id: mig_001
+    category: field_add_no_migration
+    description: "ORM 新增字段，无对应迁移脚本 → 应阻断"
+    orm_diff: |
+      +    metadata_json: Optional[Dict] = Field(
+      +        default=None,
+      +        sa_column=Column(JSON, nullable=True)
+      +    )
+    migration_files: []
+    should_block: true
+    severity: critical
+    reason: "字段新增必须有对应 up() 迁移，否则生产环境 ORM 与 DB schema 不一致"
+
+  - id: mig_002
+    category: field_remove_no_migration
+    description: "ORM 删除字段，无对应迁移脚本 → 应阻断"
+    orm_diff: |
+      -    deprecated_field: Optional[str] = Field(default=None)
+    migration_files: []
+    should_block: true
+    severity: critical
+
+  - id: mig_003
+    category: table_add_no_migration
+    description: "新增 ORM Model（新表），无迁移脚本 → 应阻断"
+    orm_diff: |
+      +class AuditLog(SQLModel, table=True):
+      +    __tablename__ = "audit_logs"
+      +    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+      +    action: str
+      +    created_at: datetime = Field(default_factory=datetime.utcnow)
+    migration_files: []
+    should_block: true
+    severity: critical
+
+  - id: mig_004
+    category: index_add_no_migration
+    description: "新增索引，无对应迁移脚本 → 应阻断"
+    orm_diff: |
+      +    __table_args__ = (
+      +        Index("ix_user_tenant", "user_id", "tenant_id"),
+      +    )
+    migration_files: []
+    should_block: true
+    severity: critical
+
+  # ── 应通过的场景（ORM 变更并有完整迁移）────────────────────────────────────
+
+  - id: mig_005
+    category: field_add_with_migration
+    description: "ORM 新增字段，有完整 up/down 迁移 → 应通过"
+    orm_diff: |
+      +    metadata_json: Optional[Dict] = Field(
+      +        default=None,
+      +        sa_column=Column(JSON, nullable=True)
+      +    )
+    migration_files:
+      - content: |
+          def upgrade():
+              op.add_column('object_type_defs',
+                  sa.Column('metadata_json', sa.JSON(), nullable=True))
+
+          def downgrade():
+              op.drop_column('object_type_defs', 'metadata_json')
+        filename: "migrations/versions/20260401_add_metadata_json.py"
+    should_block: false
+    severity: info
+
+  - id: mig_006
+    category: field_add_migration_missing_downgrade
+    description: "有 up() 但缺少 down() → 应警告但允许（非阻断）"
+    orm_diff: |
+      +    tags: Optional[str] = Field(default=None)
+    migration_files:
+      - content: |
+          def upgrade():
+              op.add_column('objects', sa.Column('tags', sa.String(), nullable=True))
+
+          def downgrade():
+              pass  # 空实现
+        filename: "migrations/versions/20260402_add_tags.py"
+    should_block: false
+    severity: warning
+    warning_reason: "downgrade() 为空实现，回滚时无法还原"
+
+  # ── 非 ORM 变更，不应触发 MigrationGate ────────────────────────────────────
+
+  - id: mig_007
+    category: no_orm_change
+    description: "仅修改 Service 层逻辑，无 ORM 变更 → 不触发"
+    orm_diff: ""
+    migration_files: []
+    should_block: false
+    severity: info
+
+  - id: mig_008
+    category: orm_rename_no_migration
+    description: "ORM 字段重命名，需迁移脚本 → 应阻断"
+    orm_diff: |
+      -    name: str = Field(...)
+      +    display_name: str = Field(...)
+    migration_files: []
+    should_block: true
+    severity: critical
+    reason: "字段重命名等价于 drop + add，必须有迁移脚本"

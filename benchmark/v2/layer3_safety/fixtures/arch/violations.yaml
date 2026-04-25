@@ -1,0 +1,178 @@
+##############################################################################
+# Layer 3 · ArchCheck 测试集：架构约束违规检测
+#
+# 覆盖规则：AC-1 ~ AC-6（可在 arch_check.py 中扩展）
+# 扩展方式：添加新 case，指定 rule_id，新规则参见 arch_check.py 中的规则定义
+##############################################################################
+
+schema_version: "1.0"
+gate: "ArchCheck"
+
+cases:
+
+  # ── AC-1：禁止在非基础设施层直接 import 消息队列客户端 ────────────────────
+
+  - id: arc_ac1_001
+    rule_id: "AC-1"
+    description: "Service 层直接 import aiokafka → 应检出"
+    code: |
+      from aiokafka import AIOKafkaProducer
+      import asyncio
+
+      async def publish_event(topic: str, data: dict):
+          producer = AIOKafkaProducer(bootstrap_servers="localhost:9092")
+          await producer.start()
+          await producer.send(topic, str(data).encode())
+          await producer.stop()
+    expected_violations: 1
+    should_flag: true
+
+  - id: arc_ac1_002
+    rule_id: "AC-1"
+    description: "通过 infrastructure 层发布消息 → 应通过"
+    code: |
+      from backend.app.infrastructure.messaging.kafka_publisher import KafkaEventPublisher
+
+      async def publish_event(publisher: KafkaEventPublisher, topic: str, data: dict):
+          await publisher.publish(topic, data)
+    expected_violations: 0
+    should_flag: false
+
+  # ── AC-2：Service 函数必须以 SecurityContext / RequestContext 作为首参 ──────
+
+  - id: arc_ac2_001
+    rule_id: "AC-2"
+    description: "Service 函数缺少 RequestContext 首参 → 应检出"
+    code: |
+      async def get_object_by_id(object_id: str, session: AsyncSession) -> ObjectTypeDef:
+          return await session.get(ObjectTypeDef, object_id)
+    expected_violations: 1
+    should_flag: true
+
+  - id: arc_ac2_002
+    rule_id: "AC-2"
+    description: "Service 函数正确传入 RequestContext → 应通过"
+    code: |
+      async def get_object_by_id(
+          ctx: RequestContext,
+          object_id: str,
+          session: AsyncSession,
+      ) -> ObjectTypeDef:
+          return await session.get(ObjectTypeDef, object_id)
+    expected_violations: 0
+    should_flag: false
+
+  # ── AC-3：写操作必须调用 AuditService.log() ──────────────────────────────────
+
+  - id: arc_ac3_001
+    rule_id: "AC-3"
+    description: "写操作函数缺少 audit_service.log 调用 → 应检出"
+    code: |
+      async def create_object(
+          ctx: RequestContext,
+          data: ObjectCreateDTO,
+          session: AsyncSession,
+      ) -> ObjectTypeDef:
+          obj = ObjectTypeDef(**data.dict())
+          session.add(obj)
+          await session.commit()
+          return obj
+    expected_violations: 1
+    should_flag: true
+
+  - id: arc_ac3_002
+    rule_id: "AC-3"
+    description: "写操作包含审计调用 → 应通过"
+    code: |
+      async def create_object(
+          ctx: RequestContext,
+          data: ObjectCreateDTO,
+          session: AsyncSession,
+          audit_service: AuditService,
+      ) -> ObjectTypeDef:
+          obj = ObjectTypeDef(**data.dict())
+          session.add(obj)
+          await session.commit()
+          await audit_service.log(ctx, action="create_object", resource_id=str(obj.id))
+          return obj
+    expected_violations: 0
+    should_flag: false
+
+  # ── AC-4：API Endpoint 必须使用标准信封格式（ResponseHelper）────────────────
+
+  - id: arc_ac4_001
+    rule_id: "AC-4"
+    description: "Endpoint 直接返回裸字典 → 应检出"
+    code: |
+      @router.get("/objects/{object_id}")
+      async def get_object(object_id: str):
+          return {"id": object_id, "status": "ok"}
+    expected_violations: 1
+    should_flag: true
+
+  - id: arc_ac4_002
+    rule_id: "AC-4"
+    description: "Endpoint 使用 ResponseHelper 包装 → 应通过"
+    code: |
+      @router.get("/objects/{object_id}", response_model=ApiResponse[ObjectReadDTO])
+      async def get_object(
+          object_id: str,
+          current_user: UserClaims = Depends(get_current_user),
+      ):
+          result = await ontology_service.get_object(ctx, object_id)
+          return ResponseHelper.success(data=result)
+    expected_violations: 0
+    should_flag: false
+
+  # ── AC-5：禁止在 Service 层使用 session.begin()（使用 autobegin 模式）──────
+
+  - id: arc_ac5_001
+    rule_id: "AC-5"
+    description: "Service 层手动调用 session.begin() → 应检出"
+    code: |
+      async def update_object(ctx: RequestContext, object_id: str, data: dict, session: AsyncSession):
+          async with session.begin():
+              obj = await session.get(ObjectTypeDef, object_id)
+              obj.update(**data)
+    expected_violations: 1
+    should_flag: true
+
+  - id: arc_ac5_002
+    rule_id: "AC-5"
+    description: "Service 层使用 autobegin + commit 模式 → 应通过"
+    code: |
+      async def update_object(ctx: RequestContext, object_id: str, data: dict, session: AsyncSession):
+          obj = await session.get(ObjectTypeDef, object_id)
+          obj.update(**data)
+          await session.commit()
+    expected_violations: 0
+    should_flag: false
+
+  # ── AC-6：禁止裸 print() 调用（必须使用 structlog）──────────────────────────
+
+  - id: arc_ac6_001
+    rule_id: "AC-6"
+    description: "Service 层使用 print() 调试 → 应检出"
+    code: |
+      async def process_data(ctx: RequestContext, data: dict):
+          print(f"Processing: {data}")
+          result = await _do_process(data)
+          print(f"Done: {result}")
+          return result
+    expected_violations: 2
+    should_flag: true
+
+  - id: arc_ac6_002
+    rule_id: "AC-6"
+    description: "使用 structlog → 应通过"
+    code: |
+      import structlog
+      log = structlog.get_logger()
+
+      async def process_data(ctx: RequestContext, data: dict):
+          log.info("processing_data", trace_id=ctx.trace_id)
+          result = await _do_process(data)
+          log.info("processing_done", trace_id=ctx.trace_id)
+          return result
+    expected_violations: 0
+    should_flag: false

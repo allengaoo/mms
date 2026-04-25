@@ -1,0 +1,56 @@
+##############################################################################
+# Layer 2 · 记忆检索质量任务集（通用 Python 域）
+#
+# 扩展方式：在此文件或同目录新建 YAML 文件追加 case，评测器自动加载。
+# 字段说明：
+#   id              : 唯一标识
+#   category        : retrieval / injection_lift / retention / drift
+#   query           : 模拟用户输入的查询字符串
+#   relevant_ids    : ground-truth 相关记忆 ID（需在 memory_root 中存在）
+#   k               : 检索 top-K 数量
+#   domain_concepts : 触发 about 边的领域概念关键词
+##############################################################################
+
+schema_version: "1.0"
+domain: "generic_python"
+category: "retrieval"
+
+cases:
+
+  - id: gp_ret_001
+    description: "FastAPI 限流中间件检索"
+    query: "FastAPI rate limit middleware endpoint throttling"
+    relevant_ids: []     # 在真实环境中填写 MEM-L-xxx ID；空列表时跳过该 case
+    domain_concepts: ["rate-limiting", "middleware", "fastapi"]
+    k: 5
+    notes: "验证 hybrid_search 能否识别 rate-limit 相关记忆"
+
+  - id: gp_ret_002
+    description: "数据库事务回滚检索"
+    query: "database transaction rollback error handling SQLAlchemy"
+    relevant_ids: []
+    domain_concepts: ["transaction", "rollback", "database"]
+    k: 5
+    notes: "验证图遍历能否通过 about_concepts 找到事务相关记忆"
+
+  - id: gp_ret_003
+    description: "Redis 缓存失效检索"
+    query: "Redis cache invalidation tenant prefix SCAN"
+    relevant_ids: []
+    domain_concepts: ["cache", "redis", "invalidation"]
+    k: 5
+    notes: "验证 typed_explore 能否从 infrastructure 层找到 Redis 相关模式"
+
+  - id: gp_ret_004
+    description: "Kafka 消息重试检索"
+    query: "Kafka message retry backoff producer tenacity"
+    relevant_ids: []
+    domain_concepts: ["kafka", "retry", "messaging"]
+    k: 5
+
+  - id: gp_ret_005
+    description: "JWT 认证中间件检索"
+    query: "JWT authentication middleware verify token FastAPI"
+    relevant_ids: []
+    domain_concepts: ["jwt", "authentication", "security"]
+    k: 5

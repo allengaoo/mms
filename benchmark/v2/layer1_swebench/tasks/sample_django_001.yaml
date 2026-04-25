@@ -1,0 +1,97 @@
+##############################################################################
+# Layer 1 · SWE-bench 样本任务（离线离散子集）
+#
+# 这些任务是 SWE-bench Verified 的精选样本，用于离线验证 Mulan 的核心能力。
+# 每个任务包含：问题描述 / 失败测试 / 参考 patch（仅用于评分对比）
+#
+# 扩展方式：
+#   - 直接在此文件或同目录新建 YAML 文件追加任务
+#   - 与 SWE-bench 官方数据集对接时，使用 adapter.py 自动转换格式
+##############################################################################
+
+schema_version: "1.0"
+source: "swe-bench-verified-sampled"
+
+tasks:
+
+  - id: "swe_django_001"
+    repo: "django/django"
+    language: python
+    domain: web_framework
+    issue_title: "QuerySet.order_by('?') raises exception with nullable annotation"
+    issue_description: |
+      When using `.order_by('?')` on a QuerySet that contains a nullable annotation
+      (e.g., `annotate(val=Case(When(...), output_field=IntegerField()))`),
+      Django raises `DatabaseError: invalid reference to FROM-clause entry for table`.
+    fail_tests:
+      - "tests/queryset_tests/test_order_by.py::TestOrderByRandom::test_nullable_annotation"
+    pass_tests:
+      - "tests/queryset_tests/test_order_by.py::TestOrderByRandom::test_nullable_annotation"
+    hints:
+      - "django/db/models/sql/query.py の _get_ordering メソッドを確認"
+      - "The issue is in how RANDOM ordering interacts with annotations"
+    reference_patch_summary: "Add special handling for RANDOM ordering when annotations with nullable output exist"
+    expected_aiu_type: "BUG_FIX"
+    difficulty: medium
+    tags: ["django", "queryset", "ordering", "annotations"]
+
+  - id: "swe_django_002"
+    repo: "django/django"
+    language: python
+    domain: web_framework
+    issue_title: "FileField.save() doesn't update file name when overwrite=True"
+    issue_description: |
+      When `FileField.save(name, content, save=True)` is called with an existing file,
+      and `upload_to` generates a new path, the field's `name` attribute is not updated
+      to reflect the new storage path.
+    fail_tests:
+      - "tests/file_storage/tests.py::FileFieldTests::test_save_updates_name"
+    pass_tests:
+      - "tests/file_storage/tests.py::FileFieldTests::test_save_updates_name"
+    hints:
+      - "Look at django/db/models/fields/files.py FileField.save()"
+    reference_patch_summary: "Update self.name after storage.save() returns new path"
+    expected_aiu_type: "BUG_FIX"
+    difficulty: easy
+    tags: ["django", "filefield", "storage"]
+
+  - id: "swe_fastapi_001"
+    repo: "tiangolo/fastapi"
+    language: python
+    domain: web_framework
+    issue_title: "Response model with Optional fields loses default values in schema"
+    issue_description: |
+      When a Pydantic model used as `response_model` has Optional fields with default values,
+      the generated OpenAPI schema does not include the `default` keyword for those fields.
+    fail_tests:
+      - "tests/test_schema.py::test_optional_field_default_in_schema"
+    pass_tests:
+      - "tests/test_schema.py::test_optional_field_default_in_schema"
+    hints:
+      - "Look at fastapi/utils.py get_model_definitions()"
+      - "Pydantic v2 uses model_fields instead of __fields__"
+    reference_patch_summary: "Pass field.default to schema generation when field is Optional and has non-None default"
+    expected_aiu_type: "BUG_FIX"
+    difficulty: medium
+    tags: ["fastapi", "openapi", "schema", "pydantic"]
+
+  - id: "swe_sqlalchemy_001"
+    repo: "sqlalchemy/sqlalchemy"
+    language: python
+    domain: orm
+    issue_title: "AsyncSession.refresh() doesn't load expired relationship attributes"
+    issue_description: |
+      After `await session.refresh(obj)`, relationship attributes that were expired
+      (e.g., due to `expire_on_commit=True`) are not reloaded even when `attribute_names`
+      includes the relationship name.
+    fail_tests:
+      - "test/ext/asyncio/test_async_session.py::test_refresh_relationship_attribute"
+    pass_tests:
+      - "test/ext/asyncio/test_async_session.py::test_refresh_relationship_attribute"
+    hints:
+      - "Look at sqlalchemy/ext/asyncio/session.py AsyncSession.refresh()"
+      - "The sync refresh properly handles this via load_options"
+    reference_patch_summary: "Pass relationship load options through to the underlying sync refresh mechanism"
+    expected_aiu_type: "BUG_FIX"
+    difficulty: hard
+    tags: ["sqlalchemy", "async", "relationship", "refresh"]

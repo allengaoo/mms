@@ -1,0 +1,51 @@
+##############################################################################
+# Mulan Benchmark v2 — 默认配置
+#
+# 此文件定义各层评测的默认参数。
+# 通过 CLI 参数或 BenchmarkConfig 可覆盖这些值。
+##############################################################################
+
+version: "2.0"
+
+# 默认运行级别：offline = 仅 Layer3（无需 LLM API）
+default_level: offline
+
+# 默认评测 domain
+default_domains:
+  - generic_python
+
+# Layer 3 安全门控阈值
+layer3:
+  # SanitizationGate：critical 级别检出率警戒线（低于此值评测失败）
+  sanitize_critical_min_detection_rate: 0.9
+  # MigrationGate：阻断精度警戒线
+  migration_min_block_accuracy: 0.85
+  # ArchCheck：违规检出率警戒线
+  arch_min_detection_rate: 0.75
+  # 层级权重（总和应为 1.0）
+  weights:
+    sanitize:  0.50
+    migration: 0.30
+    arch:      0.20
+
+# Layer 2 记忆质量阈值
+layer2:
+  # 准确检索：Recall@5 合格线
+  retrieval_min_recall_at_5: 0.60
+  # 漂移检测：检出率合格线
+  drift_min_detection_rate: 0.80
+  # 维度权重（D2 在无 LLM 时权重重分配给 D1/D4）
+  weights:
+    d1_retrieval:     0.35
+    d2_injection:     0.35
+    d4_drift:         0.30
+
+# Layer 1 SWE-bench 阈值（在线模式）
+layer1:
+  # 格式合规性最低要求
+  min_format_compliance: 1.0
+  # AIU 类型覆盖率最低要求
+  min_aiu_coverage: 0.5
+  # 在线模式 Pass@1 目标（当前参考值，非强制）
+  target_pass_at_1: 0.30
+  target_resolve_rate: 0.45
