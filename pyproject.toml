@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.backends.legacy:build"
 
 [project]
-name = "mms"
+name = "mulan"
 version = "0.1.0"
-description = "MMS — AI Agent 驱动的结构化知识管理系统，为复杂软件工程提供记忆积累、上下文注入、架构约束扫描与文档熵控能力"
+description = "木兰（Mulan）— 端侧 AI 代码工程工具链。以织布为喻：将复杂软件任务分解为原子工序，以动态知识图谱为经、精准代码生成为纬，全程在端侧完成，不上传一行代码。"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
-authors = [{ name = "MMS Contributors" }]
-keywords = ["ai", "agent", "memory", "ontology", "context-engineering"]
+authors = [{ name = "Mulan Contributors" }]
+keywords = ["ai", "agent", "memory", "ontology", "context-engineering", "local-llm", "code-engineering"]
 
 # 核心运行时依赖（全部可选降级，纯标准库也能运行核心功能）
 dependencies = [
@@ -58,15 +58,15 @@ dev = [
 
 # 全量安装
 all = [
-    "mms[bailian,gemini,benchmark,dev]",
+    "mulan[bailian,gemini,benchmark,dev]",
 ]
 
 [project.scripts]
-mms = "mms.cli:main"
+mulan = "mms.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/gaob13/mms"
-Repository = "https://github.com/gaob13/mms"
+Homepage = "https://github.com/allengaoo/mms"
+Repository = "https://github.com/allengaoo/mms"
 
 # ── setuptools 包发现 ──────────────────────────────────────────────────────────
 [tool.setuptools.packages.find]

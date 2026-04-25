@@ -571,16 +571,22 @@ mms/
 ### 安装
 
 ```bash
-# 核心依赖（大部分功能不需要 LLM）
+# 1. 克隆仓库
+git clone https://github.com/allengaoo/mms.git ~/code/mms
+
+# 2. 安装核心依赖（大部分功能不需要 LLM）
 pip install pyyaml structlog
 
-# 百炼（阿里云）LLM 支持
+# 3. 安装百炼（阿里云）LLM 支持
 pip install openai dashscope
 
-# 克隆并加入 PATH
-git clone https://github.com/allengaoo/mms.git
-cd mms
-export PATH="$PATH:$(pwd)"
+# 4. 注册 mulan 命令（添加到 ~/.zshrc 或 ~/.bashrc）
+echo 'export MULAN_HOME="$HOME/code/mms"' >> ~/.zshrc
+echo 'alias mulan="python3 $MULAN_HOME/cli.py"' >> ~/.zshrc
+source ~/.zshrc
+
+# 验证安装
+mulan --help
 ```
 
 ### 冷启动新项目

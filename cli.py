@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-MMS CLI — MDP Memory System 统一命令行工具
+木兰（Mulan）CLI — 端侧 AI 代码工程工具链 统一命令行工具
 
 设计目标：
-  1. 单入口：所有记忆系统操作通过 `mms <subcommand>` 完成
-  2. 可嵌入：复制 scripts/mms/ 目录到任意项目即可使用
+  1. 单入口：所有记忆系统操作通过 `mulan <subcommand>` 完成
+  2. 可嵌入：克隆 github.com/allengaoo/mms，设置 alias mulan="python3 $MULAN_HOME/cli.py"
   3. 自描述：每个命令有清晰的帮助信息和示例
 
 子命令：
@@ -29,20 +29,20 @@ MMS CLI — MDP Memory System 统一命令行工具
     private close <EP-NNN>       — 关闭 EP 工作区
 
 用法示例：
-  python scripts/mms/cli.py status
-  python scripts/mms/cli.py synthesize "新增对象类型批量导出 API" --template ep-backend-api
-  python scripts/mms/cli.py synthesize "修复 Kafka 消费者丢消息" --template ep-debug --extra "只影响 ingestion worker"
-  python scripts/mms/cli.py precheck --ep EP-114
-  python scripts/mms/cli.py postcheck --ep EP-114
-  python scripts/mms/cli.py postcheck --ep EP-114 --skip-tests
-  python scripts/mms/cli.py distill --ep EP-109
-  python scripts/mms/cli.py distill --ep EP-109 --dry-run
-  python scripts/mms/cli.py gc
-  python scripts/mms/cli.py validate --changed-only
-  python scripts/mms/cli.py search kafka replication k8s
-  python scripts/mms/cli.py list --tier hot
-  python scripts/mms/cli.py hook install
-  python scripts/mms/cli.py reset-circuit
+  mulan status
+  mulan synthesize "新增对象类型批量导出 API" --template ep-backend-api
+  mulan synthesize "修复 Kafka 消费者丢消息" --template ep-debug --extra "只影响 ingestion worker"
+  mulan precheck --ep EP-114
+  mulan postcheck --ep EP-114
+  mulan postcheck --ep EP-114 --skip-tests
+  mulan distill --ep EP-109
+  mulan distill --ep EP-109 --dry-run
+  mulan gc
+  mulan validate --changed-only
+  mulan search kafka replication k8s
+  mulan list --tier hot
+  mulan hook install
+  mulan reset-circuit
 """
 import argparse
 import datetime
@@ -110,18 +110,18 @@ _COMMAND_DOCS: dict = {
         "models": "qwen3-32b（意图/评审/DAG） · qwen3-coder-next（代码）",
         "desc": "将完整 EP 生命周期串为 7 步交互式向导，支持断点续跑。",
         "usage": [
-            ("mms ep start EP-122",                  "启动 EP-122 工作流向导（从 Step 1）"),
-            ("mms ep start EP-122 --from-step 5",    "从 Step 5 续跑（断点恢复）"),
-            ("mms ep status EP-122",                 "查看 EP-122 向导进度"),
+            ("mulan ep start EP-122",                  "启动 EP-122 工作流向导（从 Step 1）"),
+            ("mulan ep start EP-122 --from-step 5",    "从 Step 5 续跑（断点恢复）"),
+            ("mulan ep status EP-122",                 "查看 EP-122 向导进度"),
         ],
         "steps": [
-            "Step 1  意图合成     mms synthesize → qwen3-32b",
+            "Step 1  意图合成     mulan synthesize → qwen3-32b",
             "Step 2  确认 EP 文件 Cursor 中生成 EP 文件后按 Enter",
-            "Step 3  建立基线     mms precheck",
-            "Step 4  生成 DAG    mms unit generate → qwen3-32b",
+            "Step 3  建立基线     mulan precheck",
+            "Step 4  生成 DAG    mulan unit generate → qwen3-32b",
             "Step 5  Unit 循环   qwen run + sonnet-save + compare(qwen3-32b 评审) + apply",
-            "Step 6  后校验      mms postcheck",
-            "Step 7  知识沉淀    mms dream + mms distill",
+            "Step 6  后校验      mulan postcheck",
+            "Step 7  知识沉淀    mulan dream + mulan distill",
         ],
     },
     "unit": {
@@ -129,15 +129,15 @@ _COMMAND_DOCS: dict = {
         "models": "qwen3-32b（generate） · qwen3-coder-next（run）",
         "desc": "将 EP 分解为原子 Unit 并执行，支持双模型对比工作流。",
         "usage": [
-            ("mms unit generate --ep EP-122",                         "生成 DAG（qwen3-32b）"),
-            ("mms unit status --ep EP-122",                          "查看执行进度"),
-            ("mms unit run --ep EP-122 --unit U1 --save-output",     "qwen 生成代码（存盘，不写业务文件）"),
-            ("mms unit sonnet-save --ep EP-122 --unit U1",           "保存 Sonnet 输出（stdin 粘贴）"),
-            ("mms unit compare --ep EP-122 --unit U1",               "Diff + qwen3-32b 评审 → report.md"),
-            ("mms unit compare --apply qwen --ep EP-122 --unit U1",  "应用 qwen 版本到业务文件"),
-            ("mms unit compare --apply sonnet --ep EP-122 --unit U1","应用 sonnet 版本到业务文件"),
-            ("mms unit done --ep EP-122 --unit U1",                  "手动标记 Unit 完成"),
-            ("mms unit run-next --ep EP-122",                        "执行当前批次所有 pending Unit"),
+            ("mulan unit generate --ep EP-122",                         "生成 DAG（qwen3-32b）"),
+            ("mulan unit status --ep EP-122",                          "查看执行进度"),
+            ("mulan unit run --ep EP-122 --unit U1 --save-output",     "qwen 生成代码（存盘，不写业务文件）"),
+            ("mulan unit sonnet-save --ep EP-122 --unit U1",           "保存 Sonnet 输出（stdin 粘贴）"),
+            ("mulan unit compare --ep EP-122 --unit U1",               "Diff + qwen3-32b 评审 → report.md"),
+            ("mulan unit compare --apply qwen --ep EP-122 --unit U1",  "应用 qwen 版本到业务文件"),
+            ("mulan unit compare --apply sonnet --ep EP-122 --unit U1","应用 sonnet 版本到业务文件"),
+            ("mulan unit done --ep EP-122 --unit U1",                  "手动标记 Unit 完成"),
+            ("mulan unit run-next --ep EP-122",                        "执行当前批次所有 pending Unit"),
         ],
     },
     "synthesize": {
@@ -145,10 +145,10 @@ _COMMAND_DOCS: dict = {
         "models": "qwen3-32b（百炼）",
         "desc": "结合记忆库 + EP 模板，生成结构化 Cursor 起手提示词（三级检索漏斗）。",
         "usage": [
-            ('mms synthesize "新增对象类型批量导出 API" --template ep-backend-api', "后端 API 类任务"),
-            ('mms synthesize "修复 Kafka 消费者丢消息" --template ep-debug',        "调试类任务"),
-            ('mms synthesize "精简前端导航栏" --template ep-frontend -i',           "交互式补充要求"),
-            ("mms synthesize --list-templates",                                     "列出所有模板"),
+            ('mulan synthesize "新增对象类型批量导出 API" --template ep-backend-api', "后端 API 类任务"),
+            ('mulan synthesize "修复 Kafka 消费者丢消息" --template ep-debug',        "调试类任务"),
+            ('mulan synthesize "精简前端导航栏" --template ep-frontend -i',           "交互式补充要求"),
+            ("mulan synthesize --list-templates",                                     "列出所有模板"),
         ],
         "templates": [
             "ep-backend-api   后端 API / Service 新增",
@@ -163,8 +163,8 @@ _COMMAND_DOCS: dict = {
         "models": "无 LLM",
         "desc": "运行 arch_check 记录基线状态，分析 EP 影响范围，阻断已有架构违规。",
         "usage": [
-            ("mms precheck --ep EP-122",         "建立 EP-122 的 arch_check 基线"),
-            ("mms precheck --ep EP-122 --strict","严格模式：WARN 也视为阻断"),
+            ("mulan precheck --ep EP-122",         "建立 EP-122 的 arch_check 基线"),
+            ("mulan precheck --ep EP-122 --strict","严格模式：WARN 也视为阻断"),
         ],
     },
     "postcheck": {
@@ -172,8 +172,8 @@ _COMMAND_DOCS: dict = {
         "models": "无 LLM",
         "desc": "运行 pytest + arch_check diff + doc_drift 检测，验证所有变更合规。",
         "usage": [
-            ("mms postcheck --ep EP-122",               "标准后校验（含 pytest）"),
-            ("mms postcheck --ep EP-122 --skip-tests",  "仅架构检查，跳过 pytest"),
+            ("mulan postcheck --ep EP-122",               "标准后校验（含 pytest）"),
+            ("mulan postcheck --ep EP-122 --skip-tests",  "仅架构检查，跳过 pytest"),
         ],
     },
     "distill": {
@@ -181,8 +181,8 @@ _COMMAND_DOCS: dict = {
         "models": "qwen3-32b（百炼）",
         "desc": "从 EP 文件提取 LESSONS_LEARNED / ACTIVE_DECISIONS，生成 MEM-*.md 记忆条目。",
         "usage": [
-            ("mms distill --ep EP-122",          "蒸馏 EP-122 知识"),
-            ("mms distill --ep EP-122 --dry-run","预览模式（不写文件）"),
+            ("mulan distill --ep EP-122",          "蒸馏 EP-122 知识"),
+            ("mulan distill --ep EP-122 --dry-run","预览模式（不写文件）"),
         ],
     },
     "dream": {
@@ -190,26 +190,26 @@ _COMMAND_DOCS: dict = {
         "models": "qwen3-32b（百炼）",
         "desc": "从 git commit 历史和 EP 的 Surprises 章节自动萃取知识草稿，人工审核后提升。",
         "usage": [
-            ("mms dream --ep EP-122",        "针对 EP-122 萃取知识草稿"),
-            ("mms dream --list",             "列出所有未处理草稿"),
-            ("mms dream --promote",          "交互式审核 → 提升为正式记忆"),
-            ("mms dream --dry-run",          "只预览 prompt，不调用 LLM"),
+            ("mulan dream --ep EP-122",        "针对 EP-122 萃取知识草稿"),
+            ("mulan dream --list",             "列出所有未处理草稿"),
+            ("mulan dream --promote",          "交互式审核 → 提升为正式记忆"),
+            ("mulan dream --dry-run",          "只预览 prompt，不调用 LLM"),
         ],
     },
     "status": {
         "title": "系统状态",
         "models": "无 LLM",
         "desc": "检查所有 Provider 可用性、熔断器状态、记忆库统计和近 7 天模型用量。",
-        "usage": [("mms status", "查看完整系统状态")],
+        "usage": [("mulan status", "查看完整系统状态")],
     },
     "search": {
         "title": "记忆关键词检索",
         "models": "无 LLM",
         "desc": "按关键词检索记忆库（Jaccard 匹配，无向量），支持预览最高匹配。",
         "usage": [
-            ("mms search kafka replication",        "搜索 kafka 相关记忆"),
-            ("mms search rls tenant --preview",     "搜索并预览第一条结果"),
-            ("mms search auth --top-k 10",          "返回 10 条结果"),
+            ("mulan search kafka replication",        "搜索 kafka 相关记忆"),
+            ("mulan search rls tenant --preview",     "搜索并预览第一条结果"),
+            ("mulan search auth --top-k 10",          "返回 10 条结果"),
         ],
     },
     "inject": {
@@ -217,8 +217,8 @@ _COMMAND_DOCS: dict = {
         "models": "无 LLM",
         "desc": "自动检索 + 压缩相关记忆，生成 Cursor 对话前缀（提升 LLM 上下文质量）。",
         "usage": [
-            ("mms inject 新增对象类型 API",          "生成 API 开发相关记忆前缀"),
-            ('mms inject "修复 RLS 问题" --mode debug', "调试模式注入"),
+            ("mulan inject 新增对象类型 API",          "生成 API 开发相关记忆前缀"),
+            ('mulan inject "修复 RLS 问题" --mode debug', "调试模式注入"),
         ],
     },
     "template": {
@@ -226,9 +226,9 @@ _COMMAND_DOCS: dict = {
         "models": "无 LLM",
         "desc": "填空式代码骨架，降低小模型幻觉率。模板自动注入架构约束。",
         "usage": [
-            ("mms template list",                                         "列出所有模板"),
-            ("mms template info service-method",                          "查看模板变量说明"),
-            ("mms template use service-method --var entity=ObjectType",   "渲染模板"),
+            ("mulan template list",                                         "列出所有模板"),
+            ("mulan template info service-method",                          "查看模板变量说明"),
+            ("mulan template use service-method --var entity=ObjectType",   "渲染模板"),
         ],
         "templates": [
             "service-method   Service 层方法骨架（SecurityContext + AuditService + RLS）",
@@ -242,10 +242,10 @@ _COMMAND_DOCS: dict = {
         "models": "无 LLM",
         "desc": "查询记忆节点之间的关联关系，支持 BFS 遍历、文件反查、影响分析。",
         "usage": [
-            ("mms graph stats",           "图谱统计（节点数、边数）"),
-            ("mms graph explore AD-002",  "从 AD-002 出发 BFS 遍历（depth=2）"),
-            ("mms graph file backend/app/services/control/action_service.py", "反查引用该文件的记忆"),
-            ("mms graph impacts AD-002",  "查询 AD-002 变更时需同步检查的节点"),
+            ("mulan graph stats",           "图谱统计（节点数、边数）"),
+            ("mulan graph explore AD-002",  "从 AD-002 出发 BFS 遍历（depth=2）"),
+            ("mulan graph file backend/app/services/control/action_service.py", "反查引用该文件的记忆"),
+            ("mulan graph impacts AD-002",  "查询 AD-002 变更时需同步检查的节点"),
         ],
     },
 }
@@ -279,7 +279,7 @@ def _print_command_help(cmd_name: str) -> None:
     templates = doc.get("templates", [])
 
     print(f"\n{c('='*60, _BOLD)}")
-    print(f"  {c('mms ' + cmd_name, _BOLD)}  —  {title}")
+    print(f"  {c('mulan ' + cmd_name, _BOLD)}  —  {title}")
     print(c('='*60, _BOLD))
 
     if models:
@@ -309,18 +309,18 @@ def _print_command_help(cmd_name: str) -> None:
 def _print_full_help() -> None:
     """打印完整彩色命令参考"""
     print(f"\n{c('='*62, _BOLD)}")
-    print(f"  {c('MMS — MDP Memory System CLI', _BOLD)}  |  版本 2.2")
+    print(f"  {c('MMS — 端侧 AI 代码工程工具链 CLI', _BOLD)}  |  版本 2.2")
     print(c('='*62, _BOLD))
 
     # 模型分工一览
     print(f"\n{c('【模型分工】', _CYAN)}")
     model_table = [
-        ("意图识别",    "mms synthesize",           "qwen3-32b（百炼）"),
-        ("DAG 生成",   "mms unit generate",         "qwen3-32b（百炼）"),
-        ("代码生成 A", "mms unit run --save-output", "qwen3-coder-next（百炼）"),
-        ("代码生成 B", "mms unit sonnet-save",       "Cursor Sonnet（手动）"),
-        ("语义评审",   "mms unit compare",           "qwen3-32b（百炼，自动）"),
-        ("知识蒸馏",   "mms distill / dream",        "qwen3-32b（百炼）"),
+        ("意图识别",    "mulan synthesize",           "qwen3-32b（百炼）"),
+        ("DAG 生成",   "mulan unit generate",         "qwen3-32b（百炼）"),
+        ("代码生成 A", "mulan unit run --save-output", "qwen3-coder-next（百炼）"),
+        ("代码生成 B", "mulan unit sonnet-save",       "Cursor Sonnet（手动）"),
+        ("语义评审",   "mulan unit compare",           "qwen3-32b（百炼，自动）"),
+        ("知识蒸馏",   "mulan distill / dream",        "qwen3-32b（百炼）"),
     ]
     for role, cmd_str, model in model_table:
         print(f"  {c(role, _BOLD):<12}  {c(cmd_str, _DIM):<38}  {c(model, _CYAN)}")
@@ -328,13 +328,13 @@ def _print_full_help() -> None:
     # EP 工作流
     print(f"\n{c('【EP 工作流（推荐：mms ep start EP-NNN）】', _CYAN)}")
     ep_steps = [
-        ("1", "mms synthesize \"任务\" --template ep-backend-api", "意图合成"),
+        ("1", "mulan synthesize \"任务\" --template ep-backend-api", "意图合成"),
         ("2", "Cursor 生成 EP 文件 → 按 Enter 确认",               "EP 确认"),
-        ("3", "mms precheck --ep EP-NNN",                           "建立基线"),
-        ("4", "mms unit generate --ep EP-NNN",                      "生成 DAG"),
-        ("5", "mms unit run --save-output  →  compare  →  apply",   "Unit 循环"),
-        ("6", "mms postcheck --ep EP-NNN",                          "后校验"),
-        ("7", "mms distill / mms dream --ep EP-NNN",                "知识沉淀"),
+        ("3", "mulan precheck --ep EP-NNN",                           "建立基线"),
+        ("4", "mulan unit generate --ep EP-NNN",                      "生成 DAG"),
+        ("5", "mulan unit run --save-output  →  compare  →  apply",   "Unit 循环"),
+        ("6", "mulan postcheck --ep EP-NNN",                          "后校验"),
+        ("7", "mulan distill / mulan dream --ep EP-NNN",                "知识沉淀"),
     ]
     for num, cmd_str, label in ep_steps:
         print(f"  {c(f'Step {num}', _BOLD)}  {c(cmd_str, _DIM):<52}  {c(label, _YELLOW)}")
@@ -342,42 +342,42 @@ def _print_full_help() -> None:
     # 命令速查表
     cmd_groups = [
         ("EP 工作流", [
-            ("mms ep start EP-NNN",              "交互式向导（7 步引导，含断点续跑）"),
-            ("mms ep start EP-NNN --from-step 5","从指定步骤续跑"),
-            ("mms ep status EP-NNN",             "查看向导进度"),
-            ("mms synthesize \"任务\" -t <模板>","意图合成 → Cursor 起手提示词"),
-            ("mms precheck --ep EP-NNN",         "修改前基线检查"),
-            ("mms postcheck --ep EP-NNN",        "修改后测试与架构验证"),
-            ("mms distill --ep EP-NNN",          "EP 知识蒸馏 → MEM-*.md"),
-            ("mms dream --ep EP-NNN",            "autoDream 自动萃取知识草稿"),
+            ("mulan ep start EP-NNN",              "交互式向导（7 步引导，含断点续跑）"),
+            ("mulan ep start EP-NNN --from-step 5","从指定步骤续跑"),
+            ("mulan ep status EP-NNN",             "查看向导进度"),
+            ("mulan synthesize \"任务\" -t <模板>","意图合成 → Cursor 起手提示词"),
+            ("mulan precheck --ep EP-NNN",         "修改前基线检查"),
+            ("mulan postcheck --ep EP-NNN",        "修改后测试与架构验证"),
+            ("mulan distill --ep EP-NNN",          "EP 知识蒸馏 → MEM-*.md"),
+            ("mulan dream --ep EP-NNN",            "autoDream 自动萃取知识草稿"),
         ]),
         ("Unit 双模型对比", [
-            ("mms unit generate --ep EP-NNN",               "生成 DAG 执行计划"),
-            ("mms unit status --ep EP-NNN",                 "查看 DAG 进度"),
-            ("mms unit run --ep EP-NNN --unit U1 --save-output", "qwen 生成并存盘"),
-            ("mms unit sonnet-save --ep EP-NNN --unit U1",  "存盘 Sonnet 输出"),
-            ("mms unit compare --ep EP-NNN --unit U1",      "Diff + qwen3-32b 评审"),
-            ("mms unit compare --apply qwen/sonnet ...",    "应用选定版本"),
-            ("mms unit done --ep EP-NNN --unit U1",         "手动标记完成"),
+            ("mulan unit generate --ep EP-NNN",               "生成 DAG 执行计划"),
+            ("mulan unit status --ep EP-NNN",                 "查看 DAG 进度"),
+            ("mulan unit run --ep EP-NNN --unit U1 --save-output", "qwen 生成并存盘"),
+            ("mulan unit sonnet-save --ep EP-NNN --unit U1",  "存盘 Sonnet 输出"),
+            ("mulan unit compare --ep EP-NNN --unit U1",      "Diff + qwen3-32b 评审"),
+            ("mulan unit compare --apply qwen/sonnet ...",    "应用选定版本"),
+            ("mulan unit done --ep EP-NNN --unit U1",         "手动标记完成"),
         ]),
         ("记忆管理", [
-            ("mms search <关键词...>",   "关键词检索记忆"),
-            ("mms inject <任务描述>",    "生成 Cursor 上下文前缀"),
-            ("mms list --tier hot",      "列出热记忆"),
-            ("mms graph explore <ID>",   "知识图谱 BFS 遍历"),
-            ("mms template list",        "代码模板列表"),
-            ("mms template use <name>",  "渲染代码模板"),
-            ("mms gc",                   "垃圾回收（LFU 淘汰 + 索引重建）"),
-            ("mms validate",             "Schema 校验"),
+            ("mulan search <关键词...>",   "关键词检索记忆"),
+            ("mulan inject <任务描述>",    "生成 Cursor 上下文前缀"),
+            ("mulan list --tier hot",      "列出热记忆"),
+            ("mulan graph explore <ID>",   "知识图谱 BFS 遍历"),
+            ("mulan template list",        "代码模板列表"),
+            ("mulan template use <name>",  "渲染代码模板"),
+            ("mulan gc",                   "垃圾回收（LFU 淘汰 + 索引重建）"),
+            ("mulan validate",             "Schema 校验"),
         ]),
         ("系统维护", [
-            ("mms status",           "系统状态（Provider / 熔断器 / 用量）"),
-            ("mms usage --since 30", "模型用量统计（近 30 天）"),
-            ("mms codemap",          "刷新代码目录快照"),
-            ("mms funcmap",          "刷新函数签名索引"),
-            ("mms hook install",     "安装 git pre-commit hook"),
-            ("mms reset-circuit",    "重置熔断器"),
-            ("mms verify",           "记忆系统健康检查"),
+            ("mulan status",           "系统状态（Provider / 熔断器 / 用量）"),
+            ("mulan usage --since 30", "模型用量统计（近 30 天）"),
+            ("mulan codemap",          "刷新代码目录快照"),
+            ("mulan funcmap",          "刷新函数签名索引"),
+            ("mulan hook install",     "安装 git pre-commit hook"),
+            ("mulan reset-circuit",    "重置熔断器"),
+            ("mulan verify",           "记忆系统健康检查"),
         ]),
     ]
 
@@ -386,8 +386,8 @@ def _print_full_help() -> None:
         for cmd_str, comment in cmds:
             print(f"  {c(cmd_str, _BOLD):<50}  {c(comment, _DIM)}")
 
-    print(f"\n{c('提示', _YELLOW)}：运行 {c('mms help <command>', _BOLD)} 查看单个命令的详细说明和示例")
-    print(f"      例如：{c('mms help unit', _BOLD)} · {c('mms help synthesize', _BOLD)} · {c('mms help ep', _BOLD)}\n")
+    print(f"\n{c('提示', _YELLOW)}：运行 {c('mulan help <command>', _BOLD)} 查看单个命令的详细说明和示例")
+    print(f"      例如：{c('mulan help unit', _BOLD)} · {c('mulan help synthesize', _BOLD)} · {c('mulan help ep', _BOLD)}\n")
 
 
 # ─── status 命令 ──────────────────────────────────────────────────────────────
@@ -460,7 +460,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     cp_dir = _SYSTEM_DIR / "checkpoints"
     incomplete = list(cp_dir.glob("*.json")) if cp_dir.exists() else []
     if incomplete:
-        warn(f"未完成的蒸馏断点：{len(incomplete)} 个（运行 `mms incomplete` 查看）")
+        warn(f"未完成的蒸馏断点：{len(incomplete)} 个（运行 `mulan incomplete` 查看）")
     else:
         ok("无未完成的蒸馏断点")
 
@@ -474,8 +474,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"\n{c('【模型使用统计（近 7 天）】', _CYAN)}")
     usage_file = _SYSTEM_DIR / "model_usage.jsonl"
     if not usage_file.exists():
-        info("暂无调用记录（首次调用 mms inject / mms distill 后自动记录）")
-        info("运行 `mms usage` 查看详细统计")
+        info("暂无调用记录（首次调用 mms inject / mulan distill 后自动记录）")
+        info("运行 `mulan usage` 查看详细统计")
     else:
         try:
             from mms.utils.model_tracker import load_records, compute_stats
@@ -498,7 +498,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                     f"{c(str(bm['prompt_tok'] + bm['output_tok']) + ' tok', _DIM)}"
                     + provider_tag
                 )
-            info("运行 `mms usage` 查看详细报告（Token 分布 / 场景明细）")
+            info("运行 `mulan usage` 查看详细报告（Token 分布 / 场景明细）")
 
     # 记忆图健康监控（Phase 4-B）
     print(f"\n{c('【记忆图健康（Memory Graph Health）】', _CYAN)}")
@@ -725,7 +725,7 @@ def cmd_incomplete(args: argparse.Namespace) -> int:
             pending = state.pending_sections
             print(f"  {c(tid, _CYAN)}  EP={state.ep_id or '?'}")
             print(f"     已完成: {done}  待处理: {pending}")
-            print(f"     续跑命令: mms distill --ep {state.ep_id or '?'} --resume {tid}")
+            print(f"     续跑命令: mulan distill --ep {state.ep_id or '?'} --resume {tid}")
             print()
     return 0
 
@@ -811,12 +811,12 @@ def cmd_reset_circuit(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mms",
-        description=f"{_BOLD}MMS — MDP Memory System CLI{_RESET}  |  版本 2.2",
+        prog="mulan",
+        description=f"{_BOLD}木兰（Mulan）— 端侧 AI 代码工程工具链{_RESET}  |  版本 1.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-运行 'mms help' 查看带颜色的完整命令参考。
-运行 'mms help <command>' 查看单个命令的详细说明和示例。
+运行 'mulan help' 查看带颜色的完整命令参考。
+运行 'mulan help <command>' 查看单个命令的详细说明和示例。
         """,
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
@@ -1562,15 +1562,15 @@ def cmd_seed(args: argparse.Namespace) -> int:
             result_dir = ingest(url, seed_name=seed_name, dry_run=dry_run, force=force)
             if not dry_run:
                 print(f"\n  ✅ 种子包就绪：{result_dir}")
-                print(f"  提示：运行 `mms seed list` 查看所有种子包")
-                print(f"  提示：运行 `mms bootstrap` 将种子包注入到当前项目\n")
+                print(f"  提示：运行 `mulan seed list` 查看所有种子包")
+                print(f"  提示：运行 `mulan bootstrap` 将种子包注入到当前项目\n")
         except (FileNotFoundError, ValueError) as e:
             print(f"\n  ❌ 获取失败：{e}\n")
             return 1
         return 0
 
     else:
-        print(f"未知子命令 `{subcmd}`，使用 `mms seed --help` 查看帮助")
+        print(f"未知子命令 `{subcmd}`，使用 `mulan seed --help` 查看帮助")
         return 1
 
 
@@ -1606,7 +1606,7 @@ def cmd_ast_diff(args: argparse.Namespace) -> int:
     if not before_path.exists():
         print(f"❌ before 快照不存在：{before_path}")
         if ep_id:
-            print(f"   提示：先运行 mms precheck --ep {ep_id} 建立基线快照")
+            print(f"   提示：先运行 mulan precheck --ep {ep_id} 建立基线快照")
         return 1
 
     print(f"\nAST 契约 Diff：{before_path.name} → {after_path.name}")
