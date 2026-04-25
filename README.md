@@ -1,10 +1,10 @@
-# MMS — Memory Management System
+# MMS — 端侧 AI 代码工程工具链
 
-> **让端侧小模型写出大模型级别的代码**
+> **将复杂软件任务分解、执行、验证、学习——全程在端侧完成，不上传代码**
 >
-> MMS 是一套面向复杂软件工程的 AI Agent 结构化记忆系统。它以纯文本、零向量数据库、零强制第三方运行时的方式，  
-> 将项目知识组织为动态本体（Dynamic Ontology），并在每次任务前向 AI Agent 精准注入上下文，  
-> 从而让资源受限的端侧小模型（< 50B）持续产出符合架构约束的高质量代码。
+> MMS（Memory-driven Multi-step System）是一套**端侧 AI 代码工程工具链**。  
+> 它以任务分解引擎（AIU/DAG）为驱动核心，以动态知识图谱为记忆后端，以多层安全门控为工程保障，  
+> 让本地 32B 参数模型完成过去需要云端大模型才能胜任的复杂代码工程任务。
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
@@ -13,75 +13,172 @@
 
 ---
 
-## 核心目标
+## 它能做什么？
 
-### 为什么要让小模型执行？
+MMS 的定位不是一个 AI 聊天工具，而是一个**工程化的代码任务执行系统**。一次完整的 MMS 工作循环如下：
 
-大模型推理能力强，但有两个根本约束：
+```
+① 任务输入       mms synthesize "新增批量导出 API"
+      │
+      ▼
+② 智能分解       qwen3-32b 生成 DAG（有序 AIU 单元图）
+      │           每个 AIU ≤ 4k tokens，含 precheck/postcheck 挂载点
+      ▼
+③ 上下文注入     从记忆图谱中 hybrid_search 相关架构决策、经验教训、代码模式
+      │           精准注入，不超出 4k tokens 预算
+      ▼
+④ 代码生成       qwen3-coder-next 生成 Diff，受模板骨架约束
+      │
+      ├─ 可选：双角色内部评审（qwen3-32b 作 Reviewer 检查合规性）
+      │
+      ▼
+⑤ 自动验证       postcheck：pytest 验证 + AST 契约检查 + DB 迁移对齐 + 记忆新鲜度检测
+      │           3 级 Feedback 回退（扩预算 → 插前置 → 拆分）
+      ▼
+⑥ 知识回流       distill/dream：从执行历史萃取经验 → 写回记忆图谱（自动 auto-link）
+      │           SanitizationGate：脱敏后才落盘
+      ▼
+⑦ 下次任务更好   记忆图谱越来越丰富，下一次 AIU 的上下文质量越来越高
+```
 
-- **无法本地部署**：企业代码库因为安全问题，不能上传云端
-- **上下文成本高**：每次注入完整架构知识耗费大量 token 和费用
+整个过程可以无人值守（`mms ep run EP-NNN --auto-confirm`），也可以在关键决策点暂停确认。
 
-MMS 的核心假设是：**限制代码生成的主要因素不是模型能力，而是上下文质量。**
+---
 
-通过将任务分解为足够小的原子单元（≤4k tokens），并精准注入该单元所需的上下文，  
-一个 32B 参数的本地模型完全可以完成复杂的代码变更——而无需把整个代码库喂给大模型。
+## 为什么是端侧？
+
+### 云端大模型的根本限制
+
+| 限制 | 具体问题 |
+|------|---------|
+| **安全合规** | 企业核心代码库不能上传到云端（SOC2 / ISO27001 要求） |
+| **上下文成本** | 把完整代码库注入大模型，每次任务消耗数万 token |
+| **黑盒推理** | 大模型为什么这样写？无法追溯，无法调试，无法改进 |
+| **无状态** | 大模型不记得上次任务发生了什么，每次都从零开始 |
+
+### MMS 的解法
+
+**MMS 的核心假设：限制代码生成质量的主要因素不是模型能力，而是上下文质量和任务粒度。**
+
+通过将任务分解为足够细的原子单元（AIU，≤4k tokens），并为每个单元精准注入最相关的历史知识，  
+一个 32B 参数的本地模型完全可以完成过去需要 GPT-4 级别模型才能处理的复杂代码变更。
 
 ### 设计原则
 
+| 原则 | 实现方式 |
+|------|---------|
+| **端侧优先** | qwen3-32b（意图 / 推理 / 评审）+ qwen3-coder-next（代码生成），兼顾速度与成本 |
+| **工程化执行** | DAG 任务图 + AIU 原子单元 + precheck/postcheck 门控，不是一次性提示词 |
+| **记忆驱动** | 动态知识图谱积累跨任务经验，越用越聪明，解决大模型无状态问题 |
+| **纯文本存储** | 所有记忆、本体、执行计划均为 Markdown / YAML，无向量数据库依赖 |
+| **零强制运行时** | 核心功能仅依赖 `pyyaml` + `structlog`，无需启动任何服务 |
+| **企业级安全** | SanitizationGate 脱敏 + 架构约束检查 + DB 迁移门控 + 审计日志 |
+| **可观测** | Oracle 10046 风格诊断追踪，每次 LLM 调用、文件操作均有完整记录 |
 
-| 原则         | 实现方式                                                     |
-| ---------- | -------------------------------------------------------- |
-| **端侧优先**   | 以 qwen3-32b（意图识别）+ qwen3-coder-next（代码生成）作为核心推理层，兼顾速度与成本 |
-| **纯文本存储**  | 所有记忆、本体、执行计划均为 Markdown / YAML，无向量数据库依赖                  |
-| **零强制运行时** | 核心功能仅依赖 `pyyaml` + `structlog`，无需启动任何服务                  |
-| **动态本体驱动** | 用 ObjectType / LinkType / Action / Function 四层本体组织知识     |
-| **原子化执行**  | 每个 AIU（Atomic Intent Unit）≤4k tokens，可由 32B 模型独立执行       |
-| **记忆自进化**  | 每次任务完成后自动蒸馏经验，失败历史驱动代价模型优化                               |
+---
 
+## 工具链五层架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 第一层：任务工程层（Task Engineering）                         │
+│  mms synthesize → DAG 生成 → AIU 编排 → EP 工作流           │
+│  角色：qwen3-32b 意图分解 + DAG 编排                         │
+├─────────────────────────────────────────────────────────────┤
+│ 第二层：知识记忆层（Knowledge Memory）                         │
+│  动态本体图谱：MemoryNode / ArchDecision / Pattern / Lesson   │
+│  图遍历：hybrid_search / typed_explore / find_by_concept     │
+│  Auto-Link 自动建边 + 记忆新鲜度追踪                          │
+├─────────────────────────────────────────────────────────────┤
+│ 第三层：代码生成层（Code Generation）                          │
+│  上下文注入（< 4k tokens）→ qwen3-coder-next 生成 Diff        │
+│  代码模板骨架 + 双角色内部评审（可选）                          │
+├─────────────────────────────────────────────────────────────┤
+│ 第四层：安全验证层（Safety & Validation）                      │
+│  pytest 验证 + AST 契约检测 + DB 迁移门控 + 架构约束扫描        │
+│  SanitizationGate（API Key / JWT / IP 脱敏）                 │
+│  3 级 Feedback 回退机制                                       │
+├─────────────────────────────────────────────────────────────┤
+│ 第五层：自学习层（Self-Learning）                              │
+│  distill/dream 知识蒸馏 → 写回记忆图谱                        │
+│  失败历史 → 代价模型优化 → 下次 AIU 预算更准确                 │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 项目现状
 
-### 已实现的核心能力
+### 各层已实现能力
 
+**第一层：任务工程**
 
-| 模块                     | 状态   | 说明                                                       |
-| ---------------------- | ---- | -------------------------------------------------------- |
-| 动态本体（Ontology v4）      | ✅ 稳定 | 四层分离架构 + 5 种 LinkType + 语义图遍历 + Auto-Link 自动建边 + 图健康监控 |
-| AIU 分解引擎               | ✅ 稳定 | 28 种原子意图类型，6 族，CBO 代价估算                                  |
-| 3 级反馈回退                | ✅ 稳定 | 类 DB Query Feedback：扩预算→插前置→拆分                           |
-| EP 工作流向导               | ✅ 稳定 | 7 步交互式引导，支持断点续跑                                          |
-| 一键自动 Pipeline          | ✅ 稳定 | `mms ep run`：precheck→units→postcheck                    |
-| 双模型对比执行                | ✅ 稳定 | Qwen vs Sonnet 机械 diff + qwen3-32b 语义评审                  |
-| 诊断追踪（Trace）            | ✅ 稳定 | Oracle 10046 风格，4 级诊断级别                                  |
-| 记忆检索注入                 | ✅ 稳定 | hybrid_search（图 + 关键词降级）+ 3 级检索漏斗，< 4k tokens/任务        |
-| 知识图谱                   | ✅ 稳定 | BFS 遍历 + 文件反查 + 影响传播分析                                   |
-| autoDream 蒸馏           | ✅ 稳定 | git 历史 + EP Surprises → 知识草稿                             |
-| 冷启动 Bootstrap          | ✅ 稳定 | AST 骨架化 + 种子包注入，< 1s，零 LLM                               |
-| AST 契约变更检测             | ✅ 稳定 | precheck 快照 vs 当前状态 diff；语义哈希防止格式化引起的虚假漂移                |
-| 代码模板库                  | ✅ 稳定 | 填空式骨架，降低小模型幻觉率                                           |
-| **src/mms/ 分包重组**      | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅暴露核心 API                           |
-| **多语言 AST 骨架化**        | ✅ 稳定 | Python / Java / Go / TypeScript 四语言统一指纹提取                |
-| **DB 迁移脚本门控**          | ✅ 稳定 | postcheck 强制验证 ORM 变更 ↔ up()/down() 迁移脚本对齐               |
-| **脱敏屏障（SanitizeGate）** | ✅ 稳定 | 落盘前拦截 API Key / JWT / IP 等敏感凭证，自动替换为 `[REDACTED_*]`      |
-| **Rule Absorber**      | ✅ 稳定 | `mms seed ingest <url>` 将 .cursorrules/.mdc 蒸馏为 MMS YAML |
-| **双角色内部评审**            | ✅ 稳定 | Feature flag（默认关闭）：Coder 生成后由 Reviewer（qwen3-32b）合规审查    |
-| 测试套件                   | ✅ 稳定 | **563** 测试用例，无需 LLM API 可全部通过                            |
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| AIU 分解引擎 | ✅ 稳定 | 28 种原子意图类型，6 族，CBO 代价估算 |
+| DAG 编排 | ✅ 稳定 | qwen3-32b 生成有序任务图，支持并行 / 串行批次 |
+| EP 全自动 Pipeline | ✅ 稳定 | `mms ep run`：precheck → units → postcheck，支持无人值守 |
+| 3 级反馈回退 | ✅ 稳定 | 类 DB Query Feedback：扩预算 → 插前置 → 拆分 |
+| AIU Registry YAML 扩展 | ✅ 稳定 | 新增 AIU 类型无需修改 Python 源码 |
 
+**第二层：知识记忆**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 动态本体（Ontology v4） | ✅ 稳定 | 四层分离架构 + 5 种 ObjectType + 5 种 LinkType |
+| 语义图遍历 | ✅ 稳定 | `hybrid_search` / `typed_explore` / `find_by_concept`，O(1) 概念级检索 |
+| Auto-Link 自动建边 | ✅ 稳定 | dream 写入记忆时自动提取文件路径和领域概念 |
+| 记忆新鲜度追踪 | ✅ 稳定 | `freshness_checker`：代码变更 → cites 边反查 → drift 传播 |
+| 图健康监控 | ✅ 稳定 | `mms status` 实时显示节点分布、边覆盖率、孤立率、图密度 |
+| 冷启动 Bootstrap | ✅ 稳定 | AST 骨架化 + 种子包注入，< 1s，零 LLM 调用 |
+
+**第三层：代码生成**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 上下文精准注入 | ✅ 稳定 | 3 级检索漏斗，< 4k tokens/任务，不稀释模型注意力 |
+| 代码模板库 | ✅ 稳定 | 填空式骨架（Service / API / Worker / React Page），降低幻觉率 |
+| 双模型对比执行 | ✅ 稳定 | Qwen vs Sonnet 机械 diff + qwen3-32b 语义评审（可选高级模式） |
+| 双角色内部评审 | ✅ 稳定 | Feature flag（默认关闭）：Coder 生成后由 Reviewer 检查合规 |
+
+**第四层：安全验证**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| AST 契约变更检测 | ✅ 稳定 | precheck 快照 vs postcheck diff；语义哈希防格式化引起的虚假漂移 |
+| DB 迁移脚本门控 | ✅ 稳定 | postcheck 强制验证 ORM 变更 ↔ up()/down() 迁移脚本对齐 |
+| 脱敏屏障（SanitizeGate） | ✅ 稳定 | 落盘前拦截 API Key / JWT / IP，自动替换为 `[REDACTED_*]` |
+| 架构约束扫描 | ✅ 稳定 | 6 条硬性规则（AC-1~AC-6），可通过 seed_packs 自定义扩展 |
+| 多语言 AST 骨架化 | ✅ 稳定 | Python / Java / Go / TypeScript 四语言统一指纹提取 |
+| 诊断追踪（Trace） | ✅ 稳定 | Oracle 10046 风格，4 级诊断级别，完整 LLM 调用审计 |
+
+**第五层：自学习**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| EP 知识蒸馏（distill） | ✅ 稳定 | 任务完成后自动提炼经验 → MEM-*.md |
+| autoDream 蒸馏 | ✅ 稳定 | git 历史 + EP Surprises → 知识草稿（需人工审核升级） |
+| Rule Absorber | ✅ 稳定 | `mms seed ingest <url>` 将 .cursorrules/.mdc 蒸馏为 MMS YAML 种子 |
+| 代价模型自优化 | ✅ 稳定 | 历史成功率驱动 CBO 预算估算，失败记录影响下次任务拆分 |
+
+**工程基础设施**
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| src/mms/ 分包重组 | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅暴露核心 API |
+| 测试套件 | ✅ 稳定 | **563** 测试用例，无需 LLM API 可全部通过 |
 
 ### 技术栈
 
 ```
-运行时    Python 3.11+  │  pyyaml · structlog（核心依赖）
+运行时    Python 3.11+  │  pyyaml · structlog（核心依赖，无其他强制依赖）
 LLM 集成  Alibaba Bailian · 意图识别 / 推理 / 评审  →  qwen3-32b
                         · 代码生成                   →  qwen3-coder-next
           Anthropic Claude（fallback / 人工介入）
-存储      纯文本 Markdown + YAML + JSONL，无数据库
-检索辅助  全文检索（章节匹配预筛，降低 LLM token 消耗）
-安全      SanitizationGate 正则脱敏（类 gitleaks 轻量版）
-测试      pytest 563+，全部可离线运行
+存储      纯文本 Markdown + YAML + JSONL，无数据库，无向量存储
+检索      动态知识图谱（hybrid_search）+ 全文预筛（章节匹配，降低 token 消耗）
+安全      SanitizationGate 正则脱敏（类 gitleaks 轻量版）+ Append-only 审计日志
+测试      pytest 563+，全部可离线运行，mock 掉所有 LLM 调用
 ```
 
 ---
@@ -817,46 +914,78 @@ pytest tests/ --cov=src/mms --cov-report=html
 
 ## Roadmap
 
-### 近期（v4.x，已完成）
+### 已完成（v4.x）
 
+**任务工程层**
+- ✅ **AIU Registry YAML 扩展**：新增 AIU 类型无需修改 `aiu_types.py`
+- ✅ **EP 全自动 Pipeline**：`mms ep run --auto-confirm` 无人值守端到端执行
+- ✅ **3 级 Feedback 回退机制**：类 DB Query Feedback 的自适应任务重试策略
+
+**知识记忆层**
 - ✅ **四层本体架构分离**：Layer 0-3 职责明确，Layer 2 成为独立的记忆知识图谱
 - ✅ **LinkType Registry**：5 种 LinkType（cites/about/impacts/contradicts/derived_from）YAML 驱动
 - ✅ **语义图遍历**：`typed_explore` / `find_by_concept` / `hybrid_search`，O(1) 概念级检索
 - ✅ **Auto-Link 自动建边**：`dream.py` 写入记忆时自动提取文件路径和领域概念
 - ✅ **记忆新鲜度检测**：`freshness_checker.py` 集成 postcheck，代码变更→记忆 drift 传播
 - ✅ **图健康监控**：`mms status` 实时显示节点分布、边覆盖率、孤立率、图密度
-- ✅ **AIU Registry YAML 扩展**：新增 AIU 类型无需修改 `aiu_types.py`
 
-### 中期（v4.5）
+**安全验证层**
+- ✅ **AST 语义哈希**：剔除注释/空白，防格式化工具引起的虚假 drift
+- ✅ **DB 迁移脚本门控**：postcheck 强制验证 ORM ↔ up()/down() 对齐
+- ✅ **脱敏屏障（SanitizeGate）**：API Key / JWT / IP 写入前强制 REDACT
+- ✅ **多语言 AST**：Python / Java / Go / TypeScript 四语言统一骨架化
 
+**自学习层**
+- ✅ **Rule Absorber**：`mms seed ingest <url>` 将外部规范蒸馏为 MMS 种子包
+- ✅ **双角色内部评审**：Feature flag，Coder 生成后由 Reviewer 检查合规性
+
+### 中期目标（v4.5）
+
+**增强工程化执行能力**
+- **多 Agent 并行执行**：多个 UnitRunner 并行处理同一 EP 中无依赖关系的 Unit 批次
+- **两阶段提交（2PC）**：引入 git worktree shadow workspace，所有 AIU 通过后才 squash merge 回主分支
 - **矛盾检测自动化**：LLM 辅助识别 `contradicts` 边候选（同 DomainConcept 下结论相反的记忆对）
+
+**增强端侧独立性**
 - **完全离线模式**：意图分类、代价估算、上下文压缩全部切换为规则/本地模型，实现零云端依赖
-- **跨项目本体迁移**：提供 `mms export-ontology` 和 `mms import-ontology` 命令，支持在多个项目间共享领域知识
-- **VSCode / Cursor 插件**：将 `mms inject` 和 `mms status` 集成进 IDE 侧边栏，实现记忆注入的图形化操作
-- **多智能体协作**：多个 UnitRunner 并行处理同一 EP 中无依赖关系的 Unit 批次
+- **VSCode / Cursor 插件**：将 `mms inject` 和 `mms status` 集成进 IDE 侧边栏，图形化操作
 
-### 长期（v5.x）
+**增强知识共享**
+- **跨项目本体迁移**：`mms export-ontology` 和 `mms import-ontology`，支持在多个项目间共享领域知识
 
-- **自适应本体**：系统根据 AIU 执行历史、成功率统计，自动调整 28 种 AIU 类型的权重和拆分粒度
-- **知识联邦**：团队成员的本地记忆库可选择性同步到共享库，实现团队级知识积累
-- **代码基因组（Code Genome）**：为项目中每个核心类/函数维护"基因序列"（变更历史 + 依赖图 + 测试覆盖），从而支持软件项目的重构。
+### 长期目标（v5.x）
+
+- **自适应 AIU 引擎**：系统根据执行历史和成功率统计，自动调整 AIU 类型权重和拆分粒度
+- **团队知识联邦**：多开发者本地记忆库可选择性同步，实现团队级经验积累
+- **代码基因组（Code Genome）**：为项目中每个核心模块维护"基因序列"（变更历史 + 依赖图 + 测试覆盖 + 架构决策链），支持大规模重构的风险评估
+- **端侧 Agent 网络**：多个 MMS 实例分布在不同机器，协同完成跨服务的代码工程任务
 
 ---
 
 ## 如何贡献
 
+MMS 的设计目标之一是让贡献尽可能低门槛——大多数扩展通过 **YAML 文件**完成，无需修改 Python 源码。
+
 ### 贡献方向
 
+**YAML 驱动的扩展（无需改 Python 源码）：**
 
-| 方向                    | 难度   | 描述                                                                              |
-| --------------------- | ---- | ------------------------------------------------------------------------------- |
-| 新增种子包                 | ⭐ 低  | 为 Django、Vue、NestJS 等技术栈创建 `seed_packs/`（含 arch_schema/ontology/constraints 三层） |
-| 扩充 EP 模板              | ⭐ 低  | 在 `docs/memory/templates/` 补充新任务类型的 EP 模板                                       |
-| 扩充 AIU 类型             | ⭐ 低  | 在 `_system/schemas/aiu_types_extended.yaml` 添加新类型（无需改 Python 源码）                 |
-| 新增图遍历路径               | ⭐ 低  | 在 `ontology/_config/traversal_paths.yaml` 添加新路径（无需改 `graph_resolver.py`）          |
-| 新增 Provider           | ⭐⭐ 中 | 在 `src/mms/providers/` 中适配新的 LLM 服务（实现 `ProviderBase`）                          |
-| 新增 LinkType           | ⭐⭐ 中 | 在 `docs/memory/ontology/links/` 新建 YAML 文件（`LinkTypeRegistry` 自动加载）              |
-| 扩充 Rule Absorber 噪声规则 | ⭐⭐ 中 | 改进 `src/mms/analysis/seed_absorber.py` 的噪声清洗正则，提升蒸馏准确率                          |
+| 方向 | 难度 | 入口文件 |
+|------|------|---------|
+| 新增种子包 | ⭐ 低 | `seed_packs/<name>/{arch_schema,ontology,constraints}/` |
+| 扩充 EP 任务模板 | ⭐ 低 | `docs/memory/templates/` |
+| 扩充 AIU 类型 | ⭐ 低 | `docs/memory/_system/schemas/aiu_types_extended.yaml` |
+| 新增记忆图遍历路径 | ⭐ 低 | `docs/memory/ontology/_config/traversal_paths.yaml` |
+| 新增 LinkType（图边类型） | ⭐⭐ 中 | `docs/memory/ontology/links/<name>.yaml`（`LinkTypeRegistry` 自动加载） |
+
+**Python 代码级扩展：**
+
+| 方向 | 难度 | 描述 |
+|------|------|------|
+| 新增 LLM Provider | ⭐⭐ 中 | 在 `src/mms/providers/` 实现 `ProviderBase`，注册到 `factory.py` |
+| 扩充 Rule Absorber 噪声规则 | ⭐⭐ 中 | 改进 `src/mms/analysis/seed_absorber.py` 噪声清洗正则，提升蒸馏准确率 |
+| 新增 postcheck 验证步骤 | ⭐⭐ 中 | 在 `src/mms/workflow/postcheck.py` 添加新的验证门控 |
+| 新增安全脱敏规则 | ⭐⭐ 中 | 在 `src/mms/core/sanitize.py` 扩充敏感凭证正则模式 |
 
 
 ### 贡献流程
