@@ -53,6 +53,13 @@ class TaskResult:
     error_message:    Optional[str]  = None
     duration_seconds: float          = 0.0
 
+    # Phase 3 新增：数据来源标记，用于防止合成数据污染评测结果
+    source:           str            = "human"  # "human" | "synthetic"
+
+    # Phase 4 新增：代码执行质量指标（Pass@1 闭环）
+    syntax_pass:      Optional[bool] = None     # 生成代码语法无报错
+    pytest_pass:      Optional[bool] = None     # 生成代码 pytest 通过（即 Pass@1）
+
     @property
     def passed(self) -> bool:
         return self.status == TaskStatus.PASSED

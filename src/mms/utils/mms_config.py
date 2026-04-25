@@ -358,6 +358,44 @@ class MmsConfig:
         # fallback: config.yaml → compare.code_truncate_chars (default=4000)
         return int(_get(self._raw, "compare", "code_truncate_chars", default=4000))
 
+    # ── gc.edge_decay（图谱边衰减配置，Phase 2 新增） ────────────────────────────
+
+    @property
+    def gc_edge_decay_factor(self) -> float:
+        # fallback: config.yaml → gc.edge_decay_factor (default=0.8)
+        return float(_get(self._raw, "gc", "edge_decay_factor", default=0.8))
+
+    @property
+    def gc_edge_prune_threshold(self) -> float:
+        # fallback: config.yaml → gc.edge_prune_threshold (default=0.2)
+        return float(_get(self._raw, "gc", "edge_prune_threshold", default=0.2))
+
+    @property
+    def gc_edge_decay_window_eps(self) -> int:
+        # fallback: config.yaml → gc.edge_decay_window_eps (default=20)
+        return int(_get(self._raw, "gc", "edge_decay_window_eps", default=20))
+
+    # ── analysis（AST 解析器配置） ─────────────────────────────────────────────
+
+    @property
+    def analysis_use_tree_sitter(self) -> bool:
+        """
+        是否启用 Tree-sitter 作为 Java/Go AST 解析后端。
+        默认 False（使用内置正则解析器）。
+        启用条件：1. 此配置为 true；2. 已安装 pip install "mulan[tree_sitter]"
+        fallback: config.yaml → analysis.use_tree_sitter (default=false)
+        """
+        return bool(_get(self._raw, "analysis", "use_tree_sitter", default=False))
+
+    @property
+    def analysis_tree_sitter_languages(self) -> list:
+        """
+        Tree-sitter 启用时处理的语言列表。Python 始终使用标准库 ast，不在此列表中。
+        fallback: config.yaml → analysis.tree_sitter_languages (default=["java", "go"])
+        """
+        val = _get(self._raw, "analysis", "tree_sitter_languages", default=["java", "go"])
+        return list(val) if isinstance(val, (list, tuple)) else ["java", "go"]
+
     # ── benchmark ─────────────────────────────────────────────────────────────
 
     @property

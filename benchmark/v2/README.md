@@ -540,9 +540,46 @@ layer1:
 | 依赖     | 需要向量数据库（可选）+ LLM API       | Layer 3 完全离线；Layer 2 D1/D4 离线   |
 | 扩展性    | 固定指标，需修改代码添加场景              | YAML 驱动，添加 case 无需改代码            |
 | 行业对齐   | 内部 MDP 任务集                  | SWE-bench Verified（Layer 1 信用锚）  |
-| 测试覆盖   | ~20 个任务                     | 46 个 L3 + 8 个 L2 + 4 个 L1 = 58+  |
+| 测试覆盖   | ~20 个任务                     | 46 个 L3 + 8 个 L2 + 4 个 L1 = 58+（可通过 synthetic pipeline 扩充至 300+）|
 
 v1 Benchmark 代码保留在 `benchmark/src/` 目录，向后兼容。
+
+---
+
+## Phase 3 / Phase 4 扩展
+
+### 合成数据生成（Phase 3）
+
+```bash
+# 从当前仓库的 commit 生成合成测试 case（dry-run 预览）
+python3 scripts/benchmark_generator.py --repo . --max 20 --dry-run
+
+# 真实生成（写入 benchmark/v2/layer2_memory/tasks/synthetic/）
+python3 scripts/benchmark_generator.py --repo /path/to/target-repo --max 50
+
+# 启用 LLM 自动生成意图描述（需配置百炼 API）
+python3 scripts/benchmark_generator.py --repo . --max 20 --llm
+```
+
+生成的 case 默认标记 `reviewed: false`，不参与主评测。审核后改为 `reviewed: true` 即可。
+
+> **防过拟合设计**：合成数据单独存放在 `tasks/synthetic/`，通过 `--include-synthetic`
+> 标志才会参与评测，并在报告中与 human case 分开呈现。
+
+### Pass@1 闭环评测（Phase 4）
+
+Layer 2 D2 维度现支持真实双轨 LLM 对比（需 LLM API）：
+
+```bash
+# 运行 Pass@1 闭环评测
+mulan benchmark --level full --llm
+
+# 报告将展示：
+# Pass@1(无注入): 18%
+# Pass@1(有注入): 55%  (+37pp，Token ROI = 24.6/1kT)
+```
+
+`SandboxedCodeRunner` 在临时目录中执行代码 + pytest，保证不污染主仓库。
 
 ---
 
@@ -551,12 +588,13 @@ v1 Benchmark 代码保留在 `benchmark/src/` 目录，向后兼容。
 Benchmark v2 本身也有完整的单元测试：
 
 ```bash
-# 仅运行 Benchmark 测试（63 个用例）
+# 仅运行 Benchmark 测试
 pytest tests/benchmark/ -v
 
 # 覆盖内容：
-# - test_schema.py         Schema 数据结构
-# - test_layer3_safety.py  SanitizeGate / MigrationGate / ArchCheck
-# - test_layer2_memory.py  检索指标计算 / 漂移检测 / 注入提升（离线）
-# - test_layer1_swebench.py 任务格式验证 / AIU 类型覆盖
+# - test_schema.py              Schema 数据结构（含 source / syntax_pass / pytest_pass）
+# - test_layer3_safety.py       SanitizeGate / MigrationGate / ArchCheck
+# - test_layer2_memory.py       检索指标计算 / 漂移检测 / 注入提升（离线）
+# - test_layer1_swebench.py     任务格式验证 / AIU 类型覆盖
+# - test_phase4_pass_at_1.py    SandboxedCodeRunner / dual-rail 降级
 ```

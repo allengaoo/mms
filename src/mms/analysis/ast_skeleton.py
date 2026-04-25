@@ -367,11 +367,12 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
     Java 正则骨架提取器（不依赖 JDK/javalang）。
 
     提取内容：
-      - 顶层 public class / interface / enum 声明（含 extends/implements）
+      - 顶层 class / interface / enum / record / sealed 声明（含 extends/implements）
       - 方法签名：访问修饰符 + 返回类型 + 方法名 + 参数类型列表
       - import 语句中的顶层类型名
 
     局限性：正则不处理嵌套类和泛型复杂情况，适合骨架对比而非完整 AST。
+    支持 Java 16+ record、Java 17+ sealed interface、@FunctionalInterface 等现代语法。
     """
     skeleton = FileSkeleton(path=rel_path, lang="java")
 
@@ -380,13 +381,20 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
         skeleton.imports.append(m.group(1))
     skeleton.imports = sorted(set(skeleton.imports))
 
-    # class / interface / enum declarations
+    # class / interface / enum / record / sealed declarations
+    # 支持：
+    #   - 前置注解：@FunctionalInterface, @RestController 等（含括号参数）
+    #   - sealed 修饰符（Java 17+）
+    #   - record 类型（Java 16+），参数列表用 (\w+) 而非 { 触发
     class_pat = re.compile(
-        r'(?:public\s+)?(?:abstract\s+)?(?:final\s+)?'
-        r'(class|interface|enum)\s+(\w+)'
+        r'(?:(?:@\w+(?:\s*\([^)]*\))?\s+)*)'          # 零或多个注解（含参数）
+        r'(?:public\s+)?(?:abstract\s+)?(?:final\s+)?(?:sealed\s+)?(?:non-sealed\s+)?'
+        r'(class|interface|enum|record)\s+(\w+)'
+        r'(?:<[^>]*>)?'                                # 可选泛型参数 <T, R> / <K extends Foo>
         r'(?:\s+extends\s+([\w<>, ]+?))?'
         r'(?:\s+implements\s+([\w<>, ]+?))?'
-        r'\s*\{',
+        r'(?:\s+permits\s+[\w<>, ]+?)?'               # sealed permits 子句
+        r'\s*[({]',                                    # { 或 ( 触发（record 用括号）
         re.MULTILINE,
     )
     for m in class_pat.finditer(source):
@@ -403,11 +411,12 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
         cls_start = m.end()
         # Find methods: access modifier(s) + return type + name + params
         method_pat = re.compile(
-            r'(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\s+){0,4}'
-            r'(?!class|interface|enum)'
+            r'(?:(?:@\w+(?:\s*\([^)]*\))?\s+)*)'      # 跳过方法级注解
+            r'(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|override)\s+){0,5}'
+            r'(?!class|interface|enum|record\b)'
             r'([\w<>\[\]]+(?:\s*\[\])*)\s+'   # return type
             r'(\w+)\s*'                        # method name
-            r'\(([^)]*)\)',                    # params
+            r'\(([^)]*)\)',                    # params（单行；多行签名由下方宽松模式补充）
             re.MULTILINE,
         )
         for mm in method_pat.finditer(source[cls_start:cls_start + 8000]):
@@ -452,9 +461,9 @@ def _parse_go(source: str, rel_path: str) -> FileSkeleton:
         skeleton.imports.append(m.group(1))
     skeleton.imports = sorted(set(skeleton.imports))
 
-    # struct / interface declarations
+    # struct / interface declarations（含 Go 1.18+ 泛型参数，如 type Stack[T any] struct）
     type_pat = re.compile(
-        r'^type\s+(\w+)\s+(struct|interface)\s*\{',
+        r'^type\s+(\w+)(?:\[[^\]]*\])?\s+(struct|interface)\s*\{',
         re.MULTILINE,
     )
     structs: Dict[str, ClassSkeleton] = {}
@@ -468,7 +477,7 @@ def _parse_go(source: str, rel_path: str) -> FileSkeleton:
     # or:      func FuncName(params) RetType
     func_pat = re.compile(
         r'^func\s+'
-        r'(?:\(\s*\w+\s+\*?(\w+)\s*\)\s*)?'  # optional receiver: (r *RecvType)
+        r'(?:\(\s*\w+\s+\*?(\w+)(?:\[[^\]]*\])?\s*\)\s*)?'  # optional receiver: (r *RecvType) 或泛型 (s *Stack[T]) / (m *Map[K, V])
         r'(\w+)\s*'                             # func/method name
         r'\(([^)]*)\)'                          # params
         r'(?:\s*(?:\([^)]*\)|[\w\[\]*]+))?',   # optional return type

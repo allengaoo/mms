@@ -33,3 +33,12 @@ traversal_usage:
 index:
   reverse_index: _concept_to_ids   # Dict[concept_id, List[node_id]]，在 _load_all 构建
   lookup_complexity: O(1)          # 直接字典查询，无需遍历
+
+edge_weight:
+  description: |
+    边权重通过 _system/_graph_weights.yaml 集中存储。
+    格式: {node_id: {"about:{concept_id}": {weight, last_ep, access_count}}}
+  default_weight: 1.0
+  max_weight: 2.0
+  reinforcement: 0.2
+  decay_on_gc: true

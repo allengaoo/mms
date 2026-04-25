@@ -9,7 +9,7 @@
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
-[Tests: 714 passed](#测试)
+[Tests: 757 passed](#测试)
 [License: MIT](LICENSE)
 
 ---
@@ -187,7 +187,7 @@
 | ------------- | ---- | ----------------------------------------- |
 | src/mms/ 分包重组 | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅通过 `__init__.py` 暴露 |
 | Benchmark v2  | ✅ 稳定 | 三层模块化评测框架，完全离线可运行（见 [基准测试](#基准测试)）        |
-| 测试套件          | ✅ 稳定 | **714** 测试用例，无需 LLM API 可全部通过             |
+| 测试套件          | ✅ 稳定 | **757** 测试用例，无需 LLM API 可全部通过             |
 
 
 ### 技术栈
@@ -200,7 +200,7 @@ LLM 集成  Alibaba Bailian · 意图识别 / 推理 / 评审  →  qwen3-32b
 存储      纯文本 Markdown + YAML + JSONL，无数据库，无向量存储
 检索      动态知识图谱（hybrid_search）+ 全文预筛（章节匹配，降低 token 消耗）
 安全      SanitizationGate 正则脱敏（类 gitleaks 轻量版）+ Append-only 审计日志
-测试      pytest 714+，全部可离线运行，mock 掉所有 LLM 调用
+测试      pytest 757+，全部可离线运行，mock 掉所有 LLM 调用
 Benchmark 三层评测框架（安全门控 / 记忆质量 / SWE-bench），YAML 驱动可扩展
 ```
 
@@ -485,7 +485,7 @@ mms/
 │   │   ├── freshness_checker.py # 记忆新鲜度检测（cites 边反查 + drift 传播）
 │   │   ├── graph_health.py      # 图健康监控（节点分布 / 边覆盖率 / 孤立率）
 │   │   ├── dream.py             # autoDream（git 历史 + EP → 知识草稿 + auto-link）
-│   │   ├── entropy_scan.py      # 孤儿/过时记忆检测
+│   │   ├── entropy_scan.py      # 孤儿/过时记忆检测 + 边衰减（mulan gc --edge-decay）
 │   │   ├── repo_map.py          # PageRank 风格文件重要性排序
 │   │   ├── codemap.py           # 代码目录快照生成
 │   │   ├── funcmap.py           # 函数签名索引生成
@@ -501,7 +501,12 @@ mms/
 │   │   ├── ontology_syncer.py   # 本体 YAML ↔ AST 同步
 │   │   ├── dep_sniffer.py       # 技术栈嗅探（pip/npm/pom.xml/gradle/go.mod）
 │   │   ├── doc_drift.py         # 文档漂移检测
-│   │   └── seed_absorber.py     # Rule Absorber（URL → YAML 蒸馏）
+│   │   ├── seed_absorber.py     # Rule Absorber（URL → YAML 蒸馏）
+│   │   └── parsers/             # AST 解析器适配层（Adapter Pattern）
+│   │       ├── protocol.py      # ASTParserProtocol 接口
+│   │       ├── regex_parser.py  # 正则解析器（默认，零依赖）
+│   │       ├── tree_sitter_parser.py  # Tree-sitter Sidecar（可选）
+│   │       └── factory.py       # get_parser()：自动路由 + 降级
 │   │
 │   ├── core/                    # 基础 I/O 工具
 │   │   ├── reader.py            # 编码自适应文件读取
@@ -563,9 +568,9 @@ mms/
 │   ├── private/                 # EP 私有草稿工作区 + trace 数据
 │   └── templates/               # EP 任务模板（7 种类型）
 │
-└── tests/                       # 测试套件（714 测试用例）
-    ├── benchmark/               # Benchmark v2 单元测试（63 用例）
-    └── ...                      # 核心模块测试（651 用例）
+└── tests/                       # 测试套件（757 测试用例）
+    ├── benchmark/               # Benchmark v2 单元测试（含 Phase 4 Pass@1）
+    └── ...                      # 核心模块测试
 ```
 
 ---
@@ -842,16 +847,25 @@ python3 benchmark/run_benchmark_v2.py
 | L1  | SWE-bench 信用锚 | 离线格式验证   | Pass@1 / Resolve Rate（在线填充）      |
 
 
-### 初次运行结果（离线模式）
+### 当前运行结果（离线 fast 模式）
 
 ```
-Layer 3: 安全门控评测
-  得分: 94.7%（46 个测试，43 通过）
+Layer 3: 安全门控评测     94.7%（46 个测试，43 通过）
   sanitize.detection_rate:      0.9444
   sanitize.false_positive_rate: 0.0000
   migration.block_accuracy:     1.0000
   arch.detection_rate:          0.8333
+
+Layer 2: 记忆质量评测     45.0%（D4 漂移检测 100%，D1/D2 需真实记忆库+LLM）
+  d4.drift_detection_rate:      1.0000
+  d1.recall_pass_rate:          0.0000  # 需填充 relevant_ids
+  d2.injection_pass_rate:       0.0000  # 需 LLM API
+
+综合得分: 69.9%
 ```
+
+> **防过拟合说明**：Layer 2 离线得分偏低是设计行为——D1/D2 指标必须依赖真实记忆库数据，
+> 而非合成数据。这样可避免 benchmark 得分虚高，确保对真实检索质量的公正评估。
 
 ---
 
@@ -891,6 +905,17 @@ graph:
   confidence_threshold: 3      # auto-link 置信度阈值
 
 runner_enable_auto_impacts: false
+
+# Tree-sitter Sidecar（可选，默认关闭）
+analysis:
+  use_tree_sitter: false        # true 需先安装: pip install "mulan[tree_sitter]"
+  tree_sitter_languages: [java, go]
+
+# 记忆图谱边衰减（mulan gc --edge-decay）
+gc:
+  edge_decay_factor: 0.8        # 衰减系数（每次 GC 未命中边的权重 × 0.8）
+  edge_prune_threshold: 0.2     # 低于此值的边将被物理删除
+  edge_decay_window_eps: 20     # 超过 N 个 EP 未访问的边才触发衰减
 ```
 
 **双角色内部评审开启方式：**
@@ -922,7 +947,7 @@ pytest tests/benchmark/ -v
 pytest tests/ --cov=src/mms --cov-report=html
 ```
 
-测试结果：**714 通过**，1 个跳过，2 个预期失败（xfail）
+测试结果：**757 通过**，1 个跳过，2 个预期失败（xfail）
 
 ---
 

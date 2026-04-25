@@ -79,3 +79,68 @@ def mock_injection_lift_result(case: InjectionLiftCase) -> InjectionLiftResult:
         skipped=True,
         skip_reason="LLM API 不可用（dry_run 或 llm_available=False）",
     )
+
+
+def run_dual_rail(case: InjectionLiftCase, context: str = "") -> InjectionLiftResult:
+    """
+    真实双轨 LLM 对比（Phase 4 实现）。
+
+    双轨设计：
+      Track A（无注入）：直接将 task_description 发给 LLM
+      Track B（有注入）：将 context（记忆图谱上下文）前置后发给 LLM
+
+    评测标准：
+      - 代码语法正确（syntax_pass）→ 得 0.5 分
+      - pytest 通过（pytest_pass / Pass@1）→ 得 1.0 分
+
+    LLM 不可用时自动降级为 mock_injection_lift_result。
+    """
+    try:
+        from mms.llm.bailian_provider import BailianProvider
+        from mms.execution.sandboxed_runner import SandboxedCodeRunner
+    except ImportError:
+        return mock_injection_lift_result(case)
+
+    runner = SandboxedCodeRunner(timeout_seconds=60)
+
+    def _call_llm(prompt: str) -> Optional[str]:
+        try:
+            provider = BailianProvider()
+            return provider.chat(prompt, model="qwen3-coder-next", max_tokens=1024)
+        except Exception:
+            return None
+
+    def _score(code: Optional[str]) -> tuple[float, Optional[bool], Optional[bool]]:
+        """返回 (score, syntax_pass, pytest_pass)"""
+        if not code:
+            return 0.0, False, False
+        result = runner.run(code=code, file_path="generated.py",
+                            test_script=case.reference_test)
+        if result.pytest_pass is True:
+            return 1.0, True, True
+        if result.syntax_pass:
+            return 0.5, True, False
+        return 0.0, False, False
+
+    # Track A（无注入）
+    prompt_a = f"请根据以下任务描述生成 Python 代码：\n\n{case.task_description}"
+    code_a = _call_llm(prompt_a)
+    score_a, _, _ = _score(code_a)
+
+    # Track B（有注入）
+    prompt_b = f"以下是相关背景知识：\n\n{context}\n\n请根据以下任务描述生成 Python 代码：\n\n{case.task_description}"
+    code_b = _call_llm(prompt_b)
+    score_b, syntax_b, pytest_b = _score(code_b)
+
+    lift = score_b - score_a
+    injection_tokens = len(context.split()) if context else 0
+    token_roi = (lift / (injection_tokens / 1000)) if injection_tokens > 0 else 0.0
+
+    return InjectionLiftResult(
+        case_id=case.case_id,
+        pass_at_1_with=score_b,
+        pass_at_1_without=score_a,
+        lift=lift,
+        avg_injection_tokens=float(injection_tokens),
+        token_roi=round(token_roi, 4),
+    )

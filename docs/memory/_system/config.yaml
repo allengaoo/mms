@@ -95,11 +95,28 @@ soft_links:
   link_field: "also_in"            # 记忆 Front Matter 中的软链接字段名
 
 
+# ── AST 解析器配置 ────────────────────────────────────────────────────────────
+analysis:
+  # Tree-sitter Sidecar（可选）
+  # 将此字段设为 true 并安装 pip install "mulan[tree_sitter]" 后
+  # Java/Go 代码将改用 Tree-sitter 进行精确解析。
+  # Python 始终使用标准库 ast，不受此配置影响。
+  use_tree_sitter: false
+
+  # Tree-sitter 启用时处理的语言（Python 始终使用 ast，无需在此列出）
+  tree_sitter_languages: [java, go]
+
+
 # ── GC 配置（垃圾回收） ────────────────────────────────────────────────────────
 gc:
   run_after_ep: true               # 每次 EP 结束后自动运行 GC（mms postcheck 触发）
   hot_overflow_strategy: "lfu"     # hot 区超限时：按访问频率淘汰最低的（LFU）
   archive_strategy: "move_file"    # 归档时：移动文件到 archive/{YYYY-MM}/ 目录
+
+  # 图谱边衰减配置（Phase 2 新增）
+  edge_decay_factor: 0.8           # 每次 GC 对未命中边的权重衰减系数
+  edge_prune_threshold: 0.2        # 边权重低于此值时物理删除
+  edge_decay_window_eps: 20        # 超过 N 个 EP 未访问的边触发衰减
 
 
 # ── 蒸馏配置（从 EP 提取新记忆的策略） ───────────────────────────────────────

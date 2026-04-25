@@ -36,6 +36,15 @@ claude = [
 ]
 ollama = []  # Ollama 通过 HTTP 调用，无额外依赖
 
+# Tree-sitter AST 解析 Sidecar（可选，用于增强 Java/Go 解析精度）
+# 安装方式：pip install "mulan[tree_sitter]"
+# 启用方式：config.yaml 中设置 analysis.use_tree_sitter: true
+tree_sitter = [
+    "tree-sitter>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-go>=0.23",
+]
+
 # Benchmark（ES + Milvus 检索）
 benchmark = [
     "pymilvus>=2.4",

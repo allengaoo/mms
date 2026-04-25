@@ -31,3 +31,12 @@ freshness_check:
   enabled: true
   trigger: "AST fingerprint 变更"
   action: "标记引用该文件的 MemoryNode 为 drift_suspected=true"
+
+edge_weight:
+  description: |
+    边权重通过 _system/_graph_weights.yaml 集中存储，不修改各 .md 文件。
+    格式: {node_id: {"cites:{file_path}": {weight, last_ep, access_count}}}
+  default_weight: 1.0
+  max_weight: 2.0
+  reinforcement: 0.2      # hybrid_search 命中时增加的权重
+  decay_on_gc: true        # mulan gc --edge-decay 时执行 LFU 衰减

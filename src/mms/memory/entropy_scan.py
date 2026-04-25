@@ -362,5 +362,151 @@ def main() -> int:
         return 0
 
 
+# ── 边衰减与剪枝（Phase 2 新增） ─────────────────────────────────────────────
+
+_WEIGHTS_FILE = _MEMORY_ROOT / "_system" / "_graph_weights.yaml"
+
+
+def _load_weights() -> Dict[str, Dict[str, dict]]:
+    """
+    加载图谱边权重文件。
+    格式：{node_id: {edge_key: {weight: float, last_ep: str, access_count: int}}}
+    edge_key 格式："{link_type}:{target_id_or_path}"
+    """
+    if not _WEIGHTS_FILE.exists():
+        return {}
+    try:
+        import yaml
+        raw = yaml.safe_load(_WEIGHTS_FILE.read_text(encoding="utf-8")) or {}
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_weights(weights: Dict[str, Dict[str, dict]]) -> None:
+    """持久化边权重文件。"""
+    _WEIGHTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import yaml
+        _WEIGHTS_FILE.write_text(
+            yaml.dump(weights, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass  # 写失败不影响主流程
+
+
+def reinforce_edges(node_id: str, link_type: str, targets: List[str], ep_id: str) -> None:
+    """
+    隐式正反馈：记忆节点被 hybrid_search 命中后，增强相关边的权重。
+
+    Args:
+        node_id:   被命中的记忆 ID
+        link_type: 边类型（"cites"、"about"、"impacts"）
+        targets:   本次命中涉及的目标 ID/路径列表
+        ep_id:     当前执行计划 ID（如 "EP-128"）
+
+    权重上限：2.0；每次命中增量：0.2（来自 config.yaml）。
+    """
+    try:
+        from mms.utils.mms_config import cfg
+        increment = 0.2  # 每次命中的权重增量（可后续从 cfg 读取）
+        max_weight = 2.0
+    except Exception:
+        increment = 0.2
+        max_weight = 2.0
+
+    weights = _load_weights()
+    node_meta = weights.setdefault(node_id, {})
+
+    for target in targets:
+        edge_key = f"{link_type}:{target}"
+        edge_meta = node_meta.setdefault(edge_key, {"weight": 1.0, "last_ep": ep_id, "access_count": 0})
+        edge_meta["weight"] = min(edge_meta.get("weight", 1.0) + increment, max_weight)
+        edge_meta["last_ep"] = ep_id
+        edge_meta["access_count"] = edge_meta.get("access_count", 0) + 1
+
+    _save_weights(weights)
+
+
+def _ep_distance(ep_a: str, ep_b: str) -> int:
+    """
+    计算两个 EP ID 之间的距离（如 "EP-100" 和 "EP-120" 距离为 20）。
+    无法解析时返回 0。
+    """
+    try:
+        na = int(ep_a.split("-")[-1])
+        nb = int(ep_b.split("-")[-1])
+        return abs(na - nb)
+    except (ValueError, IndexError):
+        return 0
+
+
+def decay_edges(
+    current_ep: str,
+    dry_run: bool = False,
+    decay_factor: float | None = None,
+    prune_threshold: float | None = None,
+    decay_window: int | None = None,
+) -> Dict[str, int]:
+    """
+    LFU 边衰减算法（集成到 mulan gc）。
+
+    对所有边执行：
+      1. 若距离上次访问超过 decay_window 个 EP → weight *= decay_factor
+      2. 若 weight < prune_threshold → 标记为待剪枝
+
+    Args:
+        current_ep:      当前 EP ID（用于计算时间窗口距离）
+        dry_run:         True 时只打印预览，不修改文件
+        decay_factor:    权重衰减系数（默认从 config.yaml 读取，0.8）
+        prune_threshold: 低于此权重则剪枝（默认 0.2）
+        decay_window:    超过 N 个 EP 未访问才触发衰减（默认 20）
+
+    Returns:
+        {"decayed": N, "pruned": N, "total_edges": N}
+    """
+    try:
+        from mms.utils.mms_config import cfg
+        _decay_factor = decay_factor or cfg.gc_edge_decay_factor
+        _threshold = prune_threshold or cfg.gc_edge_prune_threshold
+        _window = decay_window or cfg.gc_edge_decay_window_eps
+    except Exception:
+        _decay_factor = decay_factor or 0.8
+        _threshold = prune_threshold or 0.2
+        _window = decay_window or 20
+
+    weights = _load_weights()
+    stats = {"decayed": 0, "pruned": 0, "total_edges": 0, "skipped": 0}
+    to_delete: List[tuple] = []  # [(node_id, edge_key)]
+
+    for node_id, edge_map in list(weights.items()):
+        for edge_key, meta in list(edge_map.items()):
+            stats["total_edges"] += 1
+            last_ep = meta.get("last_ep", current_ep)
+            dist = _ep_distance(last_ep, current_ep)
+
+            if dist >= _window:
+                new_weight = meta.get("weight", 1.0) * _decay_factor
+                if not dry_run:
+                    meta["weight"] = new_weight
+                stats["decayed"] += 1
+
+                if new_weight < _threshold:
+                    to_delete.append((node_id, edge_key))
+                    stats["pruned"] += 1
+            else:
+                stats["skipped"] += 1
+
+    if not dry_run and (stats["decayed"] > 0 or to_delete):
+        for node_id, edge_key in to_delete:
+            weights.get(node_id, {}).pop(edge_key, None)
+        # 清理空节点
+        weights = {k: v for k, v in weights.items() if v}
+        _save_weights(weights)
+
+    return stats
+
+
 if __name__ == "__main__":
     sys.exit(main())
