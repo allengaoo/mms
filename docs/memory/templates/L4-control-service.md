@@ -1,4 +1,4 @@
-# 模版：L4 应用层 · Control Service（写操作）（小模型优化版）
+# 模版：APP 层 · Control Service（写操作）（小模型优化版）
 # 适用：新增 Service 方法 / CRUD 写操作 / 业务逻辑编排
 # Token 预算：≤4K
 

@@ -218,7 +218,7 @@ class ArchResolver:
         给定层 ID 和可选关键词，返回该层的真实文件路径。
 
         参数：
-            layer:    层 ID，如 "L5_frontend"
+            layer:    层 ID，如 "ADAPTER"（通用 5 层）或旧格式 "L5_frontend"（兼容）
             keywords: 可选关键词列表，用于在层内进一步精确定位
 
         返回：
@@ -409,7 +409,7 @@ if __name__ == "__main__":
     resolver = ArchResolver()
 
     if cmd == "layer":
-        layer_id = rest[0] if rest else "L5_frontend"
+        layer_id = rest[0] if rest else "ADAPTER"
         entry = resolver.get_layer_entry_files(layer_id)
         prefixes = resolver.get_layer_prefixes(layer_id)
         print(f"\n层：{layer_id}")

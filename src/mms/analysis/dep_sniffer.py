@@ -285,7 +285,7 @@ _STACK_RULES: Dict[str, dict] = {
             "backend/app/infrastructure",
             "docs/memory",
         ],
-        "description": "Palantir 风格分层架构（L1-L5 + CQRS + RLS）",
+        "description": "木兰通用 5 层架构（PLATFORM/DOMAIN/APP/ADAPTER/CC + CQRS + RLS）",
     },
     # ── Java 栈 ───────────────────────────────────────────────────────────────
     "spring_boot": {

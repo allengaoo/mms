@@ -1,4 +1,4 @@
-# 模版：L2 基础设施层 · 数据库写操作（小模型优化版）
+# 模版：ADAPTER 层 · 数据库写操作（小模型优化版）
 # 适用：新增 Service 写方法 / Repository 操作 / Alembic 迁移
 # Token 预算：≤3.5K（含模版本身约 800 token）
 

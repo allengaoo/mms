@@ -1,15 +1,16 @@
 # ════════════════════════════════════════════════════════════════════════════
-# MDP Memory System — 系统配置
-# 版本：v2.2 | 更新于：2026-04-15 | EP-115
+# 木兰（Mulan）Memory System — 系统配置
+# 版本：v3.0 | 更新于：2026-04-26
 #
 # 文件结构总览：
 #   system          — 项目元信息
-#   layers          — 记忆层级定义（L1~L5 + CC）
-#   dimensions      — 工程维度定义（D1~D10）
+#   project_type    — 项目类型自动检测配置（dep_sniffer 输出驱动）
+#   layers          — 记忆层级定义（通用 5 层：PLATFORM/DOMAIN/APP/ADAPTER/CC）
+#   dimensions      — 工程维度定义（D1~D10，跨层正交维度）
 #   tiers           — 记忆热度分层（hot / warm / cold / archive）
 #   id_prefixes     — 记忆 ID 前缀约定
 #   soft_links      — 跨维度软链接策略
-#   gc              — 垃圾回收配置
+#   gc              — 垃圾回收配置（含边衰减 + 三维度淘汰评分）
 #   distillation    — 知识蒸馏配置
 #   llm             — LLM Provider 配置与自动探测顺序
 #   model_router    — 任务 → 模型路由映射
@@ -17,43 +18,69 @@
 #   observability   — 审计日志 / 访问日志 / Trace ID
 #   performance     — 索引缓存 / 文件缓存 TTL
 #   collaboration   — 多人协作冲突检测配置
-#   synthesize      — mms synthesize 命令的三级检索漏斗配置（v2.2 新增）
+#   synthesize      — mms synthesize 命令的三级检索漏斗配置
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── 项目元信息 ──────────────────────────────────────────────────────────────
 system:
-  version: "2.3"
-  project: "OntoForge (MDP Enterprise Platform)"
-  created_at: "2026-04-11"
-  updated_at: "2026-04-18"   # 每次修改此文件时更新
-  source_ep: "EP-107"        # 首次创建本文件的 EP 编号
-  last_ep: "EP-127"          # 最近一次修改本文件的 EP 编号
+  version: "3.0"
+  project: "（由 dep_sniffer 自动填写）"
+  created_at: "2026-04-26"
+  updated_at: "2026-04-26"
+  source_ep: "EP-107"
+  last_ep: "EP-132"
 
 
-# ── 记忆层级定义 ─────────────────────────────────────────────────────────────
-# 与软件架构的分层对齐，决定记忆文件的存放路径和检索优先级
+# ── 项目类型检测配置 ─────────────────────────────────────────────────────────
+# dep_sniffer.py 检测到对应构建文件后，自动填充 project_type 并
+# 从 docs/memory/seed_packs/<type>/arch_schema/ 加载层级覆盖定义
+project_type:
+  detected: "generic"          # 由 dep_sniffer 运行时覆写（python_fastapi / java_spring / go_microservice / generic）
+  seed_pack: null              # 检测到项目类型后填入 seed_pack 目录名，null 表示使用默认通用层级
+  scan_dirs: []                # 由 dep_sniffer 输出覆写（覆盖 ast_skeleton.py 的默认 _SCAN_DIRS）
+  # 示例（Spring Boot 项目检测后的典型输出）：
+  # detected: "java_spring"
+  # seed_pack: "java_spring_boot"
+  # scan_dirs:
+  #   - ["src/main/java", "java"]
+  #   - ["src/test/java", "java"]
+
+
+# ── 记忆层级定义（通用 5 层架构，可被 seed_pack 覆盖）─────────────────────────
+#
+# 设计原则：
+#   - 层级独立于具体技术框架（不出现 Iceberg/Zustand/SQLModel 等具体技术名）
+#   - seed_pack 可在此基础上添加子层（如 java_spring 的 PERSISTENCE 子层）
+#   - CC 层优先级最高，保护期最长（架构决策 = 长期有效）
+#
+# 目录映射（shared/）：
+#   CC      → shared/CC/           # 架构决策、反模式、约束红线
+#   PLATFORM → shared/PLATFORM/    # 认证、鉴权、配置、可观测性
+#   DOMAIN  → shared/DOMAIN/       # 业务实体、领域规则、核心业务逻辑
+#   APP     → shared/APP/          # 用例编排、CQRS Handler、工作流、Saga
+#   ADAPTER → shared/ADAPTER/      # 外部接口适配（REST/gRPC/DB/MQ/Cache/UI）
 layers:
-  L1: { name: "platform",        desc: "横切关注点（安全/可观测/配置）" }
-  L2: { name: "infrastructure",  desc: "基础设施适配器（DB/Kafka/Redis/Iceberg）" }
-  L3: { name: "domain",          desc: "领域业务逻辑（本体/数据管道/治理/仿真）" }
-  L4: { name: "application",     desc: "应用服务层（Control/Query/Worker/Dispatch）" }
-  L5: { name: "interface",       desc: "接口层（API/前端/测试）" }
-  CC: { name: "cross_cutting",   desc: "跨层模式与架构决策（ADR、反模式）" }
+  CC:       { name: "cross_cutting", desc: "架构决策与约束（ADR、反模式、红线规则）——保护层，长期有效", protection_bonus: 0.5 }
+  PLATFORM: { name: "platform",     desc: "横切平台能力（认证/授权/配置/可观测/多租户）",              protection_bonus: 0.2 }
+  DOMAIN:   { name: "domain",       desc: "业务领域核心（实体/聚合根/领域服务/业务规则）",              protection_bonus: 0.3 }
+  APP:      { name: "application",  desc: "应用用例编排（CQRS Handler/Saga/工作流/API Contract）",     protection_bonus: 0.1 }
+  ADAPTER:  { name: "adapter",      desc: "外部适配（REST/gRPC/DB/MQ/Cache/UI 组件/外部 API）",       protection_bonus: 0.0 }
 
 
 # ── 工程维度定义 ─────────────────────────────────────────────────────────────
 # 10 个工业级工程维度，作为记忆文件 YAML Front Matter 中 dimension 字段的枚举值
+# layer_primary 指示该维度记忆默认归属的层级（非强制约束）
 dimensions:
-  D1:  { name: "security",        layer_primary: "L1", desc: "安全与多租户（RLS/SecurityContext/RBAC）" }
-  D2:  { name: "architecture",    layer_primary: "L4", desc: "架构边界（CQRS/六边形/Control-Data 分离）" }
-  D3:  { name: "observability",   layer_primary: "L1", desc: "可观测性（structlog/trace_id/Prometheus）" }
-  D4:  { name: "resilience",      layer_primary: "L2", desc: "弹性与事务（Tenacity/熔断/事务策略）" }
-  D5:  { name: "distributed",     layer_primary: "L2", desc: "分布式协调（Leader Election/Fencing Token）" }
-  D6:  { name: "bigdata",         layer_primary: "L2", desc: "大数据与事件驱动（Kafka/Avro/Iceberg）" }
-  D7:  { name: "performance",     layer_primary: "L2", desc: "性能与缓存（@cached/Redis/N+1 防护）" }
-  D8:  { name: "api_standards",   layer_primary: "L5", desc: "API 规范（信封格式/错误码/kebab-case URL）" }
-  D9:  { name: "database",        layer_primary: "L2", desc: "数据库与迁移（MySQL/Alembic/事务策略）" }
-  D10: { name: "testing",         layer_primary: "L5", desc: "测试覆盖（pytest/vitest/Polyfactory/MSW）" }
+  D1:  { name: "security",        layer_primary: "PLATFORM", desc: "安全与多租户（认证/授权/RBAC/数据隔离）" }
+  D2:  { name: "architecture",    layer_primary: "CC",       desc: "架构边界（分层规则/六边形/CQRS/DDD 约束）" }
+  D3:  { name: "observability",   layer_primary: "PLATFORM", desc: "可观测性（日志/链路追踪/指标/告警）" }
+  D4:  { name: "resilience",      layer_primary: "ADAPTER",  desc: "弹性与事务（重试/熔断/分布式事务/补偿）" }
+  D5:  { name: "distributed",     layer_primary: "APP",      desc: "分布式协调（Leader 选举/Saga/Outbox/幂等）" }
+  D6:  { name: "messaging",       layer_primary: "ADAPTER",  desc: "消息与事件驱动（Kafka/RabbitMQ/事件契约演进）" }
+  D7:  { name: "performance",     layer_primary: "ADAPTER",  desc: "性能与缓存（缓存策略/N+1 防护/索引优化）" }
+  D8:  { name: "api_standards",   layer_primary: "ADAPTER",  desc: "API 规范（信封格式/错误码/版本化/契约测试）" }
+  D9:  { name: "database",        layer_primary: "ADAPTER",  desc: "数据库与迁移（ORM/Migration/Schema 演进策略）" }
+  D10: { name: "testing",         layer_primary: "APP",      desc: "测试覆盖（单测/集成测试/E2E/测试数据工厂）" }
 
 
 # ── 记忆热度分层（LFU 淘汰策略） ─────────────────────────────────────────────
@@ -113,10 +140,19 @@ gc:
   hot_overflow_strategy: "lfu"     # hot 区超限时：按访问频率淘汰最低的（LFU）
   archive_strategy: "move_file"    # 归档时：移动文件到 archive/{YYYY-MM}/ 目录
 
-  # 图谱边衰减配置（Phase 2 新增）
+  # 图谱边衰减配置
   edge_decay_factor: 0.8           # 每次 GC 对未命中边的权重衰减系数
   edge_prune_threshold: 0.2        # 边权重低于此值时物理删除
   edge_decay_window_eps: 20        # 超过 N 个 EP 未访问的边触发衰减
+
+  # 节点三维度淘汰评分权重（v3.0 新增）
+  # eviction_score = α*time_decay + β*(1-lfu_norm) + γ*(1-graph_importance) - protection_bonus
+  eviction_weights:
+    alpha: 0.3                     # 时间衰减权重（距上次访问越久，分数越高）
+    beta:  0.4                     # 访问频率权重（LFU 归一化后取反）
+    gamma: 0.3                     # 图结构重要性权重（in-degree 归一化后取反）
+  # protection_bonus 由 layers 中各层的 protection_bonus 字段决定（CC=0.5, DOMAIN=0.3...）
+  # content_staleness_penalty: 0.3  # drift_suspected=true 时叠加此惩罚分（见 freshness_checker）
 
 
 # ── 蒸馏配置（从 EP 提取新记忆的策略） ───────────────────────────────────────
@@ -357,12 +393,12 @@ dag:
   # ── 层依赖顺序（DAG 生成时的约束）───────────────────────────────────────
   layer_order:
     # 数字越小，执行越早（数字相同可并行）
-    - { layer: L3_domain,         order: 1 }   # 数据模型先行
-    - { layer: L4_application,    order: 2 }   # 服务层依赖模型
-    - { layer: L5_interface,      order: 3 }   # API/前端依赖服务
-    - { layer: L2_infrastructure, order: 1 }   # 基础设施可与模型并行
-    - { layer: testing,           order: 4 }   # 测试最后（或与业务同层）
-    - { layer: docs,              order: 5 }   # 文档同步最后
+    - { layer: DOMAIN,   order: 1 }   # 领域模型先行（Entity/VO/聚合根）
+    - { layer: ADAPTER,  order: 1 }   # 适配器层（DB Schema/MQ Topic）可与领域并行
+    - { layer: APP,      order: 2 }   # 应用层依赖领域模型（Handler/Service）
+    - { layer: PLATFORM, order: 1 }   # 平台层（认证/配置）可最早完成，无业务依赖
+    - { layer: testing,  order: 3 }   # 测试在业务逻辑之后（集成测试需要 APP 层完成）
+    - { layer: docs,     order: 4 }   # 文档同步最后
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -422,16 +458,16 @@ template:
   # 内置模板列表（用于文档说明，实际以文件为准）
   builtin_templates:
     - name: service-method
-      layer: L4_application
+      layer: APP
       desc: Service 层方法骨架（含 SecurityContext、AuditService、RLS 约束）
     - name: api-endpoint
-      layer: L5_interface
+      layer: ADAPTER
       desc: FastAPI Endpoint + Schema（含信封格式、权限守卫）
     - name: react-list-page
-      layer: L5_interface
+      layer: ADAPTER
       desc: ProTable 列表页（含 useQuery、PermissionGate、Zustand Store）
     - name: worker-job
-      layer: L4_application
+      layer: APP
       desc: Worker Job（含 JobExecutionScope、structlog、无裸 try/except）
 
 

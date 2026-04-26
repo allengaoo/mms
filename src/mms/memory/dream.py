@@ -208,7 +208,7 @@ _DREAM_PROMPT = """\
 ---MEMORY-DRAFT---
 title: <一句话，说明 WHAT（20字内）>
 type: <lesson | pattern | anti-pattern | decision>
-layer: <L1_platform | L2_infrastructure | L3_domain | L4_application | L5_interface | cross_cutting>
+layer: <CC | PLATFORM | DOMAIN | APP | ADAPTER>
 dimension: <D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | D9 | D10>
 tags: [<tag1>, <tag2>, <tag3>]
 description: <30-60字语义摘要，帮助 LLM 判断是否相关>
@@ -287,7 +287,7 @@ def parse_dream_response(raw: str) -> List[Dict]:
         drafts.append({
             "title": title,
             "type": _field(r"^type:\s*(.+)$") or "lesson",
-            "layer": _field(r"^layer:\s*(.+)$") or "cross_cutting",
+            "layer": _field(r"^layer:\s*(.+)$") or "CC",
             "dimension": _field(r"^dimension:\s*(.+)$") or "D2",
             "tags": tags,
             "description": _field(r"^description:\s*(.+)$"),
@@ -561,18 +561,32 @@ def _get_next_mem_id() -> str:
 
 
 def _layer_to_dir(layer: str) -> Path:
-    """将 layer 字符串映射到目标目录"""
-    mapping = {
-        "L1": _MEMORY_ROOT / "shared" / "L1_platform",
-        "L2": _MEMORY_ROOT / "shared" / "L2_infrastructure",
-        "L3": _MEMORY_ROOT / "shared" / "L3_domain",
-        "L4": _MEMORY_ROOT / "shared" / "L4_application",
-        "L5": _MEMORY_ROOT / "shared" / "L5_interface",
+    """将 layer 字符串映射到目标目录（通用 5 层架构）"""
+    layer_upper = layer.strip().upper()
+    # 通用 5 层映射（v3.0）
+    universal_mapping = {
+        "CC":       _MEMORY_ROOT / "shared" / "CC",
+        "PLATFORM": _MEMORY_ROOT / "shared" / "PLATFORM",
+        "DOMAIN":   _MEMORY_ROOT / "shared" / "DOMAIN",
+        "APP":      _MEMORY_ROOT / "shared" / "APP",
+        "ADAPTER":  _MEMORY_ROOT / "shared" / "ADAPTER",
     }
-    for prefix, path in mapping.items():
-        if prefix in layer:
-            return path
-    return _MEMORY_ROOT / "shared" / "cross_cutting" / "decisions"
+    # 精确匹配优先
+    if layer_upper in universal_mapping:
+        return universal_mapping[layer_upper]
+    # 兼容旧 L1-L5 前缀（迁移期容错）
+    legacy_mapping = {
+        "L1": "PLATFORM",
+        "L2": "ADAPTER",
+        "L3": "DOMAIN",
+        "L4": "APP",
+        "L5": "ADAPTER",
+    }
+    for prefix, new_key in legacy_mapping.items():
+        if prefix in layer_upper:
+            return universal_mapping[new_key]
+    # 默认归入 CC
+    return universal_mapping["CC"]
 
 
 def promote_draft(draft_path: Path) -> Optional[Path]:
@@ -584,7 +598,7 @@ def promote_draft(draft_path: Path) -> Optional[Path]:
     print(f"{_B}────────────────────────────────────────────────────────{_X}")
 
     layer_m = re.search(r"^layer:\s*(.+)$", content, re.MULTILINE)
-    layer = layer_m.group(1).strip() if layer_m else "cross_cutting"
+    layer = layer_m.group(1).strip() if layer_m else "CC"
     target_dir = _layer_to_dir(layer)
     new_id = _get_next_mem_id()
 

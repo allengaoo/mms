@@ -179,6 +179,7 @@ class MemoryGraph:
         self._nodes: Dict[str, MemoryNode] = {}
         self._file_to_ids: Dict[str, List[str]] = {}       # 文件路径 → 记忆 ID（cites 反向索引）
         self._concept_to_ids: Dict[str, List[str]] = {}    # DomainConcept → 记忆 ID（about 反向索引）
+        self._in_degree: Dict[str, int] = {}               # 节点 in-degree（被引用次数，v3.0 新增）
         self._loaded = False
 
     def _ensure_loaded(self) -> None:
@@ -277,7 +278,43 @@ class MemoryGraph:
             except Exception:  # noqa: BLE001
                 continue
 
+        # ── 计算 in-degree（被其他节点引用的次数）────────────────────────────
+        # in-degree 是图结构重要性的核心指标：被越多节点引用，结构重要性越高
+        self._in_degree = {node_id: 0 for node_id in self._nodes}
+        for node_id, node in self._nodes.items():
+            for ref in node.related_to:
+                target = ref.get("id", "").strip()
+                if target in self._in_degree:
+                    self._in_degree[target] += 1
+            for impact_id in node.impacts:
+                target = impact_id.strip()
+                if target in self._in_degree:
+                    self._in_degree[target] += 1
+            for derived_id in node.derived_from:
+                target = derived_id.strip()
+                if target in self._in_degree:
+                    self._in_degree[target] += 1
+
     # ── 公共 API ──────────────────────────────────────────────────────────────
+
+    def get_in_degree(self, node_id: str) -> int:
+        """返回节点的 in-degree（被引用次数）。图加载后才可调用。"""
+        self._ensure_loaded()
+        return self._in_degree.get(node_id, 0)
+
+    def get_normalized_importance(self, node_id: str) -> float:
+        """
+        返回节点的图结构重要性（归一化到 0-1）。
+        基于 in-degree，max_in_degree 节点归一化为 1.0。
+        用于三维度淘汰评分的 gamma 权重。
+        """
+        self._ensure_loaded()
+        if not self._in_degree:
+            return 0.0
+        max_degree = max(self._in_degree.values()) if self._in_degree else 1
+        if max_degree == 0:
+            return 0.0
+        return self._in_degree.get(node_id, 0) / max_degree
 
     def explore(self, start_id: str, depth: int = 2) -> List[MemoryNode]:
         """

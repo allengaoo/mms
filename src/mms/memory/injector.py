@@ -1,9 +1,9 @@
 """
-记忆注入引擎 — MMS v2.2
+记忆注入引擎 — Mulan v3.0
 ==========================
 设计目标：
   1. 任务理解：从自然语言任务描述中提取 (layer, module, keywords) 三元组
-  2. 多层检索：跨 L1~L5 + CC 层检索最相关的记忆，按分数排序
+  2. 多层检索：跨 PLATFORM/DOMAIN/APP/ADAPTER/CC 层检索最相关的记忆，按分数排序
   3. 上下文压缩：对超长记忆文件提取关键段落（HOW + WHEN），降低 token 消耗
   4. Prompt 前缀生成：格式化为结构化的 Markdown 块，可直接粘贴到 Cursor
   5. 意图分类：规则匹配优先，低置信度时触发百炼 qwen3-32b LLM fallback
@@ -43,41 +43,55 @@ try:
 except Exception:
     _cfg = None  # type: ignore[assignment]
 
-# ── 任务 → 层/模块的规则映射（无 LLM 时的降级策略）────────────────────────────
+# ── 任务 → 层/模块的规则映射（通用 5 层架构，无 LLM 时的降级策略）────────────────
 _KEYWORD_LAYER_MAP: List[Tuple[List[str], List[str]]] = [
-    # (触发词列表, [layer, module])
+    # (触发词列表, [layer, dimension_hint...])
+    # ADAPTER 层：外部接口适配（REST API、前端组件、DB、MQ、Cache）
     (["api", "endpoint", "路由", "response", "request", "状态码", "envelope",
       "apiresponse", "protable", "前端", "页面", "react", "zustand", "store",
-      "component", "组件", "button", "权限按钮", "permissiongate"],
-     ["L5", "L5-D8", "L5-frontend", "L5-D10"]),
+      "component", "组件", "button", "权限按钮", "permissiongate",
+      "grpc", "graphql", "websocket", "sse"],
+     ["ADAPTER", "ADAPTER-D8"]),
 
     (["kafka", "avro", "schema", "序列化", "message", "消息", "topic",
-      "schema-registry", "normalize"],
-     ["L2", "L2-D6"]),
+      "schema-registry", "normalize", "rabbitmq", "event", "事件"],
+     ["ADAPTER", "ADAPTER-D6"]),
 
-    (["mysql", "session", "transaction", "事务", "alembic", "migration",
-      "session.begin", "autobegin"],
-     ["L2", "L2-D9"]),
+    (["mysql", "postgres", "session", "transaction", "事务", "alembic", "migration",
+      "session.begin", "autobegin", "hibernate", "jpa", "mybatis", "gorm",
+      "sqlalchemy", "orm", "索引", "index", "数据库"],
+     ["ADAPTER", "ADAPTER-D9"]),
 
-    (["objecttypedef", "linktypedef", "actiondef", "functiondef", "本体",
-      "ontology", "action", "回写", "overlay", "primary_key", "unique_key",
-      "sharedproperty", "shared_property"],
-     ["L3", "L3-ontology"]),
+    (["redis", "cache", "缓存", "ttl", "evict", "caffeine", "ehcache"],
+     ["ADAPTER", "ADAPTER-D7"]),
+
+    # DOMAIN 层：业务实体、领域规则、聚合根
+    (["entity", "实体", "aggregate", "聚合", "domain", "领域", "business rule",
+      "业务规则", "value object", "值对象", "domain service", "领域服务",
+      "objecttypedef", "linktypedef", "本体", "ontology"],
+     ["DOMAIN", "DOMAIN-D2"]),
 
     (["connector", "syncjob", "ingestionworker", "数据管道", "pipeline",
       "datacatalog", "column", "列映射", "data_catalog"],
-     ["L3", "L3-data_pipeline"]),
+     ["DOMAIN", "DOMAIN-D6"]),
 
     (["tenantquota", "quota", "配额", "cr", "change request", "审批",
-      "changerequest", "governance", "治理"],
-     ["L3", "L3-governance"]),
+      "changerequest", "governance", "治理", "rbac", "role", "permission"],
+     ["DOMAIN", "DOMAIN-D1"]),
 
-    (["worker", "jobexecutionscope", "cqrs", "docker", "k8s", "kubectl",
-      "deployment", "image", "deploy"],
-     ["L4", "L4-workers"]),
+    # APP 层：用例编排、CQRS Handler、工作流、Saga
+    (["worker", "jobexecutionscope", "cqrs", "handler", "command", "query",
+      "saga", "outbox", "workflow", "orchestration", "用例", "用例编排"],
+     ["APP", "APP-D5"]),
 
-    (["tenant_id", "securitycontext", "rls", "多租户", "audit", "auditservice"],
-     ["L1", "L1-D1"]),
+    (["docker", "k8s", "kubectl", "deployment", "image", "deploy",
+      "helm", "cicd", "devops", "ops"],
+     ["ADAPTER", "ADAPTER-D3"]),
+
+    # PLATFORM 层：认证、授权、配置、可观测性
+    (["tenant_id", "securitycontext", "rls", "多租户", "audit", "auditservice",
+      "jwt", "authentication", "authorization", "认证", "鉴权"],
+     ["PLATFORM", "PLATFORM-D1"]),
 
     (["test", "测试", "polyfactory", "dirty-equals", "msw", "vitest",
       "pytest", "renderWithProviders"],

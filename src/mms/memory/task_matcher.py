@@ -42,18 +42,18 @@ _STOP_WORDS = {
     "等", "其", "这", "那", "也", "还", "已", "很", "更", "最", "时",
 }
 
-# ── 模板类型 → 固定标签（提升跨任务模板聚合精度） ────────────────────────────
+# ── 模板类型 → 固定标签（通用 5 层架构，提升跨任务模板聚合精度） ─────────────
 _TEMPLATE_TAGS: Dict[str, List[str]] = {
-    "ep-backend-api":   ["backend", "api", "service", "endpoint", "L5", "L4"],
-    "ep-frontend":      ["frontend", "react", "store", "component", "L5"],
-    "ep-ontology":      ["ontology", "object", "link", "action", "L3"],
-    "ep-data-pipeline": ["pipeline", "connector", "worker", "ingestion", "L3", "L2"],
-    "ep-debug":         ["debug", "fix", "error", "trace", "L1", "L5"],
+    "ep-backend-api":   ["backend", "api", "service", "endpoint", "ADAPTER", "APP"],
+    "ep-frontend":      ["frontend", "react", "store", "component", "ADAPTER"],
+    "ep-ontology":      ["ontology", "object", "link", "action", "DOMAIN"],
+    "ep-data-pipeline": ["pipeline", "connector", "worker", "ingestion", "DOMAIN", "ADAPTER"],
+    "ep-debug":         ["debug", "fix", "error", "trace", "PLATFORM", "ADAPTER"],
     "ep-devops":        ["devops", "deploy", "k8s", "docker", "compose", "helm",
-                         "kubectl", "port-forward", "orbstack", "cicd", "ops"],
+                         "kubectl", "port-forward", "orbstack", "cicd", "ops", "ADAPTER"],
     "ep-others":        ["refactor", "migrate", "security", "performance", "optimize",
                          "test", "coverage", "doc", "documentation", "cleanup",
-                         "重构", "迁移", "安全", "性能", "优化", "测试", "文档"],
+                         "重构", "迁移", "安全", "性能", "优化", "测试", "文档", "CC"],
 }
 
 

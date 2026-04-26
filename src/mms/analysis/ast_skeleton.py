@@ -67,22 +67,85 @@ try:
     _MAX_FILES: int = int(getattr(_cfg, "ast_max_files", 2000))
     _DOCSTRING_MAX_LEN: int = int(getattr(_cfg, "ast_docstring_max_len", 100))
 except (ImportError, AttributeError):
+    _cfg = None  # type: ignore[assignment]
     _MAX_METHODS_PER_CLASS = 20
     _MAX_FILES = 2000
     _DOCSTRING_MAX_LEN = 100
 
-# 扫描的目录配置
-_SCAN_DIRS = [
-    ("backend/app/services", "python"),
-    ("backend/app/api/v1", "python"),
-    ("backend/app/workers", "python"),
-    ("backend/app/infrastructure", "python"),
-    ("backend/app/core", "python"),
-    ("backend/app/models", "python"),
-    ("frontend/src/stores", "typescript"),
-    ("frontend/src/services", "typescript"),
-    ("scripts/mms", "python"),
-]
+
+def _resolve_scan_dirs(project_root: Path) -> List[tuple]:
+    """
+    优先读取 config.yaml 中 dep_sniffer 输出的 project_type.scan_dirs。
+    若为空，则根据 dep_sniffer 自动检测的项目类型生成默认扫描目录。
+    最后回退到硬编码的 MDP-specific 默认值。
+
+    返回：List[(dir_relative_path, lang)]
+    """
+    # 尝试从 config.yaml 读取 dep_sniffer 输出的扫描目录
+    try:
+        import yaml as _yaml  # type: ignore[import]
+        config_path = project_root / "docs" / "memory" / "_system" / "config.yaml"
+        if config_path.exists():
+            raw = _yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            scan_dirs = (raw.get("project_type") or {}).get("scan_dirs") or []
+            if scan_dirs:
+                # config.yaml 中 scan_dirs 格式：[[path, lang], ...]
+                return [(str(entry[0]), str(entry[1])) for entry in scan_dirs if len(entry) >= 2]
+
+            # 根据检测到的项目类型生成默认扫描目录
+            project_type = (raw.get("project_type") or {}).get("detected", "generic")
+            if project_type == "java_spring":
+                return [
+                    ("src/main/java", "java"),
+                    ("src/test/java", "java"),
+                ]
+            if project_type == "go_microservice":
+                return [
+                    ("pkg", "go"),
+                    ("internal", "go"),
+                    ("cmd", "go"),
+                ]
+            if project_type == "python_fastapi":
+                return [
+                    ("backend/app", "python"),
+                    ("src", "python"),
+                    ("app", "python"),
+                ]
+    except Exception:
+        pass
+
+    # 自动检测：扫描项目根的顶层目录，按语言类型判断
+    auto_dirs: List[tuple] = []
+    lang_dir_patterns = {
+        "python": ["app", "src", "backend", "api", "services", "core"],
+        "java": ["src/main/java"],
+        "go": ["pkg", "internal", "cmd"],
+        "typescript": ["frontend/src", "web/src", "ui/src"],
+    }
+    for lang, patterns in lang_dir_patterns.items():
+        for pattern in patterns:
+            candidate = project_root / pattern
+            if candidate.is_dir():
+                auto_dirs.append((pattern, lang))
+    if auto_dirs:
+        return auto_dirs
+
+    # 最终回退：MDP 项目专用默认值（保持向后兼容）
+    return [
+        ("backend/app/services", "python"),
+        ("backend/app/api/v1", "python"),
+        ("backend/app/workers", "python"),
+        ("backend/app/infrastructure", "python"),
+        ("backend/app/core", "python"),
+        ("backend/app/models", "python"),
+        ("frontend/src/stores", "typescript"),
+        ("frontend/src/services", "typescript"),
+        ("scripts/mms", "python"),
+    ]
+
+
+# 扫描目录（运行时动态解析，模块加载时计算一次）
+_SCAN_DIRS = _resolve_scan_dirs(_ROOT)
 
 _IGNORE_DIRS = {
     "__pycache__", ".git", "node_modules", ".venv", "venv",
@@ -104,6 +167,7 @@ class MethodSkeleton:
     signature: str
     docstring: str = ""
     decorators: List[str] = field(default_factory=list)
+    annotations: List[str] = field(default_factory=list)  # 框架注解，如 @Transactional, @Cacheable
     is_async: bool = False
 
 
@@ -113,12 +177,14 @@ class ClassSkeleton:
     bases: List[str] = field(default_factory=list)
     methods: List[MethodSkeleton] = field(default_factory=list)
     docstring: str = ""
+    annotations: List[str] = field(default_factory=list)  # 类级注解，如 @Service, @RestController
 
 
 @dataclass
 class FileSkeleton:
     path: str           # 相对于项目根的路径
-    lang: str           # "python" | "typescript"
+    lang: str           # "python" | "typescript" | "java" | "go"
+    package: str = ""   # 包/模块路径（如 com.example.service、backend.app.services）
     classes: List[ClassSkeleton] = field(default_factory=list)
     top_level_functions: List[MethodSkeleton] = field(default_factory=list)
     imports: List[str] = field(default_factory=list)  # 关键导入（类名/接口名）
@@ -206,9 +272,17 @@ def _extract_decorator_names(decorators: list) -> List[str]:
     return names
 
 
+def _infer_python_package(rel_path: str) -> str:
+    """从文件路径推断 Python 包名（如 backend/app/services/user_service.py → backend.app.services）"""
+    p = Path(rel_path)
+    parts = list(p.parts[:-1])  # 去掉文件名，保留目录部分
+    # 移除常见的项目根前缀（src/, backend/ 等）
+    return ".".join(parts) if parts else ""
+
+
 def _parse_python(source: str, rel_path: str) -> FileSkeleton:
-    """解析 Python 文件，返回 FileSkeleton。"""
-    skeleton = FileSkeleton(path=rel_path, lang="python")
+    """解析 Python 文件，返回 FileSkeleton（含 annotations 和 package）。"""
+    skeleton = FileSkeleton(path=rel_path, lang="python", package=_infer_python_package(rel_path))
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -234,10 +308,12 @@ def _parse_python(source: str, rel_path: str) -> FileSkeleton:
     # 遍历顶层节点
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
+            class_annots = _extract_decorator_names(node.decorator_list)
             class_skel = ClassSkeleton(
                 name=node.name,
                 bases=[_unparse_annotation(b) for b in node.bases],
                 docstring=_extract_docstring(node),
+                annotations=class_annots,
             )
             # 提取方法
             for item in node.body:
@@ -245,11 +321,13 @@ def _parse_python(source: str, rel_path: str) -> FileSkeleton:
                     # 跳过私有方法（双下划线除外），减少噪音
                     if item.name.startswith("_") and not item.name.startswith("__"):
                         continue
+                    method_annots = _extract_decorator_names(item.decorator_list)
                     method = MethodSkeleton(
                         name=item.name,
                         signature=_extract_method_sig(item),
                         docstring=_extract_docstring(item),
-                        decorators=_extract_decorator_names(item.decorator_list),
+                        decorators=method_annots,
+                        annotations=method_annots,  # Python 中 decorator == annotation
                         is_async=isinstance(item, ast.AsyncFunctionDef),
                     )
                     class_skel.methods.append(method)
@@ -261,11 +339,13 @@ def _parse_python(source: str, rel_path: str) -> FileSkeleton:
             # 跳过私有函数
             if node.name.startswith("_"):
                 continue
+            func_annots = _extract_decorator_names(node.decorator_list)
             func = MethodSkeleton(
                 name=node.name,
                 signature=_extract_method_sig(node),
                 docstring=_extract_docstring(node),
-                decorators=_extract_decorator_names(node.decorator_list),
+                decorators=func_annots,
+                annotations=func_annots,
                 is_async=isinstance(node, ast.AsyncFunctionDef),
             )
             skeleton.top_level_functions.append(func)
@@ -374,7 +454,10 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
     局限性：正则不处理嵌套类和泛型复杂情况，适合骨架对比而非完整 AST。
     支持 Java 16+ record、Java 17+ sealed interface、@FunctionalInterface 等现代语法。
     """
-    skeleton = FileSkeleton(path=rel_path, lang="java")
+    # 从 package 声明推断包名
+    pkg_m = re.search(r'^package\s+([\w.]+)\s*;', source, re.MULTILINE)
+    java_package = pkg_m.group(1) if pkg_m else ""
+    skeleton = FileSkeleton(path=rel_path, lang="java", package=java_package)
 
     # imports
     for m in re.finditer(r'^import\s+(?:static\s+)?[\w.]+\.(\w+)\s*;', source, re.MULTILINE):
@@ -397,6 +480,9 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
         r'\s*[({]',                                    # { 或 ( 触发（record 用括号）
         re.MULTILINE,
     )
+    # 注解提取正则（用于类和方法级注解）
+    _java_annotation_re = re.compile(r'@(\w+)(?:\s*\([^)]*\))?')
+
     for m in class_pat.finditer(source):
         kind, name = m.group(1), m.group(2)
         bases = []
@@ -404,7 +490,10 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
             bases.extend(b.strip().split('<')[0] for b in m.group(3).split(','))
         if m.group(4):
             bases.extend(b.strip().split('<')[0] for b in m.group(4).split(','))
-        cls_skel = ClassSkeleton(name=name, bases=[b for b in bases if b])
+        # 提取类级注解（从匹配起始位置向前扫描）
+        pre_text = source[max(0, m.start() - 300):m.start()]
+        class_annotations = _java_annotation_re.findall(pre_text)
+        cls_skel = ClassSkeleton(name=name, bases=[b for b in bases if b], annotations=class_annotations[-6:])
 
         # methods within approximate class body
         # Use a simple heuristic: collect methods until next class-level brace
@@ -434,7 +523,14 @@ def _parse_java(source: str, rel_path: str) -> FileSkeleton:
                 type_part = tokens[-2] if len(tokens) >= 2 else tokens[0] if tokens else '_'
                 param_types.append(type_part.rstrip('[]'))
             sig = f"({', '.join(param_types)}) -> {ret_type}"
-            cls_skel.methods.append(MethodSkeleton(name=meth_name, signature=sig))
+            # 提取方法级注解（从方法匹配起始向前扫描）
+            mm_pre = source[cls_start:cls_start + mm.start()]
+            last_newline = mm_pre.rfind('\n', max(0, mm.start() - 300))
+            meth_pre = mm_pre[max(0, last_newline):]
+            meth_annotations = _java_annotation_re.findall(meth_pre)
+            cls_skel.methods.append(MethodSkeleton(
+                name=meth_name, signature=sig, annotations=meth_annotations[-4:]
+            ))
 
         skeleton.classes.append(cls_skel)
 
@@ -454,7 +550,10 @@ def _parse_go(source: str, rel_path: str) -> FileSkeleton:
 
     局限性：正则不处理泛型（Go 1.18+）的复杂情况，适合骨架对比。
     """
-    skeleton = FileSkeleton(path=rel_path, lang="go")
+    # 从 package 声明推断包名
+    go_pkg_m = re.search(r'^package\s+(\w+)', source, re.MULTILINE)
+    go_package = go_pkg_m.group(1) if go_pkg_m else ""
+    skeleton = FileSkeleton(path=rel_path, lang="go", package=go_package)
 
     # package imports
     for m in re.finditer(r'^\s+"(?:[\w./]+/)?([\w]+)"', source, re.MULTILINE):

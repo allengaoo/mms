@@ -1,0 +1,149 @@
+##############################################################################
+# Enterprise Benchmark · mall 订单服务（Java Spring Boot + MyBatis）
+#
+# 数据来源：基于 github.com/macrozheng/mall 的真实代码结构
+# 用途：验证木兰在真实企业 Java 项目中的代码生成质量
+#
+# 与合成 case 的区别：
+#   1. 代码规模真实（OmsOrderDetail 类有 400+ 行）
+#   2. 跨文件依赖真实（改一个字段需要改 Entity/Mapper/DTO/Service 4 个文件）
+#   3. 有 ground truth：来自 mall 项目真实 commit 的 diff
+##############################################################################
+
+schema_version: "1.1"
+domain: "enterprise_java_spring"
+project: "macrozheng/mall"
+module: "mall-admin 订单管理模块"
+tech_stack:
+  language: java
+  framework: spring_boot
+  orm: mybatis
+  database: mysql
+
+cases:
+
+  - id: mall_order_001
+    title: "订单详情新增商品快照字段（跨层变更验证）"
+    description: |
+      业务需求：在订单详情中新增商品快照字段（product_snapshot），
+      记录下单时的商品名称、主图和价格，防止商品信息变更后订单详情显示错误。
+    complexity: medium
+    expected_aiu_types:
+      - SCHEMA_ADD_FIELD        # Entity: OmsOrderDetail.java 新增 productSnapshot 字段
+      - MUTATION_ADD_UPDATE     # Mapper: OmsOrderDetailMapper.xml 新增字段映射
+      - CONTRACT_ADD_RESPONSE   # DTO: OmsOrderDetailResult.java 新增响应字段
+      - QUERY_MODIFY_SELECT     # Service: 查询时返回快照字段（如果有投影查询）
+    expected_files:
+      - "mall-admin/src/main/java/com/macro/mall/model/OmsOrderDetail.java"
+      - "mall-admin/src/main/resources/mapper/OmsOrderDetailMapper.xml"
+      - "mall-admin/src/main/java/com/macro/mall/dto/OmsOrderDetailResult.java"
+      - "mall-admin/src/main/java/com/macro/mall/service/impl/OmsOrderServiceImpl.java"
+    memory_topics_required:
+      - "java mybatis mapper xml 字段映射规则"
+      - "DTO 与 Entity 字段同步规则（禁止跨层直接引用）"
+      - "Spring Boot 字段添加的 Migration 策略"
+    ground_truth:
+      approach: "在 OmsOrderDetail 实体类添加 @Column(name='product_snapshot') 注解的字段，同步更新 MyBatis XML mapper，更新 DTO 的对应字段，Service 层查询 SQL 补充新字段"
+      anti_patterns:
+        - "直接在 Service 层构造 SQL 字符串（违反 MyBatis 分离原则）"
+        - "DTO 直接继承 Entity（违反 DTO 隔离规则）"
+    fixture_code:
+      entity_before: |
+        // OmsOrderDetail.java（变更前的关键字段，实际文件约 400 行）
+        @Data
+        @EqualsAndHashCode(callSuper = false)
+        public class OmsOrderDetail implements Serializable {
+            private Long id;
+            private Long orderId;
+            private Long productId;
+            private String productPic;
+            private String productName;
+            private String productBrand;
+            // ... 其他字段
+        }
+      dto_before: |
+        // OmsOrderDetailResult.java（DTO，实际包含 @ApiModelProperty 注解）
+        public class OmsOrderDetailResult extends OmsOrderDetail {
+            @ApiModelProperty("订单信息")
+            private OmsOrder order;
+        }
+
+  - id: mall_order_002
+    title: "订单状态机：新增'待审核'状态（状态机变更验证）"
+    description: |
+      业务需求：在现有订单状态（待支付→待发货→待收货→已完成）中
+      插入新的'待审核'（PENDING_REVIEW）状态，位于待支付和待发货之间。
+      需要同时更新状态枚举、状态机转换逻辑和前端展示映射。
+    complexity: high
+    expected_aiu_types:
+      - SCHEMA_MODIFY_FIELD     # Entity: status 枚举值新增 PENDING_REVIEW
+      - LOGIC_ADD_BRANCH        # Service: 新增状态流转分支（审核通过/拒绝）
+      - LOGIC_ADD_CONDITION     # Service: 发货前检查是否已通过审核
+      - CONTRACT_MODIFY_RESPONSE # DTO: 状态展示字段更新
+      - TEST_ADD_UNIT           # 测试：状态机转换覆盖
+    expected_files:
+      - "mall-admin/src/main/java/com/macro/mall/model/OmsOrder.java"
+      - "mall-admin/src/main/java/com/macro/mall/service/impl/OmsOrderServiceImpl.java"
+      - "mall-admin/src/main/java/com/macro/mall/dto/OmsOrderQueryParam.java"
+    memory_topics_required:
+      - "状态机设计模式：避免使用 if-else 链，改用状态枚举 + 转换表"
+      - "枚举值新增的数据库兼容性（MySQL ENUM 类型变更风险）"
+      - "Spring Boot 状态机测试最佳实践"
+    ground_truth:
+      approach: "在 OmsOrder 实体的 status 枚举中插入新值，使用 Strategy 模式而非 if-else 链实现状态转换，确保数据库 ENUM 字段的 ALTER TABLE 安全"
+      anti_patterns:
+        - "直接在 if-else 中处理所有状态转换（超过 5 个分支时应使用状态机）"
+        - "数据库直接 ALTER TABLE MODIFY ENUM 而不做兼容性分析"
+
+  - id: mall_order_003
+    title: "订单查询接口：新增按商品名称模糊搜索（查询扩展验证）"
+    description: |
+      业务需求：在订单列表查询接口中，增加按商品名称（product_name）模糊搜索的能力。
+      当前查询只支持订单号、用户手机号、时间范围等条件。
+    complexity: low
+    expected_aiu_types:
+      - CONTRACT_ADD_REQUEST    # DTO: OmsOrderQueryParam 新增 productName 字段
+      - QUERY_ADD_FILTER        # Mapper: XML 动态 SQL 新增 product_name LIKE 条件
+      - ROUTE_ADD_ENDPOINT      # Controller: 更新 @RequestParam 声明（如有变化）
+    expected_files:
+      - "mall-admin/src/main/java/com/macro/mall/dto/OmsOrderQueryParam.java"
+      - "mall-admin/src/main/resources/mapper/OmsOrderMapper.xml"
+      - "mall-admin/src/main/java/com/macro/mall/controller/OmsOrderController.java"
+    memory_topics_required:
+      - "MyBatis 动态 SQL：<if test='productName != null'> LIKE CONCAT('%', #{productName}, '%')</if>"
+      - "模糊查询的索引优化：前缀 LIKE 可用索引，后缀/中间 LIKE 强制全表扫描"
+      - "Spring Boot @RequestParam 可选参数的声明方式"
+    ground_truth:
+      approach: "在查询 DTO 中添加 productName 字段，在 MyBatis XML 中使用 <if> 动态 SQL 添加 JOIN + LIKE 条件，注意 JOIN 带来的 N+1 风险"
+      anti_patterns:
+        - "在 Service 层用 Java stream 过滤查询结果（应在 SQL 层过滤）"
+        - "不加 <if> 判断导致 productName=null 时 SQL 语法错误"
+
+  - id: mall_order_004
+    title: "跨模块：退款申请触发库存回滚（分布式协调验证）"
+    description: |
+      业务需求：当订单退款申请审批通过时，需要：
+      1. 更新订单状态为已退款
+      2. 回滚对应商品的库存（PmsSkuStock.lockStock 减少）
+      3. 发送退款成功消息到消息队列（通知短信服务）
+      需要保证"退款状态更新 + 库存回滚 + 消息发送"的原子性。
+    complexity: high
+    expected_aiu_types:
+      - LOGIC_ADD_BRANCH        # Service: 退款审批通过分支
+      - MUTATION_ADD_UPDATE     # 库存 Repository: 减少锁定库存
+      - OUTBOX_ADD_MESSAGE      # 保证原子性：使用 Outbox 模式发送退款消息
+      - SAGA_ADD_COMPENSATOR    # 若库存回滚失败，补偿：恢复订单状态
+      - TEST_ADD_INTEGRATION    # 集成测试：验证三个操作的原子性
+    expected_files:
+      - "mall-admin/src/main/java/com/macro/mall/service/impl/OmsOrderServiceImpl.java"
+      - "mall-admin/src/main/java/com/macro/mall/service/impl/PmsSkuStockServiceImpl.java"
+      - "mall-admin/src/main/resources/mapper/PmsSkuStockMapper.xml"
+    memory_topics_required:
+      - "分布式事务：Outbox 模式 vs 直接 MQ 发送的选择"
+      - "Spring @Transactional 与外部服务调用（MQ）的事务边界"
+      - "Saga 补偿事务设计：库存回滚失败的处理策略"
+    ground_truth:
+      approach: "使用 Outbox 模式：在同一事务中写入退款记录 + 库存变更 + outbox 消息，独立的 Outbox Processor 发送消息。Saga 补偿需要明确定义失败场景下的回滚逻辑"
+      anti_patterns:
+        - "在 @Transactional 内部直接调用 Kafka produce（消息发送失败导致事务回滚但消息已发）"
+        - "库存回滚和退款状态更新在两个独立事务中执行（存在不一致窗口期）"

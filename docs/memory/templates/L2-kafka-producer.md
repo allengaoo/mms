@@ -1,4 +1,4 @@
-# 模版：L2 基础设施层 · Kafka 生产者 / Ingestion Worker（小模型优化版）
+# 模版：ADAPTER 层 · Kafka 生产者 / Ingestion Worker（小模型优化版）
 # 适用：新增数据源接入 / Kafka 发送逻辑 / Avro schema 变更
 # Token 预算：≤3.5K
 

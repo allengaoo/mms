@@ -1,4 +1,4 @@
-# 模版：L5 接口层 · 前端页面/组件（小模型优化版）
+# 模版：ADAPTER 层 · 前端页面/组件（小模型优化版）
 # 适用：新增管理页面 / ProTable / DrawerForm / Zustand Store
 # Token 预算：≤3K
 

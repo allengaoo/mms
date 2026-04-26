@@ -1,4 +1,4 @@
-# 模版：L3 领域层 · 本体（Ontology）操作（小模型优化版）
+# 模版：DOMAIN 层 · 本体（Ontology）操作（小模型优化版）
 # 适用：ObjectType / LinkType / Action / Function / Scenario 相关修改
 # Token 预算：≤4K
 

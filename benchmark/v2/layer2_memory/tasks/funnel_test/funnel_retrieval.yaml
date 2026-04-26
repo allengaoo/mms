@@ -1,0 +1,153 @@
+##############################################################################
+# Layer 2 · 检索漏斗有效性验证（三阶段漏斗测试集）
+#
+# 设计原则：
+#   测试分为 4 类，验证三阶段漏斗的每个阶段是否发挥预期作用：
+#
+#   类型 A（graph_only）：
+#     查询词在记忆内容中不出现，但记忆的 about_concepts 能覆盖查询语义。
+#     预期：阶段 1（图路径）命中，阶段 2（关键词）无法单独命中。
+#     验证指标：Stage-1 独立召回率
+#
+#   类型 B（keyword_only）：
+#     查询词直接出现在记忆内容中，但 about_concepts 未覆盖查询关键词。
+#     预期：阶段 1 无法命中，阶段 2（关键词全文检索）能补充命中。
+#     验证指标：Stage-2 增量召回率
+#
+#   类型 C（both_stages）：
+#     查询词在内容中出现，且 about_concepts 也覆盖。
+#     预期：阶段 1 和阶段 2 都能命中，验证融合排序的质量。
+#     验证指标：阶段混淆率（Stage-1 排序是否优于 Stage-2）
+#
+#   类型 D（none_stage）：
+#     两个阶段都无法命中，需要 LLM 理解语义等价才能找到正确记忆。
+#     预期：Stage-1 和 Stage-2 都 miss，此类 case 的存在证明 LLM 兜底层的必要性。
+#     验证指标：LLM 层必要性比例
+#
+# fixture_dir: benchmark/v2/layer2_memory/fixtures/memories/
+#   使用此目录下的 fixture 记忆文件作为测试记忆库（隔离真实记忆）。
+#
+# 扩展方式：在此文件追加 case，或在同目录新建 YAML 文件。
+##############################################################################
+
+schema_version: "1.1"
+domain: "funnel_validation"
+category: "retrieval_funnel"
+
+# 使用独立的 fixture 记忆库（不依赖真实 docs/memory/shared/ 目录）
+fixture_memory_dir: "benchmark/v2/layer2_memory/fixtures/memories"
+
+cases:
+
+  # ── 类型 A：图路径专属命中（查询词不在内容中，仅通过 about_concepts 命中）────
+
+  - id: funnel_a_001
+    category: graph_only
+    description: "事务回滚（查询用'rollback'，记忆 about_concepts 含'transaction'但内容只写了'Repository 接口'）"
+    query: "如何在批量写入时处理部分失败的事务回滚"
+    # MEM-L-F001 的 about_concepts 包含 transaction，但内容中没有"批量写入"这几个字
+    relevant_ids: ["MEM-L-F001"]
+    domain_concepts: ["transaction", "rollback", "database-access"]
+    k: 5
+    expected_funnel_stage: 1
+    notes: "验证 Stage-1 图路径能否通过 about_concepts=[transaction] 找到 F001"
+
+  - id: funnel_a_002
+    category: graph_only
+    description: "缓存隔离（查询用'数据污染'，记忆 about_concepts 含'tenant-isolation'）"
+    query: "多租户环境下缓存数据污染如何预防"
+    # MEM-L-F003 的 about_concepts 含 tenant-isolation，但内容不含"数据污染"
+    relevant_ids: ["MEM-L-F003"]
+    domain_concepts: ["tenant-isolation", "cache", "data-isolation"]
+    k: 5
+    expected_funnel_stage: 1
+    notes: "验证图路径能否识别'数据污染'与 about_concepts=[tenant-isolation] 的语义关联"
+
+  - id: funnel_a_003
+    category: graph_only
+    description: "最终一致性（查询用'幂等'，记忆标签含'eventual-consistency'）"
+    query: "消息消费者如何保证幂等性避免重复处理"
+    # AD-F001 的 about_concepts 含 messaging, distributed-systems
+    relevant_ids: ["AD-F001"]
+    domain_concepts: ["messaging", "idempotency", "distributed-systems"]
+    k: 5
+    expected_funnel_stage: 1
+    notes: "验证图路径能否从'幂等性'关联到 about_concepts=[messaging]"
+
+  # ── 类型 B：关键词专属命中（内容含查询词，but about_concepts 未覆盖）────────
+
+  - id: funnel_b_001
+    category: keyword_only
+    description: "精确技术词命中（Spring REQUIRES_NEW — 内容直接包含此词）"
+    query: "Spring @Transactional propagation REQUIRES_NEW 有什么风险"
+    # MEM-L-F002 内容包含 "REQUIRES_NEW" 和 "Spring"，但 about_concepts 是 transaction/spring-framework
+    # 这里测试的是：如果 about_concepts 完全没有 "REQUIRES_NEW"，Stage-1 能否命中？
+    # （实际 F002 的 about_concepts 包含 transaction，所以 Stage-1 也可能命中，
+    #  此 case 主要验证 Stage-2 的独立召回能力）
+    relevant_ids: ["MEM-L-F002"]
+    domain_concepts: ["spring-propagation-requires-new"]   # 故意用不在 about_concepts 的词
+    k: 5
+    expected_funnel_stage: 2
+    notes: "验证关键词全文检索能否找到包含 REQUIRES_NEW 的记忆，即使 about_concepts 没有精确匹配"
+
+  - id: funnel_b_002
+    category: keyword_only
+    description: "Go 技术词命中（goleak — 内容包含，about_concepts 无对应）"
+    query: "Go 项目如何用 goleak 检测 goroutine 泄漏"
+    # MEM-L-F004 内容包含 goleak，但 about_concepts 是 concurrency/go-runtime
+    relevant_ids: ["MEM-L-F004"]
+    domain_concepts: ["goleak-detection"]   # 故意用不在 about_concepts 的词
+    k: 5
+    expected_funnel_stage: 2
+    notes: "验证全文关键词检索能通过 'goleak' 精确命中"
+
+  # ── 类型 C：两阶段均可命中（验证融合排序质量）────────────────────────────────
+
+  - id: funnel_c_001
+    category: both_stages
+    description: "Redis 缓存 TTL（内容含 redis/TTL，about_concepts 含 cache）"
+    query: "Redis 缓存设置 TTL 的最佳策略是什么"
+    # MEM-L-F003：about_concepts=[cache, redis] AND 内容含 "Redis", "TTL"
+    relevant_ids: ["MEM-L-F003"]
+    domain_concepts: ["cache", "redis", "ttl"]
+    k: 5
+    expected_funnel_stage: 1   # Stage-1 应该能命中，Stage-2 也能，但 Stage-1 应排在前面
+    notes: "验证两阶段都命中时，Stage-1 的图路径结果排序优于 Stage-2 关键词结果"
+
+  - id: funnel_c_002
+    category: both_stages
+    description: "Outbox 模式（about_concepts 含 messaging，内容含 outbox 关键词）"
+    query: "Outbox 模式和直接 Kafka 发布的区别"
+    # AD-F001：about_concepts=[messaging, kafka] AND 内容含 "Outbox", "Kafka"
+    relevant_ids: ["AD-F001"]
+    domain_concepts: ["outbox", "messaging", "kafka"]
+    k: 5
+    expected_funnel_stage: 1
+    notes: "验证架构决策类记忆能被 CC 层路径找到"
+
+  # ── 类型 D：两阶段均无法命中（证明 LLM 语义理解层的必要性）─────────────────
+
+  - id: funnel_d_001
+    category: none_stage
+    description: "同义词替换（'事务性消息'→'消息可靠性'，词汇不重叠）"
+    query: "如何保证消息发送的可靠性，防止消息丢失"
+    # AD-F001 描述的是 Outbox 模式，但查询用的是"消息可靠性"，
+    # about_concepts 中无"可靠性"词条，内容中也无"可靠性"关键词
+    relevant_ids: ["AD-F001"]
+    domain_concepts: ["reliability"]   # 不在 about_concepts 中
+    k: 5
+    expected_funnel_stage: 3   # 只有 LLM 理解"可靠性 = 事务性消息 = Outbox"才能命中
+    notes: "此 case 证明 LLM 兜底层的必要性：纯图路径和关键词都无法识别同义词"
+
+  - id: funnel_d_002
+    category: none_stage
+    description: "隐式关联（'防止重复处理'→ 幂等性 → Outbox）"
+    query: "消费者收到重复消息时如何防止重复执行业务逻辑"
+    # 正确记忆是 AD-F001（Outbox + 幂等消费），
+    # 但查询没有"outbox"/"messaging"等关键词，
+    # about_concepts 也没有"重复执行"/"重复消息"
+    relevant_ids: ["AD-F001"]
+    domain_concepts: ["duplicate-execution"]
+    k: 5
+    expected_funnel_stage: 3
+    notes: "验证'防止重复处理'需要 LLM 推理'幂等 → Outbox 模式'"

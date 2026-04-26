@@ -1,23 +1,31 @@
 """
 aiu_types.py — 原子意图单元（Atomic Intent Unit）数据结构定义
 
-AIU 是 MMS 代码生成的最小可执行单元，类比数据库查询优化器中的"算子"。
+AIU 是木兰代码生成的最小可执行单元，类比数据库查询优化器中的"算子"。
 每个 AIU 只做一件事，可独立验证，上下文 ≤ 4000 tokens（8B 模型可直接执行）。
 
-AIU 分类（6 大族，28 种）：
-  族 A: 结构定义类（Schema Operators）      — A1-A6
-  族 B: 逻辑流控制类（Control Flow）         — B1-B5
-  族 C: 数据读写类（Data Access）            — C1-C5
-  族 D: 接口与路由类（Interface）             — D1-D5
-  族 E: 事件与基础设施类（Infrastructure）    — E1-E4
-  族 F: 质量保障类（Validation）             — F1-F3
+设计原则（v3.0）：
+  1. 语言无关：AIU 类型描述业务意图（WHAT），语言相关细节通过 AIUContext.language 传递
+  2. 层级亲和：每种 AIU 类型有 layer_affinity，指示它倾向影响哪些记忆层
+  3. 可扩展：新增类型只需在枚举和 AIU_META 中添加条目
 
-与 DagUnit 的关系：
-  DagUnit 是"文件级"执行单元（涉及 1-2 个文件）。
-  AIU 是 DagUnit 内部的"语义级"子步骤（一个操作类型）。
-  DagUnit.aiu_steps = List[AIUStep]
+AIU 分类（9 大族，43 种）：
+  族 A: 结构定义类（Schema Operators）      — A1-A6    [DOMAIN, ADAPTER]
+  族 B: 逻辑流控制类（Control Flow）         — B1-B5    [DOMAIN, APP]
+  族 C: 数据读写类（Data Access）            — C1-C5    [ADAPTER]
+  族 D: 接口与路由类（Interface/Adapter）    — D1-D5    [ADAPTER]
+  族 E: 事件与基础设施类（Infrastructure）   — E1-E4    [ADAPTER]
+  族 F: 质量保障类（Validation）             — F1-F3    [APP, CC]
+  族 G: 分布式协调类（Distributed）          — G1-G4    [APP, DOMAIN]  ← v3.0 新增
+  族 H: 治理与合规类（Governance）           — H1-H4    [PLATFORM, CC]  ← v3.0 新增
+  族 I: 可观测性类（Observability）          — I1-I3    [PLATFORM]      ← v3.0 新增
 
-EP-129 | 2026-04-22
+与 DagUnit 的关系（v3.0 调整）：
+  AIU 是"语义级"操作单元（WHAT），DagUnit 是派生的"文件级"执行计划（WHERE + HOW）。
+  一个 AIU 可对应多个 DagUnit（如 ENTITY_ADD_PROPERTY 涉及 Entity/DTO/Migration/Repository）。
+  AIUStep.target_files 列出预估的影响文件，DagUnit 运行时确认。
+
+EP-132 | 2026-04-26
 """
 
 from __future__ import annotations
@@ -71,9 +79,29 @@ class AIUType(str, Enum):
     CONFIG_MODIFY       = "CONFIG_MODIFY"       # E4: 修改 SystemConfig / Feature Flag
 
     # 族 F：质量保障类（Validation Operators）
-    TEST_ADD_UNIT        = "TEST_ADD_UNIT"        # F1: 新增 pytest 单元测试
+    TEST_ADD_UNIT        = "TEST_ADD_UNIT"        # F1: 新增单元测试
     TEST_ADD_INTEGRATION = "TEST_ADD_INTEGRATION" # F2: 新增集成测试
     DOC_SYNC             = "DOC_SYNC"             # F3: 更新 e2e_traceability / page_map
+
+    # 族 G：分布式协调类（Distributed Coordination Operators）— v3.0 新增
+    # 适用场景：微服务架构下的跨服务一致性保障（Saga、Outbox、幂等性）
+    SAGA_ADD_STEP         = "SAGA_ADD_STEP"         # G1: 在 Saga 流程中添加一个步骤（含补偿逻辑）
+    SAGA_ADD_COMPENSATOR  = "SAGA_ADD_COMPENSATOR"  # G2: 为已有 Saga 步骤添加补偿/回滚操作
+    OUTBOX_ADD_MESSAGE    = "OUTBOX_ADD_MESSAGE"    # G3: 将领域事件写入 Outbox 表（保证消息最终发送）
+    IDEMPOTENCY_ADD_KEY   = "IDEMPOTENCY_ADD_KEY"   # G4: 为操作添加幂等键保护（防重复提交/请求）
+
+    # 族 H：治理与合规类（Governance & Compliance Operators）— v3.0 新增
+    # 适用场景：企业级安全合规要求（RBAC、审计、数据隔离、脱敏）
+    RBAC_ADD_PERMISSION   = "RBAC_ADD_PERMISSION"   # H1: 新增权限条目（语言无关的 RBAC 策略变更）
+    RBAC_ADD_ROLE         = "RBAC_ADD_ROLE"         # H2: 新增角色定义及其权限集
+    AUDIT_ADD_TRAIL       = "AUDIT_ADD_TRAIL"       # H3: 为操作添加审计日志埋点
+    TENANT_ADD_ISOLATION  = "TENANT_ADD_ISOLATION"  # H4: 为数据模型/查询添加租户隔离约束
+
+    # 族 I：可观测性类（Observability Operators）— v3.0 新增
+    # 适用场景：SRE 关注的运行时指标、链路追踪和告警
+    METRIC_ADD_COUNTER    = "METRIC_ADD_COUNTER"    # I1: 新增业务指标计数器/Gauge/Histogram
+    TRACE_ADD_SPAN        = "TRACE_ADD_SPAN"        # I2: 为关键操作添加 trace span（OpenTelemetry）
+    ALERT_ADD_RULE        = "ALERT_ADD_RULE"        # I3: 新增 Prometheus 告警规则或 SLO 定义
 
 
 # ── AIU 族分类 ───────────────────────────────────────────────────────────────
@@ -119,6 +147,23 @@ AIU_FAMILY: Dict[str, List[AIUType]] = {
         AIUType.TEST_ADD_INTEGRATION,
         AIUType.DOC_SYNC,
     ],
+    "G_distributed": [
+        AIUType.SAGA_ADD_STEP,
+        AIUType.SAGA_ADD_COMPENSATOR,
+        AIUType.OUTBOX_ADD_MESSAGE,
+        AIUType.IDEMPOTENCY_ADD_KEY,
+    ],
+    "H_governance": [
+        AIUType.RBAC_ADD_PERMISSION,
+        AIUType.RBAC_ADD_ROLE,
+        AIUType.AUDIT_ADD_TRAIL,
+        AIUType.TENANT_ADD_ISOLATION,
+    ],
+    "I_observability": [
+        AIUType.METRIC_ADD_COUNTER,
+        AIUType.TRACE_ADD_SPAN,
+        AIUType.ALERT_ADD_RULE,
+    ],
 }
 
 # AIU 类型 → 所属族名（反向索引）
@@ -128,38 +173,113 @@ AIU_TO_FAMILY: Dict[AIUType, str] = {
     for aiu in aius
 }
 
-# ── AIU 层级映射 ─────────────────────────────────────────────────────────────
 
-# 每种 AIU 主要影响哪个架构层（用于 token 预算 + 文件优先级）
+# ── AIU 层级亲和性（v3.0：与通用 5 层架构对齐）─────────────────────────────────
+# layer_affinity 指示该 AIU 类型的代码变更倾向影响哪些记忆层
+# 用于 synthesizer 在 hybrid_search 时提升对应层记忆的权重
+AIU_LAYER_AFFINITY: Dict[AIUType, List[str]] = {
+    # 族 A：Schema 变更 → 领域模型 + 适配器（ORM/DTO/Migration）
+    AIUType.SCHEMA_ADD_FIELD:         ["DOMAIN", "ADAPTER"],
+    AIUType.SCHEMA_MODIFY_FIELD:      ["DOMAIN", "ADAPTER"],
+    AIUType.SCHEMA_ADD_RELATION:      ["DOMAIN", "ADAPTER"],
+    AIUType.CONTRACT_ADD_REQUEST:     ["ADAPTER", "APP"],
+    AIUType.CONTRACT_ADD_RESPONSE:    ["ADAPTER", "APP"],
+    AIUType.CONTRACT_MODIFY_RESPONSE: ["ADAPTER", "APP"],
+    # 族 B：业务逻辑 → 领域层 + 应用层
+    AIUType.LOGIC_ADD_CONDITION:      ["DOMAIN", "APP"],
+    AIUType.LOGIC_ADD_BRANCH:         ["DOMAIN", "APP"],
+    AIUType.LOGIC_ADD_LOOP:           ["APP"],
+    AIUType.LOGIC_EXTRACT_METHOD:     ["DOMAIN", "APP"],
+    AIUType.LOGIC_ADD_GUARD:          ["DOMAIN", "APP"],
+    # 族 C：数据读写 → 适配器层（Repository）
+    AIUType.QUERY_ADD_SELECT:         ["ADAPTER"],
+    AIUType.QUERY_ADD_FILTER:         ["ADAPTER"],
+    AIUType.MUTATION_ADD_INSERT:      ["ADAPTER"],
+    AIUType.MUTATION_ADD_UPDATE:      ["ADAPTER"],
+    AIUType.MUTATION_ADD_DELETE:      ["ADAPTER"],
+    # 族 D：接口路由 → 适配器层
+    AIUType.ROUTE_ADD_ENDPOINT:       ["ADAPTER"],
+    AIUType.ROUTE_ADD_PERMISSION:     ["ADAPTER", "PLATFORM"],
+    AIUType.FRONTEND_ADD_PAGE:        ["ADAPTER"],
+    AIUType.FRONTEND_ADD_STORE:       ["ADAPTER"],
+    AIUType.FRONTEND_BIND_API:        ["ADAPTER"],
+    # 族 E：基础设施 → 适配器层
+    AIUType.EVENT_ADD_PRODUCER:       ["ADAPTER"],
+    AIUType.EVENT_ADD_CONSUMER:       ["ADAPTER", "APP"],
+    AIUType.CACHE_ADD_READ:           ["ADAPTER"],
+    AIUType.CONFIG_MODIFY:            ["PLATFORM"],
+    # 族 F：质量 → 应用层 + CC
+    AIUType.TEST_ADD_UNIT:            ["APP", "CC"],
+    AIUType.TEST_ADD_INTEGRATION:     ["APP"],
+    AIUType.DOC_SYNC:                 ["CC"],
+    # 族 G：分布式 → 应用层 + 领域层
+    AIUType.SAGA_ADD_STEP:            ["APP", "DOMAIN"],
+    AIUType.SAGA_ADD_COMPENSATOR:     ["APP", "DOMAIN"],
+    AIUType.OUTBOX_ADD_MESSAGE:       ["APP", "ADAPTER"],
+    AIUType.IDEMPOTENCY_ADD_KEY:      ["APP", "ADAPTER"],
+    # 族 H：治理 → 平台层 + CC
+    AIUType.RBAC_ADD_PERMISSION:      ["PLATFORM", "CC"],
+    AIUType.RBAC_ADD_ROLE:            ["PLATFORM", "CC"],
+    AIUType.AUDIT_ADD_TRAIL:          ["PLATFORM"],
+    AIUType.TENANT_ADD_ISOLATION:     ["PLATFORM", "DOMAIN"],
+    # 族 I：可观测性 → 平台层
+    AIUType.METRIC_ADD_COUNTER:       ["PLATFORM"],
+    AIUType.TRACE_ADD_SPAN:           ["PLATFORM"],
+    AIUType.ALERT_ADD_RULE:           ["PLATFORM", "CC"],
+}
+
+# ── AIU 主层级映射（通用 5 层，v3.0 更新）──────────────────────────────────────
+# 每种 AIU 的主要影响层（用于 token 预算 + 文件优先级）
+# 注：详细的多层亲和性见 AIU_LAYER_AFFINITY
 AIU_LAYER_MAP: Dict[AIUType, str] = {
-    AIUType.SCHEMA_ADD_FIELD:         "L3_domain",
-    AIUType.SCHEMA_MODIFY_FIELD:      "L3_domain",
-    AIUType.SCHEMA_ADD_RELATION:      "L3_domain",
-    AIUType.CONTRACT_ADD_REQUEST:     "L5_interface",
-    AIUType.CONTRACT_ADD_RESPONSE:    "L5_interface",
-    AIUType.CONTRACT_MODIFY_RESPONSE: "L5_interface",
-    AIUType.LOGIC_ADD_CONDITION:      "L4_application",
-    AIUType.LOGIC_ADD_BRANCH:         "L4_application",
-    AIUType.LOGIC_ADD_LOOP:           "L4_application",
-    AIUType.LOGIC_EXTRACT_METHOD:     "L4_application",
-    AIUType.LOGIC_ADD_GUARD:          "L4_application",
-    AIUType.QUERY_ADD_SELECT:         "L3_domain",
-    AIUType.QUERY_ADD_FILTER:         "L3_domain",
-    AIUType.MUTATION_ADD_INSERT:      "L3_domain",
-    AIUType.MUTATION_ADD_UPDATE:      "L3_domain",
-    AIUType.MUTATION_ADD_DELETE:      "L3_domain",
-    AIUType.ROUTE_ADD_ENDPOINT:       "L5_interface",
-    AIUType.ROUTE_ADD_PERMISSION:     "L5_interface",
-    AIUType.FRONTEND_ADD_PAGE:        "L5_interface",
-    AIUType.FRONTEND_ADD_STORE:       "L4_application",
-    AIUType.FRONTEND_BIND_API:        "L5_interface",
-    AIUType.EVENT_ADD_PRODUCER:       "L2_infrastructure",
-    AIUType.EVENT_ADD_CONSUMER:       "L2_infrastructure",
-    AIUType.CACHE_ADD_READ:           "L2_infrastructure",
-    AIUType.CONFIG_MODIFY:            "L1_platform",
-    AIUType.TEST_ADD_UNIT:            "testing",
-    AIUType.TEST_ADD_INTEGRATION:     "testing",
-    AIUType.DOC_SYNC:                 "docs",
+    # 族 A：Schema（领域模型 + 适配器）
+    AIUType.SCHEMA_ADD_FIELD:         "DOMAIN",
+    AIUType.SCHEMA_MODIFY_FIELD:      "DOMAIN",
+    AIUType.SCHEMA_ADD_RELATION:      "DOMAIN",
+    AIUType.CONTRACT_ADD_REQUEST:     "ADAPTER",
+    AIUType.CONTRACT_ADD_RESPONSE:    "ADAPTER",
+    AIUType.CONTRACT_MODIFY_RESPONSE: "ADAPTER",
+    # 族 B：业务逻辑（应用层）
+    AIUType.LOGIC_ADD_CONDITION:      "APP",
+    AIUType.LOGIC_ADD_BRANCH:         "APP",
+    AIUType.LOGIC_ADD_LOOP:           "APP",
+    AIUType.LOGIC_EXTRACT_METHOD:     "APP",
+    AIUType.LOGIC_ADD_GUARD:          "APP",
+    # 族 C：数据读写（适配器层 Repository）
+    AIUType.QUERY_ADD_SELECT:         "ADAPTER",
+    AIUType.QUERY_ADD_FILTER:         "ADAPTER",
+    AIUType.MUTATION_ADD_INSERT:      "ADAPTER",
+    AIUType.MUTATION_ADD_UPDATE:      "ADAPTER",
+    AIUType.MUTATION_ADD_DELETE:      "ADAPTER",
+    # 族 D：接口（适配器层）
+    AIUType.ROUTE_ADD_ENDPOINT:       "ADAPTER",
+    AIUType.ROUTE_ADD_PERMISSION:     "ADAPTER",
+    AIUType.FRONTEND_ADD_PAGE:        "ADAPTER",
+    AIUType.FRONTEND_ADD_STORE:       "ADAPTER",
+    AIUType.FRONTEND_BIND_API:        "ADAPTER",
+    # 族 E：基础设施（适配器层）
+    AIUType.EVENT_ADD_PRODUCER:       "ADAPTER",
+    AIUType.EVENT_ADD_CONSUMER:       "ADAPTER",
+    AIUType.CACHE_ADD_READ:           "ADAPTER",
+    AIUType.CONFIG_MODIFY:            "PLATFORM",
+    # 族 F：质量
+    AIUType.TEST_ADD_UNIT:            "APP",
+    AIUType.TEST_ADD_INTEGRATION:     "APP",
+    AIUType.DOC_SYNC:                 "CC",
+    # 族 G：分布式（应用层）
+    AIUType.SAGA_ADD_STEP:            "APP",
+    AIUType.SAGA_ADD_COMPENSATOR:     "APP",
+    AIUType.OUTBOX_ADD_MESSAGE:       "APP",
+    AIUType.IDEMPOTENCY_ADD_KEY:      "APP",
+    # 族 H：治理（平台层）
+    AIUType.RBAC_ADD_PERMISSION:      "PLATFORM",
+    AIUType.RBAC_ADD_ROLE:            "PLATFORM",
+    AIUType.AUDIT_ADD_TRAIL:          "PLATFORM",
+    AIUType.TENANT_ADD_ISOLATION:     "PLATFORM",
+    # 族 I：可观测性（平台层）
+    AIUType.METRIC_ADD_COUNTER:       "PLATFORM",
+    AIUType.TRACE_ADD_SPAN:           "PLATFORM",
+    AIUType.ALERT_ADD_RULE:           "PLATFORM",
 }
 
 # ── AIU 执行顺序（类比 DB 层级依赖）────────────────────────────────────────────
@@ -200,6 +320,20 @@ AIU_EXEC_ORDER: Dict[AIUType, int] = {
     AIUType.TEST_ADD_UNIT:            6,
     AIUType.TEST_ADD_INTEGRATION:     7,
     AIUType.DOC_SYNC:                 8,
+    # 族 G：分布式协调（依赖业务逻辑层）
+    AIUType.SAGA_ADD_STEP:            3,
+    AIUType.SAGA_ADD_COMPENSATOR:     4,
+    AIUType.OUTBOX_ADD_MESSAGE:       3,
+    AIUType.IDEMPOTENCY_ADD_KEY:      3,
+    # 族 H：治理（可与业务逻辑并行，但影响安全边界）
+    AIUType.RBAC_ADD_PERMISSION:      2,
+    AIUType.RBAC_ADD_ROLE:            2,
+    AIUType.AUDIT_ADD_TRAIL:          3,
+    AIUType.TENANT_ADD_ISOLATION:     2,
+    # 族 I：可观测性（可与业务并行，依赖具体操作存在）
+    AIUType.METRIC_ADD_COUNTER:       3,
+    AIUType.TRACE_ADD_SPAN:           3,
+    AIUType.ALERT_ADD_RULE:           5,
 }
 
 # ── 数据结构定义 ─────────────────────────────────────────────────────────────

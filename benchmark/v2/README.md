@@ -7,13 +7,15 @@
 
 ## 设计原则
 
-| 原则       | 实现方式                                            |
-| -------- | ----------------------------------------------- |
-| **分层隔离** | 三层独立评测，每层可单独运行，互不依赖                             |
+
+| 原则          | 实现方式                                                |
+| ----------- | --------------------------------------------------- |
+| **分层隔离**    | 三层独立评测，每层可单独运行，互不依赖                                 |
 | **YAML 驱动** | 新增测试 case 只需在 `fixtures/` 或 `tasks/` 添加 YAML，无需修改代码 |
-| **离线优先** | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行        |
-| **公平对比** | Layer 1 对接 SWE-bench 行业标准，保证结果可信                |
-| **模块注册** | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成 |
+| **离线优先**    | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行            |
+| **公平对比**    | Layer 1 对接 SWE-bench 行业标准，保证结果可信                    |
+| **模块注册**    | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成   |
+
 
 ---
 
@@ -72,13 +74,16 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/core/sanitize.py` 能否正确拦截各类敏感凭证。
 
-| 类别          | 覆盖场景（fixture 数）  | 指标              |
-| ----------- | ---------------- | --------------- |
-| API Key     | 12 条（含阴性样例 3 条）  | 检出率 / 误报率       |
-| JWT / 密码 / IP / 邮箱 / DSN | 14 条  | 检出率（critical 级） |
-| 误报防护        | 6 条              | 假阳性率（目标 = 0%）   |
+
+| 类别                       | 覆盖场景（fixture 数） | 指标              |
+| ------------------------ | --------------- | --------------- |
+| API Key                  | 12 条（含阴性样例 3 条） | 检出率 / 误报率       |
+| JWT / 密码 / IP / 邮箱 / DSN | 14 条            | 检出率（critical 级） |
+| 误报防护                     | 6 条             | 假阳性率（目标 = 0%）   |
+
 
 **检测类别：**
+
 - OpenAI / DashScope `sk-` 前缀 API Key
 - AWS Access Key（`AKIA` 前缀）
 - GitHub Personal Access Token（`ghp_` 前缀）
@@ -91,27 +96,31 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/workflow/migration_gate.py` 能否正确阻断"ORM 变更但无迁移脚本"的场景。
 
-| 场景                    | 预期行为 |
-| --------------------- | ---- |
-| 新增 Model 字段，无迁移脚本     | 阻断   |
-| 删除 Model 字段，无迁移脚本     | 阻断   |
-| 新增整张表（Model 类），无迁移脚本  | 阻断   |
-| 字段重命名，无迁移脚本           | 阻断   |
+
+| 场景                     | 预期行为 |
+| ---------------------- | ---- |
+| 新增 Model 字段，无迁移脚本      | 阻断   |
+| 删除 Model 字段，无迁移脚本      | 阻断   |
+| 新增整张表（Model 类），无迁移脚本   | 阻断   |
+| 字段重命名，无迁移脚本            | 阻断   |
 | 有完整 `up() / down()` 迁移 | 通过   |
 | 无 ORM 变更（纯 Service 修改） | 不触发  |
+
 
 #### ArchCheck — 架构约束扫描
 
 验证架构规则检测覆盖率（AC-1~AC-6）。
 
-| 规则   | 约束内容                                              | 阳性 case | 阴性 case |
-| ---- | ------------------------------------------------- | ------- | ------- |
-| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka）              | 1       | 1       |
-| AC-2 | Service 函数必须以 `RequestContext` 作为首参               | 1       | 1       |
-| AC-3 | 写操作必须调用 `AuditService.log()`                      | 1       | 1       |
-| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`）         | 1       | 1       |
+
+| 规则   | 约束内容                                               | 阳性 case | 阴性 case |
+| ---- | -------------------------------------------------- | ------- | ------- |
+| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka）               | 1       | 1       |
+| AC-2 | Service 函数必须以 `RequestContext` 作为首参                | 1       | 1       |
+| AC-3 | 写操作必须调用 `AuditService.log()`                       | 1       | 1       |
+| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`）          | 1       | 1       |
 | AC-5 | 禁止在 Service 层使用 `session.begin()`（使用 autobegin 模式） | 1       | 1       |
-| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog）                  | 1       | 1       |
+| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog）                   | 1       | 1       |
+
 
 ### 综合得分计算
 
@@ -137,6 +146,7 @@ Layer 3: 安全门控评测
 ```
 
 > **3 个 FAILED case 的意义**：
+>
 > - `san_ak_005`（AWS Secret Key）：正则模式未覆盖斜杠格式，需在 `sanitize.py` 补充
 > - `arc_ac3_002`（审计调用检测）：多行代码跨行匹配问题，需改为 AST 级扫描
 > - `arc_ac4_001`（信封格式检测）：装饰器与返回值之间有函数体，正则无法跨行匹配
@@ -198,11 +208,13 @@ Layer 3: 安全门控评测
 
 **D4 覆盖场景：**
 
-| 场景                       | 预期结果  |
-| ------------------------ | ----- |
-| 函数参数类型 + 数量变更            | 触发漂移  |
-| 仅添加注释和空行（gofmt / Black）   | 不触发漂移 |
-| 文件内容清空（模拟删除）             | 触发漂移  |
+
+| 场景                      | 预期结果  |
+| ----------------------- | ----- |
+| 函数参数类型 + 数量变更           | 触发漂移  |
+| 仅添加注释和空行（gofmt / Black） | 不触发漂移 |
+| 文件内容清空（模拟删除）            | 触发漂移  |
+
 
 ### 综合得分计算
 
@@ -225,6 +237,7 @@ Layer 3: 安全门控评测
 ### 离线模式（当前实现）
 
 在无 LLM API 的环境下，Layer 1 执行：
+
 - 任务格式完整性验证（6 个必填字段）
 - `expected_aiu_type` 是否在 28 种内置类型中
 - AIU 类型覆盖率统计
@@ -245,6 +258,7 @@ if config.llm_available and not config.dry_run:
 ```
 
 在线模式的完整流程：
+
 1. 读取 SWE-bench 任务（本地 YAML 或 princeton-nlp/SWE-bench HuggingFace 数据集）
 2. 为每个任务调用 `mulan ep run` 生成 patch
 3. 在 Docker 沙盒中执行 `fail_tests`，验证 `pass_tests` 是否全部通过
@@ -252,12 +266,14 @@ if config.llm_available and not config.dry_run:
 
 ### 内置样本任务
 
-| ID                 | 仓库             | 难度   | AIU 类型    |
-| ------------------ | -------------- | ---- | --------- |
-| `swe_django_001`   | django/django  | 中    | BUG_FIX   |
-| `swe_django_002`   | django/django  | 易    | BUG_FIX   |
-| `swe_fastapi_001`  | tiangolo/fastapi | 中  | BUG_FIX   |
-| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难 | BUG_FIX |
+
+| ID                   | 仓库                    | 难度  | AIU 类型  |
+| -------------------- | --------------------- | --- | ------- |
+| `swe_django_001`     | django/django         | 中   | BUG_FIX |
+| `swe_django_002`     | django/django         | 易   | BUG_FIX |
+| `swe_fastapi_001`    | tiangolo/fastapi      | 中   | BUG_FIX |
+| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难   | BUG_FIX |
+
 
 ---
 
@@ -534,13 +550,15 @@ layer1:
 
 ## 与 v1 Benchmark 的关系
 
-| 维度     | v1 Benchmark                | v2 Benchmark                     |
-| ------ | --------------------------- | -------------------------------- |
-| 定位     | 验证记忆检索 vs keyword 的优劣       | 全面评测木兰工具链的三大核心价值               |
-| 依赖     | 需要向量数据库（可选）+ LLM API       | Layer 3 完全离线；Layer 2 D1/D4 离线   |
-| 扩展性    | 固定指标，需修改代码添加场景              | YAML 驱动，添加 case 无需改代码            |
-| 行业对齐   | 内部 MDP 任务集                  | SWE-bench Verified（Layer 1 信用锚）  |
-| 测试覆盖   | ~20 个任务                     | 46 个 L3 + 8 个 L2 + 4 个 L1 = 58+（可通过 synthetic pipeline 扩充至 300+）|
+
+| 维度   | v1 Benchmark          | v2 Benchmark                                                     |
+| ---- | --------------------- | ---------------------------------------------------------------- |
+| 定位   | 验证记忆检索 vs keyword 的优劣 | 全面评测木兰工具链的三大核心价值                                                 |
+| 依赖   | 需要向量数据库（可选）+ LLM API  | Layer 3 完全离线；Layer 2 D1/D4 离线                                    |
+| 扩展性  | 固定指标，需修改代码添加场景        | YAML 驱动，添加 case 无需改代码                                            |
+| 行业对齐 | 内部 MDP 任务集            | SWE-bench Verified（Layer 1 信用锚）                                  |
+| 测试覆盖 | ~20 个任务               | 46 个 L3 + 8 个 L2 + 4 个 L1 = 58+（可通过 synthetic pipeline 扩充至 300+） |
+
 
 v1 Benchmark 代码保留在 `benchmark/src/` 目录，向后兼容。
 
@@ -598,3 +616,4 @@ pytest tests/benchmark/ -v
 # - test_layer1_swebench.py     任务格式验证 / AIU 类型覆盖
 # - test_phase4_pass_at_1.py    SandboxedCodeRunner / dual-rail 降级
 ```
+

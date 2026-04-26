@@ -1,4 +1,4 @@
-# 模版：L5 接口层 · REST API Endpoint（小模型优化版）
+# 模版：ADAPTER 层 · REST API Endpoint（小模型优化版）
 # 适用：新增 API 路由 / Response Model 定义 / 错误码注册
 # Token 预算：≤3K
 

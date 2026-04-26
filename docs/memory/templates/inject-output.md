@@ -92,7 +92,7 @@ head -1 /tmp/ctx.md
 ./mms private note EP-111 "API 设计决策草稿" "决定使用 cursor-based 分页"
 
 # 开发完成后将有价值的草稿升级为公有记忆
-./mms private promote EP-111 notes/20260412_api_design.md L5_interface/D8_api MEM-L-028
+./mms private promote EP-111 notes/20260412_api_design.md ADAPTER/D8_api MEM-L-028
 
 # 清理工作区
 ./mms private close EP-111

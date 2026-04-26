@@ -508,5 +508,168 @@ def decay_edges(
     return stats
 
 
+# ── 三维度淘汰评分（v3.0 新增）────────────────────────────────────────────────
+
+def compute_eviction_score(
+    node_id: str,
+    access_count: int,
+    days_since_access: float,
+    layer: str = "APP",
+    max_access_in_corpus: int = 100,
+    graph_importance: float = 0.0,     # 归一化图重要性（0-1），来自 MemoryGraph.get_normalized_importance
+    drift_suspected: bool = False,
+    alpha: float = 0.3,                # 时间衰减权重
+    beta: float = 0.4,                 # 访问频率权重
+    gamma: float = 0.3,                # 图结构重要性权重
+) -> float:
+    """
+    三维度淘汰评分（v3.0，与 config.yaml eviction_weights 对应）。
+
+    评分公式：
+      score = α*time_score + β*freq_score + γ*graph_score - protection_bonus + drift_penalty
+
+    score 越高 → 越应被淘汰（类比 LFU 的"价值越低分越高"）
+    score 越低 → 越应保留
+
+    Args:
+        node_id:              记忆节点 ID（用于日志）
+        access_count:         LFU 访问频次
+        days_since_access:    距上次访问的天数
+        layer:                记忆所在层（CC/PLATFORM/DOMAIN/APP/ADAPTER）
+        max_access_in_corpus: 当前记忆库中最大访问次数（用于 LFU 归一化）
+        graph_importance:     图结构重要性（0-1，in-degree 归一化）
+        drift_suspected:      是否怀疑内容已过期
+        alpha/beta/gamma:     三维度权重（默认来自 config.yaml eviction_weights）
+
+    Returns:
+        淘汰评分（float，越高越应被淘汰）
+    """
+    # ── 时间衰减评分（time_score）──────────────────────────────────────────────
+    # 距上次访问越久 → time_score 越高
+    # 使用非线性衰减：超过 90 天时分数饱和（防止极端老记忆权重爆炸）
+    time_score = min(1.0, days_since_access / 90.0)
+
+    # ── 访问频率评分（freq_score）──────────────────────────────────────────────
+    # LFU 归一化后取反：访问次数越低 → freq_score 越高（越应被淘汰）
+    lfu_norm = min(1.0, access_count / max(max_access_in_corpus, 1))
+    freq_score = 1.0 - lfu_norm
+
+    # ── 图结构重要性评分（graph_score）────────────────────────────────────────
+    # 被引用次数越多 → graph_importance 越高 → graph_score 越低（越应保留）
+    graph_score = 1.0 - graph_importance
+
+    # ── 层级保护加分（protection_bonus，从 config 读取）───────────────────────
+    _LAYER_PROTECTION = {
+        "CC":       0.5,
+        "PLATFORM": 0.2,
+        "DOMAIN":   0.3,
+        "APP":      0.1,
+        "ADAPTER":  0.0,
+    }
+    protection_bonus = _LAYER_PROTECTION.get(layer.upper(), 0.0)
+
+    # ── 内容过期惩罚 ──────────────────────────────────────────────────────────
+    drift_penalty = 0.3 if drift_suspected else 0.0
+
+    # ── 综合评分 ──────────────────────────────────────────────────────────────
+    score = (
+        alpha * time_score
+        + beta * freq_score
+        + gamma * graph_score
+        - protection_bonus
+        + drift_penalty
+    )
+
+    # 保持在 [0, 2.0] 范围（protection_bonus 可能使分数为负，归到 0）
+    return max(0.0, round(score, 4))
+
+
+def rank_eviction_candidates(
+    memory_root: Path = _MEMORY_ROOT,
+    top_n: int = 10,
+) -> List[Dict]:
+    """
+    使用三维度评分对记忆库中的节点排名，返回最应被淘汰的 top_n 条记忆。
+    适合集成到 mulan gc 命令中作为建议输出。
+
+    Returns:
+        按淘汰评分降序排列的记忆列表，每项包含：
+        {id, score, layer, access_count, days_since_access, graph_importance, issues}
+    """
+    try:
+        from mms.memory.graph_resolver import MemoryGraph  # type: ignore[import]
+        graph = MemoryGraph(memory_root=memory_root)
+        graph._ensure_loaded()
+    except Exception:
+        graph = None
+
+    candidates = []
+
+    for md in memory_root.rglob("*.md"):
+        parts_set = set(md.parts)
+        if "_system" in parts_set or "templates" in parts_set or "archive" in parts_set:
+            continue
+        if md.name in ("CONTRIBUTING.md", "README.md"):
+            continue
+
+        try:
+            text = md.read_text(encoding="utf-8", errors="ignore")
+            fm_m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
+            if not fm_m:
+                continue
+            fm_text = fm_m.group(1)
+
+            def _fm_val(key: str, default: str = "") -> str:
+                m = re.search(rf"^{key}:\s*(.+)$", fm_text, re.MULTILINE)
+                return m.group(1).strip().strip("\"'") if m else default
+
+            node_id = _fm_val("id", md.stem)
+            layer = _fm_val("layer", "APP")
+            access_count = int(_fm_val("access_count", "0") or "0")
+            drift_suspected = _fm_val("drift_suspected", "false").lower() == "true"
+
+            last_accessed_str = _fm_val("last_accessed", "")
+            if last_accessed_str:
+                try:
+                    last_dt = datetime.strptime(last_accessed_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    days_since = (_now() - last_dt).days
+                except ValueError:
+                    days_since = 365   # 无法解析时假设很久未访问
+            else:
+                days_since = 365
+
+            graph_importance = 0.0
+            if graph:
+                try:
+                    graph_importance = graph.get_normalized_importance(node_id)
+                except Exception:
+                    pass
+
+            score = compute_eviction_score(
+                node_id=node_id,
+                access_count=access_count,
+                days_since_access=days_since,
+                layer=layer,
+                graph_importance=graph_importance,
+                drift_suspected=drift_suspected,
+            )
+
+            candidates.append({
+                "id": node_id,
+                "score": score,
+                "layer": layer,
+                "access_count": access_count,
+                "days_since_access": days_since,
+                "graph_importance": round(graph_importance, 3),
+                "drift_suspected": drift_suspected,
+            })
+
+        except Exception:
+            continue
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    return candidates[:top_n]
+
+
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,0 +1,63 @@
+##############################################################################
+# Enterprise Benchmark · halo-dev/halo 内容管理模块（Java Spring Boot）
+#
+# 数据来源：基于 github.com/halo-dev/halo（Java CMS，31k+ Stars）
+# 模块：内容发布与权限管理
+# 用途：验证木兰在有复杂工作流（草稿→审核→发布）项目中的表现
+##############################################################################
+
+schema_version: "1.1"
+domain: "enterprise_java_cms"
+project: "halo-dev/halo"
+module: "内容（Content）管理模块"
+tech_stack:
+  language: java
+  framework: spring_boot
+  orm: spring_data_jpa
+  database: h2_mysql
+
+cases:
+
+  - id: halo_content_001
+    title: "文章新增定时发布字段（JPA 实体变更验证）"
+    description: |
+      业务需求：文章（Post）实体新增定时发布时间字段 scheduledPublishAt，
+      允许用户设置未来时间自动发布。需要同步更新 JPA 实体、DTO、Repository 查询
+      和定时任务扫描逻辑。
+    complexity: medium
+    expected_aiu_types:
+      - SCHEMA_ADD_FIELD        # JPA @Entity: Post.java 新增 scheduledPublishAt
+      - CONTRACT_ADD_REQUEST    # DTO: PostRequest 新增字段
+      - QUERY_ADD_SELECT        # Repository: 查询待发布文章的方法
+      - LOGIC_ADD_CONDITION     # Service: 发布前检查定时时间
+      - EVENT_ADD_PRODUCER      # 定时任务：扫描到期文章触发发布事件
+    expected_files:
+      - "application/src/main/java/run/halo/app/core/extension/content/Post.java"
+      - "application/src/main/java/run/halo/app/extension/controller/ExtensionReconciler.java"
+    memory_topics_required:
+      - "Spring Data JPA @Column 注解与 Flyway Migration 的同步"
+      - "JPA 中 Instant vs LocalDateTime 的时区处理"
+      - "Spring @Scheduled 与 ApplicationEvent 的解耦"
+    ground_truth:
+      approach: "JPA 实体添加 Instant 类型字段（时区安全），Flyway migration 添加对应列，Repository 添加 findByScheduledPublishAtBeforeAndStatus 查询，调度器每分钟扫描"
+
+  - id: halo_content_002
+    title: "RBAC：新增内容审核员角色（权限治理验证）"
+    description: |
+      业务需求：新增"内容审核员"角色，该角色只能查看和审核文章，
+      不能发布或删除。需要同时更新角色定义、权限矩阵和 API 的权限守卫。
+    complexity: high
+    expected_aiu_types:
+      - RBAC_ADD_ROLE           # 新增审核员角色定义
+      - RBAC_ADD_PERMISSION     # 新增 content:review 权限条目
+      - ROUTE_ADD_PERMISSION    # API: 审核接口添加权限守卫
+      - AUDIT_ADD_TRAIL         # 审核操作需要审计日志
+    expected_files:
+      - "application/src/main/resources/extensions/role-content-reviewer.yaml"
+      - "application/src/main/java/run/halo/app/security/authorization/AuthorizationFilter.java"
+    memory_topics_required:
+      - "Halo 的基于 YAML 的 Role 定义格式"
+      - "Spring Security 方法级权限（@PreAuthorize）与过滤器链的关系"
+      - "审计日志：操作者/操作对象/操作类型的标准字段"
+    ground_truth:
+      approach: "在 YAML 扩展资源中定义新 Role，绑定 content:review 权限，API 端添加 @PreAuthorize(hasAuthority('content:review'))，操作写入审计表"
