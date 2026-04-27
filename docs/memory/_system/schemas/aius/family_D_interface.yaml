@@ -1,0 +1,198 @@
+# AIU 族 D：接口与路由类（Interface/Adapter Operators）
+# 版本：v1.0 | 2026-04-27 | Schema-Driven AIU（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: D_interface
+layer_affinity: [ADAPTER]
+
+aius:
+  - id: ROUTE_ADD_ENDPOINT
+    family: D_interface
+    layer_affinity: [ADAPTER]
+    exec_order: 3
+    base_cost: 2500
+    description: "新增 API 路由端点（FastAPI/NestJS/Gin 路由 + Handler）"
+    input_schema:
+      method:
+        type: string
+        required: true
+        description: "HTTP 方法"
+        enum: [GET, POST, PUT, PATCH, DELETE]
+      path:
+        type: string
+        required: true
+        description: "路由路径（如 /api/v1/orders/{id}）"
+        pattern: "^/[a-zA-Z0-9/_{}\\-]*$"
+      auth_required:
+        type: boolean
+        required: true
+        description: "是否需要 JWT 鉴权"
+        default: true
+      response_schema:
+        type: string
+        required: false
+        description: "响应体 Schema 类名（对应 CONTRACT_ADD_RESPONSE 定义的类型）"
+      request_schema:
+        type: string
+        required: false
+        description: "请求体 Schema 类名（POST/PUT 时必填）"
+      rate_limit:
+        type: string
+        required: false
+        description: "限流配置（如 '100/minute'）"
+      pagination:
+        type: boolean
+        required: false
+        default: false
+        description: "是否启用分页（列表查询时建议 true）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "@router\\.|@app\\.|@(Get|Post|Put|Delete|Patch)\\("   # 路由装饰器
+        - "response_model=|Response\\("                          # 必须绑定 response_model
+      forbidden_patterns:
+        - "SessionLocal\\(\\)"    # 禁止手动创建 Session
+        - "return\\s+\\{['\"]"    # 禁止返回裸字典
+
+  - id: ROUTE_ADD_PERMISSION
+    family: D_interface
+    layer_affinity: [ADAPTER]
+    exec_order: 4
+    base_cost: 1500
+    description: "新增路由权限守卫（@require_permission / @UseGuards）"
+    input_schema:
+      target_endpoint:
+        type: string
+        required: true
+        description: "目标路由路径（如 /api/v1/orders/{id}）"
+      permission_code:
+        type: string
+        required: true
+        description: "权限码（如 order:read, order:write:delete）"
+      guard_type:
+        type: string
+        required: false
+        default: "jwt"
+        enum: [jwt, role, permission, api_key, combined]
+        description: "守卫类型"
+      roles:
+        type: array
+        required: false
+        description: "允许的角色列表（当 guard_type=role 时必填）"
+        items:
+          type: string
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "@require_permission|@UseGuards|@Roles|@Permission"
+      forbidden_patterns: []
+
+  - id: FRONTEND_ADD_PAGE
+    family: D_interface
+    layer_affinity: [APP]
+    exec_order: 5
+    base_cost: 3500
+    description: "新增 React 页面组件（Feature-Sliced Design 规范）"
+    input_schema:
+      page_name:
+        type: string
+        required: true
+        description: "页面组件名（PascalCase，如 OrderDetailPage）"
+      feature:
+        type: string
+        required: true
+        description: "所属 feature 模块（如 orders, users）"
+      route_path:
+        type: string
+        required: true
+        description: "路由路径（如 /orders/:id）"
+      data_hooks:
+        type: array
+        required: false
+        description: "需要的数据 Hook（如 useOrder, useUpdateOrder）"
+      layout:
+        type: string
+        required: false
+        default: "MainLayout"
+        description: "页面布局组件"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "features/.*api/"    # 数据请求必须来自 features/ 中的 Hook
+      forbidden_patterns:
+        - "fetch\\(|axios\\."  # Page 组件禁止直接 fetch
+
+  - id: FRONTEND_ADD_STORE
+    family: D_interface
+    layer_affinity: [APP]
+    exec_order: 4
+    base_cost: 2000
+    description: "新增 Zustand Store（按领域拆分，≤15 个状态字段）"
+    input_schema:
+      store_name:
+        type: string
+        required: true
+        description: "Store 名称（camelCase，如 useOrderStore）"
+      feature:
+        type: string
+        required: true
+        description: "所属 feature 模块"
+      state_fields:
+        type: array
+        required: true
+        description: "状态字段列表（最多 15 个）"
+        max_items: 15
+      middleware:
+        type: array
+        required: false
+        description: "启用的 Zustand 中间件"
+        items:
+          type: string
+          enum: [devtools, persist, immer, subscribeWithSelector]
+    validation_rules:
+      ast_target: "CallExpression"
+      required_patterns:
+        - "create\\(|createWithEqualityFn\\("
+      forbidden_patterns:
+        - "fetch\\(|axios\\."   # Store 不应直接调用 HTTP
+
+  - id: FRONTEND_BIND_API
+    family: D_interface
+    layer_affinity: [ADAPTER]
+    exec_order: 4
+    base_cost: 2000
+    description: "新增前端 API Hook（封装后端接口，使用 TanStack Query/SWR）"
+    input_schema:
+      hook_name:
+        type: string
+        required: true
+        description: "Hook 名称（如 useOrder, useCreateOrder）"
+      feature:
+        type: string
+        required: true
+        description: "所属 feature 模块"
+      http_method:
+        type: string
+        required: true
+        enum: [GET, POST, PUT, PATCH, DELETE]
+      endpoint:
+        type: string
+        required: true
+        description: "后端 API 路径（如 /api/v1/orders/{id}）"
+      cache_strategy:
+        type: string
+        required: false
+        default: "useQuery"
+        enum: [useQuery, useMutation, useSWR, useInfiniteQuery]
+        description: "缓存策略"
+      invalidate_keys:
+        type: array
+        required: false
+        description: "成功后需要失效的 QueryKey 列表（Mutation 时必填）"
+    validation_rules:
+      ast_target: "FunctionDeclaration"
+      required_patterns:
+        - "useQuery|useMutation|useSWR|useInfiniteQuery"
+      forbidden_patterns:
+        - "useEffect.*fetch"    # 禁止 useEffect + fetch 模式

@@ -42,8 +42,8 @@ extended_types:
 
 @pytest.fixture
 def registry_with_yaml(tmp_extended_yaml: Path) -> AIURegistry:
-    """使用临时 YAML 创建 Registry。"""
-    return AIURegistry(extended_yaml=tmp_extended_yaml)
+    """使用临时 YAML 创建 Registry（禁用 aius_dir，隔离测试环境）。"""
+    return AIURegistry(extended_yaml=tmp_extended_yaml, aius_dir=tmp_extended_yaml.parent / "nonexistent_aius")
 
 
 # ─── Enum 内置类型测试 ────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ extended_types:
 """,
             encoding="utf-8",
         )
-        registry = AIURegistry(extended_yaml=yaml_file)
+        registry = AIURegistry(extended_yaml=yaml_file, aius_dir=tmp_path / "nonexistent_aius")
         cost = registry.get_base_cost("SCHEMA_ADD_FIELD")
         # YAML 优先（覆盖了 Enum 内置的成本）
         assert cost == 9999
@@ -176,11 +176,12 @@ extended_types:
     def test_no_yaml_file_falls_back_to_enum(self, tmp_path: Path) -> None:
         """YAML 扩展文件不存在时，Registry 依然可用（只有内置 Enum 类型）。"""
         nonexistent = tmp_path / "nonexistent.yaml"
-        registry = AIURegistry(extended_yaml=nonexistent)
+        # 同时禁用 aius_dir，确保完全隔离
+        registry = AIURegistry(extended_yaml=nonexistent, aius_dir=tmp_path / "nonexistent_aius")
         # 内置类型仍然可用
         def_ = registry.get("SCHEMA_ADD_FIELD")
         assert def_ is not None
-        # 扩展类型为空
+        # 扩展类型为空（无 YAML 文件）
         assert registry.extended_types() == []
 
     def test_all_types_count(self, registry_with_yaml: AIURegistry) -> None:

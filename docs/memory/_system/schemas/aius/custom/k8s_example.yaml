@@ -1,0 +1,81 @@
+# 自定义 AIU 示例：K8S 运维操作
+# 这是一个用户自定义扩展示例，展示如何为特定基础设施栈添加专属 AIU。
+# 将此类文件放入 custom/ 目录，木兰启动时自动加载。
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+is_builtin: false
+
+aius:
+  - id: K8S_ADD_SIDECAR
+    family: G_distributed
+    layer_affinity: [PLATFORM]
+    exec_order: 5
+    base_cost: 3500
+    description: "新增 K8S Sidecar 容器（如 Istio Envoy / Jaeger Agent / Fluentd）"
+    input_schema:
+      sidecar_type:
+        type: string
+        required: true
+        enum: [envoy, jaeger_agent, fluentd, vault_agent, otel_collector]
+        description: "Sidecar 类型"
+      target_deployment:
+        type: string
+        required: true
+        description: "目标 K8S Deployment 名称"
+      namespace:
+        type: string
+        required: false
+        default: "default"
+      resource_limits:
+        type: object
+        required: false
+        description: "Sidecar 资源限制"
+        properties:
+          cpu: { type: string, default: "100m" }
+          memory: { type: string, default: "128Mi" }
+    validation_rules:
+      ast_target: "yaml_mapping"
+      required_patterns:
+        - "containers:"
+        - "resources:\\s*\\n.*limits:"   # 必须有资源限制
+      forbidden_patterns:
+        - "privileged: true"             # Sidecar 禁止特权模式
+
+  - id: K8S_ADD_HPA
+    family: G_distributed
+    layer_affinity: [PLATFORM]
+    exec_order: 5
+    base_cost: 2500
+    description: "新增 K8S HPA（Horizontal Pod Autoscaler，基于 CPU/Memory/自定义指标）"
+    input_schema:
+      target_deployment:
+        type: string
+        required: true
+        description: "目标 Deployment 名称"
+      min_replicas:
+        type: integer
+        required: false
+        default: 2
+        description: "最小 Pod 数量"
+      max_replicas:
+        type: integer
+        required: true
+        description: "最大 Pod 数量"
+      scale_metric:
+        type: string
+        required: false
+        default: "cpu"
+        enum: [cpu, memory, custom_metric, external_metric]
+      target_utilization:
+        type: integer
+        required: false
+        default: 70
+        description: "目标资源利用率百分比（超过时扩容）"
+    validation_rules:
+      ast_target: "yaml_mapping"
+      required_patterns:
+        - "minReplicas:|maxReplicas:"
+        - "targetCPUUtilizationPercentage:|metrics:"
+      forbidden_patterns:
+        - "minReplicas: 0"   # 业务服务 HPA 不应缩容到 0

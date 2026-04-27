@@ -1,0 +1,217 @@
+# AIU 族 A：结构定义类（Schema Operators）
+# 版本：v1.0 | 2026-04-27 | Schema-Driven AIU（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: A_schema
+layer_affinity: [DOMAIN, ADAPTER]
+
+aius:
+  - id: SCHEMA_ADD_FIELD
+    family: A_schema
+    layer_affinity: [DOMAIN, ADAPTER]
+    exec_order: 1
+    base_cost: 1800
+    description: "新增数据库字段（ORM 模型 + 迁移脚本 + DTO 同步）"
+    input_schema:
+      field_name:
+        type: string
+        required: true
+        description: "字段名（snake_case）"
+        pattern: "^[a-z][a-z0-9_]*$"
+      field_type:
+        type: string
+        required: true
+        description: "字段数据类型"
+        enum: [str, int, float, bool, datetime, date, uuid, text, json, decimal]
+      nullable:
+        type: boolean
+        required: false
+        default: false
+        description: "是否允许为空"
+      default_value:
+        type: string
+        required: false
+        description: "默认值（字符串表示）"
+      target_model:
+        type: string
+        required: true
+        description: "目标 ORM 模型类名"
+      add_to_dto:
+        type: boolean
+        required: false
+        default: true
+        description: "是否同步新增到 DTO/Response Schema"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "Column\\(|field\\(|Field\\("   # ORM 字段定义
+        - "migration|alembic|flyway"       # 迁移脚本引用
+      forbidden_patterns:
+        - "SessionLocal\\(\\)"            # 不应在 Model 中直接操作 Session
+
+  - id: SCHEMA_MODIFY_FIELD
+    family: A_schema
+    layer_affinity: [DOMAIN, ADAPTER]
+    exec_order: 1
+    base_cost: 2200
+    description: "变更字段类型、索引或约束（含向后兼容迁移）"
+    input_schema:
+      field_name:
+        type: string
+        required: true
+        description: "要修改的字段名"
+      target_model:
+        type: string
+        required: true
+        description: "目标 ORM 模型类名"
+      change_type:
+        type: string
+        required: true
+        description: "变更类型"
+        enum: [type_change, add_index, add_unique, add_constraint, rename, nullable_change]
+      backward_compatible:
+        type: boolean
+        required: false
+        default: true
+        description: "是否要求向后兼容（分两阶段迁移）"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "op\\.alter_column|ALTER TABLE|op\\.create_index"
+      forbidden_patterns:
+        - "op\\.drop_column"    # rename 时禁止直接 drop，应分阶段
+
+  - id: SCHEMA_ADD_RELATION
+    family: A_schema
+    layer_affinity: [DOMAIN]
+    exec_order: 2
+    base_cost: 2800
+    description: "新增 ORM 关联关系（ForeignKey + relationship/BackRef）"
+    input_schema:
+      from_model:
+        type: string
+        required: true
+        description: "关系发起方的 ORM 模型名"
+      to_model:
+        type: string
+        required: true
+        description: "关系目标方的 ORM 模型名"
+      relation_type:
+        type: string
+        required: true
+        enum: [one_to_many, many_to_one, many_to_many, one_to_one]
+      cascade:
+        type: string
+        required: false
+        default: "save-update, merge"
+        description: "SQLAlchemy cascade 策略"
+      lazy_loading:
+        type: string
+        required: false
+        default: "select"
+        enum: [select, selectin, joined, dynamic, raise]
+        description: "关联加载策略（避免 N+1）"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "ForeignKey\\(|relationship\\(|BackRef\\("
+      forbidden_patterns:
+        - "lazy=.select."    # 建议使用 selectin 替代 select（N+1 防护）
+
+  - id: CONTRACT_ADD_REQUEST
+    family: A_schema
+    layer_affinity: [ADAPTER]
+    exec_order: 1
+    base_cost: 1500
+    description: "新增 Pydantic/DTO Request Schema（输入校验模型）"
+    input_schema:
+      schema_name:
+        type: string
+        required: true
+        description: "Schema 类名（如 CreateOrderRequest）"
+      fields:
+        type: array
+        required: true
+        description: "字段列表"
+        items:
+          name: { type: string }
+          type: { type: string }
+          required: { type: boolean }
+          validator: { type: string, required: false }
+      target_endpoint:
+        type: string
+        required: false
+        description: "绑定的 API 路由（用于 response_model 自动关联）"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "BaseModel|BaseSchema"    # 必须继承 Pydantic BaseModel
+        - "class_validators|field_validator|validator"
+      forbidden_patterns:
+        - "def\\s+\\w+.*:\\s*Session"  # Request Schema 不应包含 DB 操作
+
+  - id: CONTRACT_ADD_RESPONSE
+    family: A_schema
+    layer_affinity: [ADAPTER]
+    exec_order: 1
+    base_cost: 1500
+    description: "新增 Pydantic/VO Response Schema（输出序列化模型）"
+    input_schema:
+      schema_name:
+        type: string
+        required: true
+        description: "Schema 类名（如 OrderDetailResponse）"
+      source_model:
+        type: string
+        required: false
+        description: "对应的 ORM Entity 类名（用于生成 model_config 和字段映射）"
+      include_fields:
+        type: array
+        required: false
+        description: "从 source_model 中包含的字段列表（未指定则全量）"
+      exclude_fields:
+        type: array
+        required: false
+        default: ["password", "hashed_password", "salt"]
+        description: "必须排除的敏感字段"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "BaseModel|BaseSchema"
+        - "model_config.*from_attributes|class Config:.*orm_mode = True"
+      forbidden_patterns:
+        - "password|hashed_password|salt"    # Response Schema 不能包含敏感字段
+
+  - id: CONTRACT_MODIFY_RESPONSE
+    family: A_schema
+    layer_affinity: [ADAPTER]
+    exec_order: 1
+    base_cost: 1200
+    description: "修改已有 Response Schema 字段（新增/移除/类型变更）"
+    input_schema:
+      schema_name:
+        type: string
+        required: true
+        description: "目标 Schema 类名"
+      change_type:
+        type: string
+        required: true
+        enum: [add_field, remove_field, change_type, add_optional, add_alias]
+      field_name:
+        type: string
+        required: true
+        description: "要变更的字段名"
+      new_type:
+        type: string
+        required: false
+        description: "新类型（仅 change_type=change_type 时必填）"
+      api_version_bump:
+        type: boolean
+        required: false
+        default: false
+        description: "是否需要 API 版本升级（破坏性变更）"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "Optional|Union"    # 修改字段时应考虑可选性

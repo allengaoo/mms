@@ -106,19 +106,22 @@ def _check_no_duplicate(
 
 def _check_not_contradicts_adr(insight: "MemoryInsight", memory_root: Path) -> Optional[str]:
     """
-    前置条件：新记忆不与现有架构决策（CC 层）矛盾（简单规则检测）。
-    当前实现：只做关键词级的矛盾检测，完整版需要 LLM 语义判断。
+    前置条件：新记忆不与现有架构决策（CC 层）矛盾。
+
+    调用 detect_contradictions() 执行真实矛盾检测（爆炸半径控制 + 关键词级分析）。
+    完整版 LLM 语义判断需要通过 detect_contradictions_with_llm() 触发。
     """
-    if insight.memory_type not in ("anti-pattern", "decision"):
-        return None   # 只对 decision/anti-pattern 类型做检查
+    if insight.memory_type not in ("anti-pattern", "decision", "arch_constraint"):
+        return None   # 只对架构决策类型做检查
 
-    cc_dir = memory_root / "shared" / "CC"
-    if not cc_dir.exists():
-        return None
-
-    # 简单检查：新记忆的 tags 是否与某个 CC 层记忆的 anti_tags（如果有）冲突
-    # 当前仅警告，不强制拒绝
-    return None   # TODO: 接入 LLM 语义矛盾检测
+    try:
+        conflicts = detect_contradictions(insight, memory_root, use_llm=False)
+        if conflicts:
+            conflict_ids = ", ".join(c["node_id"] for c in conflicts[:3])
+            return f"检测到潜在矛盾（与 {conflict_ids} 冲突），建议人工确认"
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 # ── Action 实现 ──────────────────────────────────────────────────────────────
@@ -250,3 +253,228 @@ def update_memory_staleness(
         node_id=node_id,
         file_path=str(target_file.relative_to(_ROOT)),
     )
+
+
+# ── 矛盾检测（Graph Contradiction Detection）────────────────────────────────
+
+_CONTRADICTION_KEYWORDS: List[Tuple[str, str]] = [
+    # (关键词A, 关键词B)：出现 A 的记忆与出现 B 的记忆可能互斥
+    ("grpc", "rest"),
+    ("graphql", "rest"),
+    ("microservice", "monolith"),
+    ("redis", "memcached"),
+    ("kafka", "rabbitmq"),
+    ("postgresql", "mysql"),
+    ("jwt", "session"),
+    ("sync", "async"),
+    ("eager_loading", "lazy_loading"),
+    ("optimistic_lock", "pessimistic_lock"),
+]
+
+
+def detect_contradictions(
+    insight: "MemoryInsight",
+    memory_root: Optional[Path] = None,
+    use_llm: bool = False,
+    max_candidates: int = 20,
+) -> List[Dict]:
+    """
+    矛盾检测：检查新记忆是否与现有图谱中的记忆存在逻辑互斥。
+
+    实现策略（两阶段）：
+      阶段 1（离线，始终执行）：关键词级矛盾检测
+        - 从新记忆内容中提取矛盾关键词对
+        - 检查候选节点中是否存在与之互斥的关键词
+      阶段 2（在线，use_llm=True 时执行）：LLM 语义矛盾检测
+        - 调用 qwen3-32b，注入"架构仲裁者"系统提示词
+        - 输出包含冲突节点 ID 的 JSON 数组
+
+    爆炸半径控制：
+      - 仅检查与新节点相同 layer_affinity 的现有节点
+      - 仅检查 tier=hot/warm 节点
+      - 最多检查 max_candidates 个节点
+
+    Args:
+        insight: 新的记忆内容（MemoryInsight 对象）
+        memory_root: 记忆根目录
+        use_llm: 是否使用 LLM 语义检测（默认 False，不消耗 Token）
+        max_candidates: 最大候选节点数
+
+    Returns:
+        List[Dict]：检测到的冲突列表，每项包含：
+          - node_id: 冲突节点 ID
+          - reason: 冲突原因
+          - confidence: 置信度（0.0-1.0）
+    """
+    if memory_root is None:
+        memory_root = _MEMORY_ROOT
+
+    try:
+        from mms.memory.graph_resolver import MemoryGraph  # type: ignore[import]
+    except ImportError:
+        return []
+
+    graph = MemoryGraph(memory_root=memory_root)
+
+    # 爆炸半径控制：获取候选节点
+    layer_affinity = [insight.layer] if insight.layer else []
+    candidates = graph.get_candidates_for_contradiction_check(
+        new_layer_affinity=layer_affinity,
+        max_candidates=max_candidates,
+    )
+    if not candidates:
+        return []
+
+    insight_text = insight.title + " " + getattr(insight, "description", "") + " " + getattr(insight, "content", "")
+    new_content_lower = insight_text.lower()
+    conflicts: List[Dict] = []
+
+    # ── 阶段 1：关键词级矛盾检测（离线）──────────────────────────────────────
+    new_keywords = {kw for pair in _CONTRADICTION_KEYWORDS for kw in pair if kw in new_content_lower}
+
+    for candidate in candidates:
+        candidate_content_lower = (candidate.title + " " + " ".join(candidate.about_concepts or [])).lower()
+
+        for kw_a, kw_b in _CONTRADICTION_KEYWORDS:
+            new_has_a = kw_a in new_content_lower
+            new_has_b = kw_b in new_content_lower
+            cand_has_a = kw_a in candidate_content_lower
+            cand_has_b = kw_b in candidate_content_lower
+
+            # 新记忆有 A，候选有 B（或反之）→ 潜在矛盾
+            if (new_has_a and cand_has_b) or (new_has_b and cand_has_a):
+                conflict_word_new = kw_a if new_has_a else kw_b
+                conflict_word_old = kw_b if new_has_a else kw_a
+                conflicts.append({
+                    "node_id": candidate.id,
+                    "reason": f"新记忆使用 '{conflict_word_new}'，现有记忆 {candidate.id} 使用 '{conflict_word_old}'（可能互斥）",
+                    "confidence": 0.6,
+                    "detection_method": "keyword",
+                })
+                break   # 每个候选节点只报告一次冲突
+
+    # ── 阶段 2：LLM 语义矛盾检测（在线，可选）─────────────────────────────────
+    if use_llm and conflicts:
+        llm_conflicts = _detect_contradictions_with_llm(
+            insight=insight,
+            candidates=candidates,
+            preliminary_conflicts=conflicts,
+        )
+        if llm_conflicts:
+            # LLM 结果覆盖关键词检测结果（更高精度）
+            conflicts = llm_conflicts
+
+    return conflicts
+
+
+def _detect_contradictions_with_llm(
+    insight: "MemoryInsight",
+    candidates: List,
+    preliminary_conflicts: List[Dict],
+) -> List[Dict]:
+    """
+    使用 qwen3-32b 进行语义级矛盾检测（对抗性 LLM 审查）。
+
+    系统提示词模板（架构仲裁者角色）：
+      "你是架构仲裁者。对比【新规则 A】与【旧规则集 B】。
+       若发现互斥（如 A 要求使用 gRPC，B 要求使用 REST），
+       请输出包含冲突节点 ID 的 JSON 数组及理由。"
+    """
+    try:
+        import json as _json
+        from mms.llm.client import call_qwen  # type: ignore[import]
+
+        # 只对初步检测有冲突的候选节点做 LLM 验证
+        candidate_ids = {c["node_id"] for c in preliminary_conflicts}
+        candidate_texts = []
+        for cand in candidates:
+            if cand.id in candidate_ids:
+                candidate_texts.append(f"[{cand.id}] {cand.title}: {' '.join(cand.about_concepts or [])}")
+
+        system_prompt = (
+            "你是架构仲裁者。你的任务是检测架构规则之间的逻辑矛盾。\n"
+            "对比【新规则 A】与【旧规则集 B】。若发现互斥（例如：A 要求使用 gRPC，"
+            "B 要求使用 REST；或 A 要求无状态，B 要求有状态 Session），\n"
+            "请输出 JSON 数组，每项包含 {\"node_id\": \"...\", \"reason\": \"...\", \"confidence\": 0.0-1.0}。\n"
+            "若无矛盾，输出空数组 []。只输出 JSON，不输出其他内容。"
+        )
+        user_prompt = (
+            f"新规则 A:\n标题: {insight.title}\n内容: {getattr(insight, 'description', '')[:500]}\n\n"
+            f"旧规则集 B:\n" + "\n".join(candidate_texts)
+        )
+
+        response = call_qwen(
+            system=system_prompt,
+            user=user_prompt,
+            model="qwen-max",
+            temperature=0.1,
+        )
+        result = _json.loads(response.strip())
+        if isinstance(result, list):
+            for item in result:
+                item["detection_method"] = "llm"
+            return result
+    except Exception:  # noqa: BLE001
+        pass
+    return []
+
+
+def apply_contradiction_resolution(
+    new_node_id: str,
+    conflicting_node_id: str,
+    memory_root: Optional[Path] = None,
+) -> ActionResult:
+    """
+    Action: 矛盾解消 — 在图谱中建立 contradicts 边，并将冲突旧节点降级为 archive。
+
+    操作步骤：
+      1. 在 new_node_id ↔ conflicting_node_id 之间建立 contradicts 边
+      2. 将 conflicting_node_id 的 tier 降级为 archive（切断入边，hybrid_search 永久忽略）
+      3. 记录 archive_reason（为何被降级）
+
+    注意：
+      - 此操作不可逆（节点降级为 archive 后需手动恢复）
+      - 建议先通过 detect_contradictions() 确认冲突，再调用此函数
+
+    Args:
+        new_node_id: 新记忆节点 ID（胜出方，保持 hot/warm）
+        conflicting_node_id: 冲突旧节点 ID（降级为 archive）
+        memory_root: 记忆根目录
+
+    Returns:
+        ActionResult（success=True 表示操作成功）
+    """
+    if memory_root is None:
+        memory_root = _MEMORY_ROOT
+
+    try:
+        from mms.memory.graph_resolver import MemoryGraph  # type: ignore[import]
+    except ImportError:
+        return ActionResult(success=False, error="无法导入 MemoryGraph")
+
+    graph = MemoryGraph(memory_root=memory_root)
+
+    # 步骤 1：建立 contradicts 边
+    edge_ok = graph.add_contradicts_edge(new_node_id, conflicting_node_id, memory_root)
+
+    # 步骤 2：将冲突旧节点降级为 archive
+    archive_reason = (
+        f"矛盾检测：与 {new_node_id} 存在逻辑互斥，已由木兰矛盾检测系统自动降级"
+    )
+    archive_ok = graph.archive_node(conflicting_node_id, reason=archive_reason, memory_root=memory_root)
+
+    if edge_ok and archive_ok:
+        return ActionResult(
+            success=True,
+            node_id=conflicting_node_id,
+            file_path="(updated in-place)",
+            warnings=[f"节点 {conflicting_node_id} 已被降级为 archive"],
+        )
+    else:
+        return ActionResult(
+            success=False,
+            error=(
+                f"部分操作失败：edge_ok={edge_ok}, archive_ok={archive_ok}。"
+                f"可能是记忆文件不存在或无写入权限。"
+            ),
+        )

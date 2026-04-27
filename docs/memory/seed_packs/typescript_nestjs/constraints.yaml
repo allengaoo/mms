@@ -1,0 +1,37 @@
+schema_version: "1.0"
+pack_id: typescript_nestjs
+
+constraints:
+  - id: AC-TS-01
+    name: "NestJS 写接口必须鉴权"
+    severity: critical
+    description: "POST/PUT/DELETE 控制器方法必须有 @UseGuards(JwtAuthGuard) 或等效装饰器"
+    detection:
+      type: ast_pattern
+      language: typescript
+      pattern: "@(Post|Put|Delete|Patch)\\("
+      check: "method_must_have_guard_decorator"
+      message: "写接口缺少鉴权守卫，存在未授权写入风险"
+
+  - id: AC-TS-02
+    name: "React Page 禁止直接 fetch"
+    severity: high
+    description: "Page Component 禁止直接调用 fetch/axios，必须封装在 features/xxx/api/ Hook 中"
+    detection:
+      type: regex
+      language: typescript
+      pattern: "(fetch|axios)\\."
+      context: "page_component"   # pages/ 目录下的组件
+      file_pattern: "src/pages/**/*.tsx"
+      message: "Page Component 中直接调用 HTTP 接口，请封装到 features/xxx/api/ 的 Hook 中"
+
+  - id: AC-TS-03
+    name: "DTO 必须使用 class-validator"
+    severity: high
+    description: "NestJS DTO 必须使用 class-validator 装饰器，禁止手写校验"
+    detection:
+      type: ast_pattern
+      language: typescript
+      pattern: "class.*Dto"
+      check: "class_must_have_validator_decorators"
+      message: "DTO 类缺少 class-validator 装饰器，参数校验无效"

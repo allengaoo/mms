@@ -1,0 +1,40 @@
+# Java Spring Boot 架构约束定义
+# 供 arch_check.py 静态扫描使用（基于 AST / 正则）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+pack_id: java_spring_boot
+
+constraints:
+  - id: AC-JAV-01
+    name: "Entity 不跨越 Service 层"
+    severity: critical
+    description: "@Entity 标注的对象禁止从 Service 层返回给 Controller，必须转换为 DTO/VO"
+    detection:
+      type: ast_pattern
+      language: java
+      pattern: "@Entity"
+      check: "return_type_in_controller"
+      message: "Controller 方法返回了 @Entity 类型，请通过 MapStruct 转换为 DTO/VO"
+
+  - id: AC-JAV-02
+    name: "全局异常处理"
+    severity: critical
+    description: "Controller 层禁止 try-catch 业务异常，必须统一由 @RestControllerAdvice 处理"
+    detection:
+      type: regex
+      language: java
+      pattern: "catch\\s*\\(.*Exception"
+      context: "class_annotated_with_@Controller_or_@RestController"
+      message: "Controller 中出现 try-catch，请抛出 BusinessException 并由 GlobalExceptionHandler 处理"
+
+  - id: AC-JAV-06
+    name: "MyBatis SQL 参数绑定"
+    severity: critical
+    description: "MyBatis 中禁止使用 ${} 直接插值（SQL 注入风险），必须使用 #{} 参数绑定"
+    detection:
+      type: regex
+      language: xml
+      pattern: "\\$\\{(?!sys\\.|env\\.)"    # 允许 ${sys.} 系统变量，禁止用户输入插值
+      file_pattern: "*Mapper.xml"
+      message: "MyBatis XML 中使用了 ${} 插值（SQL 注入风险），请改为 #{} 参数绑定"

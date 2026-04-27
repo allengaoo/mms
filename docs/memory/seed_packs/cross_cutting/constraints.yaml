@@ -1,0 +1,29 @@
+schema_version: "1.0"
+pack_id: cross_cutting
+
+constraints:
+  - id: AC-ARCH-03
+    name: "禁止硬编码配置"
+    severity: critical
+    description: "配置值（URL、端口、密钥、超时）必须来自环境变量，禁止硬编码"
+    detection:
+      type: regex
+      languages: [python, java, go, typescript]
+      patterns:
+        - "localhost:\\d{4}"               # 硬编码 localhost 端口
+        - "password\\s*=\\s*['\"]\\w+"    # 硬编码密码
+        - "secret_key\\s*=\\s*['\"]\\w+"  # 硬编码密钥
+        - "api_key\\s*=\\s*['\"]sk-"      # 硬编码 API Key
+      exclude_files: ["test_", "_test.go", "conftest.py", ".env.example"]
+      message: "检测到硬编码配置，请使用环境变量替代"
+
+  - id: AC-ARCH-04
+    name: "禁止日志明文敏感信息"
+    severity: critical
+    description: "日志输出禁止打印 password、token、secret 等敏感字段"
+    detection:
+      type: regex
+      languages: [python, java, go, typescript]
+      pattern: "log.*password|log.*token|log.*secret|print.*password"
+      case_insensitive: true
+      message: "日志中可能包含敏感信息，请使用脱敏工具处理"

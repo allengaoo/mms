@@ -736,6 +736,179 @@ class MemoryGraph:
             **{f"tier_{k}": v for k, v in tier_counts.items()},
         }
 
+    def get_candidates_for_contradiction_check(
+        self,
+        new_layer_affinity: List[str],
+        max_candidates: int = 20,
+    ) -> List[MemoryNode]:
+        """
+        返回矛盾检测的候选节点集合（爆炸半径控制）。
+
+        策略：
+          1. 仅检查与新节点具有相同 layer_affinity 的现有节点
+          2. 仅检查 tier 为 hot 或 warm 的节点（archive 节点已降级，无需检查）
+          3. 最多返回 max_candidates 个节点（按 in-degree 倒序，优先检查重要节点）
+
+        Args:
+            new_layer_affinity: 新节点的层级亲和性列表（如 ["DOMAIN", "ADAPTER"]）
+            max_candidates: 最大候选节点数（默认 20）
+
+        Returns:
+            候选 MemoryNode 列表（可能为空）
+        """
+        self._ensure_loaded()
+        affinity_set = set(new_layer_affinity)
+        candidates = []
+
+        for node in self._nodes.values():
+            if node.tier not in ("hot", "warm"):
+                continue
+            # 通过 about_concepts 判断层级亲和性（简化：检查 layer 字段）
+            node_layer = getattr(node, "layer", "")
+            if not node_layer or node_layer in affinity_set:
+                candidates.append(node)
+
+        # 按 in-degree 倒序排序（重要节点优先检查）
+        candidates.sort(key=lambda n: self._in_degree.get(n.id, 0), reverse=True)
+        return candidates[:max_candidates]
+
+    def add_contradicts_edge(
+        self,
+        new_node_id: str,
+        conflicting_node_id: str,
+        memory_root: Optional[Path] = None,
+    ) -> bool:
+        """
+        在两个节点之间建立 contradicts 边。
+
+        操作：
+          1. 更新内存中的 MemoryNode 对象
+          2. 在磁盘的 Markdown 文件 front-matter 中更新 contradicts 字段
+
+        Args:
+            new_node_id: 新节点 ID
+            conflicting_node_id: 与之矛盾的旧节点 ID
+            memory_root: 记忆根目录（默认使用初始化时的 _root）
+
+        Returns:
+            是否成功（文件未找到时返回 False）
+        """
+        self._ensure_loaded()
+        memory_root = memory_root or self._root
+
+        success = True
+        for node_id, target_id in [
+            (new_node_id, conflicting_node_id),
+            (conflicting_node_id, new_node_id),
+        ]:
+            node = self._nodes.get(node_id)
+            if not node:
+                continue
+
+            # 更新内存对象
+            if target_id not in node.contradicts:
+                node.contradicts.append(target_id)
+
+            # 更新磁盘文件
+            file_updated = self._update_frontmatter_field(
+                node_id,
+                "contradicts",
+                node.contradicts,
+                memory_root,
+            )
+            if not file_updated:
+                success = False
+
+        return success
+
+    def archive_node(
+        self,
+        node_id: str,
+        reason: str = "",
+        memory_root: Optional[Path] = None,
+    ) -> bool:
+        """
+        将节点 tier 降级为 archive，切断其所有入边（使其在 hybrid_search 中被永久忽略）。
+
+        操作：
+          1. 将 tier 改为 archive
+          2. 在磁盘文件中更新 tier 字段并记录 archive_reason
+          3. 更新 in-degree 计数（降级节点不再贡献入度）
+
+        Args:
+            node_id: 要降级的节点 ID
+            reason: 降级原因（如 "矛盾检测：与 MEM-L-012 的 gRPC vs REST 约束冲突"）
+            memory_root: 记忆根目录
+
+        Returns:
+            是否成功
+        """
+        self._ensure_loaded()
+        memory_root = memory_root or self._root
+
+        node = self._nodes.get(node_id)
+        if not node:
+            return False
+
+        original_tier = node.tier
+        node.tier = "archive"
+
+        # 更新磁盘文件：tier 字段
+        ok1 = self._update_frontmatter_field(node_id, "tier", "archive", memory_root)
+        # 更新磁盘文件：archive_reason 字段
+        ok2 = self._update_frontmatter_field(node_id, "archive_reason", reason, memory_root)
+
+        if ok1:
+            # 更新 in-degree：降级节点的出边不再贡献入度
+            for related_id in node.related_ids:
+                if related_id in self._in_degree:
+                    self._in_degree[related_id] = max(0, self._in_degree[related_id] - 1)
+
+        return ok1
+
+    def _update_frontmatter_field(
+        self,
+        node_id: str,
+        field_name: str,
+        field_value,
+        memory_root: Path,
+    ) -> bool:
+        """
+        在磁盘 Markdown 文件的 front-matter 中更新指定字段。
+
+        Returns:
+            是否成功找到并更新了文件
+        """
+        import re as _re
+        import yaml as _yaml
+
+        # 找到文件路径
+        for md in memory_root.rglob("*.md"):
+            try:
+                text = md.read_text(encoding="utf-8", errors="ignore")
+                fm_match = _re.match(r"^---\s*\n(.*?)\n---\s*\n", text, _re.DOTALL)
+                if not fm_match:
+                    continue
+                fm = _yaml.safe_load(fm_match.group(1)) or {}
+                if str(fm.get("id", "")) != str(node_id):
+                    continue
+
+                # 找到目标文件，更新 front-matter
+                fm[field_name] = field_value
+                new_fm_str = _yaml.dump(
+                    fm,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ).rstrip()
+                body = text[fm_match.end():]
+                new_text = f"---\n{new_fm_str}\n---\n{body}"
+                md.write_text(new_text, encoding="utf-8")
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
 
 # ── CLI 入口（调试用）─────────────────────────────────────────────────────────
 

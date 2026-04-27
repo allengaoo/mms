@@ -1,0 +1,33 @@
+schema_version: "1.0"
+pack_id: go_microservice
+
+constraints:
+  - id: AC-GO-01
+    name: "internal/ 可见性屏障"
+    severity: critical
+    description: "核心业务逻辑必须在 internal/，pkg/ 只放无副作用工具函数"
+    detection:
+      type: ast_pattern
+      language: go
+      check: "import_path_contains_internal_from_external"
+      message: "外部包不能导入 internal/ 目录，这违反了 Go 可见性规则"
+
+  - id: AC-GO-02
+    name: "错误包裹栈"
+    severity: high
+    description: "非最外层函数捕获 err 时必须用 fmt.Errorf 包裹，禁止裸返回"
+    detection:
+      type: regex
+      language: go
+      pattern: "if err != nil \\{\\s*return nil?, err\\s*\\}"
+      message: "直接返回 err 丢失调用栈，请使用 fmt.Errorf(\"...: %w\", err)"
+
+  - id: AC-GO-06
+    name: "SQL 参数化查询"
+    severity: critical
+    description: "禁止 fmt.Sprintf 拼接 SQL，必须使用参数化查询"
+    detection:
+      type: regex
+      language: go
+      pattern: "fmt\\.Sprintf.*SELECT|fmt\\.Sprintf.*INSERT|fmt\\.Sprintf.*UPDATE|fmt\\.Sprintf.*DELETE"
+      message: "SQL 拼接存在注入风险，请使用 db.QueryContext(ctx, sql, args...)"

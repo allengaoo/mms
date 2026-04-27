@@ -9,7 +9,7 @@
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
-[Tests: 791 passed](#测试)
+[Tests: 823 passed](#测试)
 [License: MIT](LICENSE)
 
 ---
@@ -316,14 +316,16 @@ docs/memory/shared/
 
 **与 MDP 旧层级的映射关系（兼容迁移）：**
 
-| 旧层级（MDP 专用） | 新层级（通用） | 说明 |
-|---|---|---|
-| L1_platform | PLATFORM | 安全、配置、可观测 |
-| L2_infrastructure | ADAPTER | DB、Kafka、Redis 等外部适配 |
-| L3_domain | DOMAIN | 领域业务逻辑 |
-| L4_application | APP | 应用服务层 |
-| L5_interface | ADAPTER | API、前端 |
-| cross_cutting | CC | 架构决策 |
+
+| 旧层级（MDP 专用）       | 新层级（通用）  | 说明                   |
+| ----------------- | -------- | -------------------- |
+| L1_platform       | PLATFORM | 安全、配置、可观测            |
+| L2_infrastructure | ADAPTER  | DB、Kafka、Redis 等外部适配 |
+| L3_domain         | DOMAIN   | 领域业务逻辑               |
+| L4_application    | APP      | 应用服务层                |
+| L5_interface      | ADAPTER  | API、前端               |
+| cross_cutting     | CC       | 架构决策                 |
+
 
 新记忆文件自动写入新路径；`dream.py` 保留对旧路径格式的向后兼容读取。
 
@@ -365,17 +367,18 @@ git commit + mark_done                 Level 3: 拆分为子 AIUStep
 **AIU 类型（内置 43 种，9 大族，v3.0 扩展）：**
 
 
-| 族                     | 内置类型（节选）                                                              | 执行顺序 | 亲和层级          |
-| --------------------- | ----------------------------------------------------------------------- | ---- | ------------- |
-| **A Schema**          | `SCHEMA_ADD_FIELD` · `SCHEMA_MODIFY_FIELD` · `CONTRACT_ADD_REQUEST`     | 1    | DOMAIN/ADAPTER |
-| **C Data Access**     | `QUERY_ADD_SELECT` · `MUTATION_ADD_INSERT` · `MUTATION_ADD_UPDATE`      | 2    | ADAPTER       |
-| **B Control Flow**    | `LOGIC_ADD_CONDITION` · `LOGIC_ADD_BRANCH` · `LOGIC_EXTRACT_METHOD`     | 3    | DOMAIN/APP    |
-| **E Infrastructure**  | `EVENT_ADD_PRODUCER` · `EVENT_ADD_CONSUMER` · `CACHE_ADD_READ`          | 3    | ADAPTER       |
-| **D Interface**       | `ROUTE_ADD_ENDPOINT` · `ROUTE_ADD_PERMISSION` · `FRONTEND_ADD_PAGE`     | 4–5  | ADAPTER       |
-| **F Validation**      | `TEST_ADD_UNIT` · `TEST_ADD_INTEGRATION` · `DOC_SYNC`                   | 6–8  | APP/CC        |
-| **G Distributed** ★  | `SAGA_ADD_STEP` · `SAGA_ADD_COMPENSATOR` · `OUTBOX_ADD_MESSAGE`         | 3–4  | APP/DOMAIN    |
-| **H Governance** ★   | `RBAC_ADD_PERMISSION` · `RBAC_ADD_ROLE` · `AUDIT_ADD_TRAIL`             | 2–3  | PLATFORM/CC   |
-| **I Observability** ★ | `METRIC_ADD_COUNTER` · `TRACE_ADD_SPAN` · `ALERT_ADD_RULE`              | 3–5  | PLATFORM      |
+| 族                     | 内置类型（节选）                                                            | 执行顺序 | 亲和层级           |
+| --------------------- | ------------------------------------------------------------------- | ---- | -------------- |
+| **A Schema**          | `SCHEMA_ADD_FIELD` · `SCHEMA_MODIFY_FIELD` · `CONTRACT_ADD_REQUEST` | 1    | DOMAIN/ADAPTER |
+| **C Data Access**     | `QUERY_ADD_SELECT` · `MUTATION_ADD_INSERT` · `MUTATION_ADD_UPDATE`  | 2    | ADAPTER        |
+| **B Control Flow**    | `LOGIC_ADD_CONDITION` · `LOGIC_ADD_BRANCH` · `LOGIC_EXTRACT_METHOD` | 3    | DOMAIN/APP     |
+| **E Infrastructure**  | `EVENT_ADD_PRODUCER` · `EVENT_ADD_CONSUMER` · `CACHE_ADD_READ`      | 3    | ADAPTER        |
+| **D Interface**       | `ROUTE_ADD_ENDPOINT` · `ROUTE_ADD_PERMISSION` · `FRONTEND_ADD_PAGE` | 4–5  | ADAPTER        |
+| **F Validation**      | `TEST_ADD_UNIT` · `TEST_ADD_INTEGRATION` · `DOC_SYNC`               | 6–8  | APP/CC         |
+| **G Distributed** ★   | `SAGA_ADD_STEP` · `SAGA_ADD_COMPENSATOR` · `OUTBOX_ADD_MESSAGE`     | 3–4  | APP/DOMAIN     |
+| **H Governance** ★    | `RBAC_ADD_PERMISSION` · `RBAC_ADD_ROLE` · `AUDIT_ADD_TRAIL`         | 2–3  | PLATFORM/CC    |
+| **I Observability** ★ | `METRIC_ADD_COUNTER` · `TRACE_ADD_SPAN` · `ALERT_ADD_RULE`          | 3–5  | PLATFORM       |
+
 
 ★ v3.0 新增：面向企业级分布式、合规治理和可观测性场景（语言无关，Java/Go/Python 通用）
 
@@ -867,13 +870,16 @@ python3 benchmark/run_benchmark_v2.py
 | L2  | 记忆质量（Memory）  | D1/D4 离线 | Recall@K / MRR / ΔPass@1 / 漂移检出率 |
 | L1  | SWE-bench 信用锚 | 离线格式验证   | Pass@1 / Resolve Rate（在线填充）      |
 
+
 **v3.0 新增测试集：**
 
-| 测试集 | 类型 | 说明 |
-|---|---|---|
-| `funnel_retrieval.yaml` | 漏斗有效性 | FUNNEL-A/B/C/D 四类，验证三阶段漏斗各自贡献度 |
-| `mall_order_cases.yaml` | 企业项目（Java Spring Boot）| 基于 macrozheng/mall 订单服务真实代码结构 |
-| `halo_content_cases.yaml` | 企业项目（Java Spring Boot）| 基于 halo-dev/halo CMS 内容管理模块 |
+
+| 测试集                       | 类型                     | 说明                             |
+| ------------------------- | ---------------------- | ------------------------------ |
+| `funnel_retrieval.yaml`   | 漏斗有效性                  | FUNNEL-A/B/C/D 四类，验证三阶段漏斗各自贡献度 |
+| `mall_order_cases.yaml`   | 企业项目（Java Spring Boot） | 基于 macrozheng/mall 订单服务真实代码结构  |
+| `halo_content_cases.yaml` | 企业项目（Java Spring Boot） | 基于 halo-dev/halo CMS 内容管理模块    |
+
 
 ### 当前运行结果（离线 fast 模式）
 
@@ -991,12 +997,18 @@ pytest tests/benchmark/ -v
 pytest tests/ --cov=src/mms --cov-report=html
 ```
 
-测试结果：**791 通过**，1 个跳过，2 个预期失败（xfail）
+测试结果：**823 通过**，1 个跳过，2 个预期失败（xfail）
 
 新增单元测试（v3.0）：
+
 - `tests/test_memory_functions.py`：纯函数层（质量评分、重复检测、Provenance 构建）
 - `tests/test_eviction_score.py`：三维度淘汰评分验证
 - `tests/test_aiu_expansion.py`：G/H/I 三族 AIU 扩展验证（43 种类型完整覆盖）
+
+新增单元测试（v3.1）：
+
+- `tests/test_aiu_registry_v2.py`：AIU 注册表 v2.0（Schema-Driven OCP，input_schema / validation_rules 接口）
+- `tests/test_contradiction_detection.py`：图谱矛盾检测（爆炸半径控制、关键词级检测、降级操作）
 
 ---
 
@@ -1036,11 +1048,36 @@ pytest tests/ --cov=src/mms --cov-report=html
 - ✅ **Benchmark v2 三层框架**：安全门控（完全离线）/ 记忆质量 / SWE-bench 信用锚
 - ✅ **YAML 驱动扩展**：新增测试 case 无需修改评测器代码
 
+### 已完成（v3.1）
+
+**Benchmark 优化**
+
+- ✅ **Benchmark README 重构**：删除 ES/Milvus 描述，明确"动态本体路由 vs BM25"核心命题
+- ✅ **L2 核心指标**：新增 Info Density 公式（ΔPass@1 / avg_injection_tokens × 1000），比传统 Recall@K 更适合小模型
+- ✅ **企业靶机说明**：mall（80k⭐）/ halo（35k⭐）来源和工业复杂度说明
+
+**种子记忆（Seed Genes）**
+
+- ✅ **seed_packs 目录结构**：`docs/memory/seed_packs/` 含 5 个种子包（Python/Java/Go/TypeScript/CC）
+- ✅ **50 条工业级种子记忆**：Python×10 + Java×12 + Go×10 + TypeScript×10 + 通用×8，每条含代码示例和原因分析
+- ✅ **constraints.yaml**：每个种子包同时提供可被 `arch_check.py` 静态扫描的约束定义（双格式）
+
+**Schema-Driven AIU（开闭原则重构）**
+
+- ✅ **AIU 合约 Schema**：`docs/memory/_system/schemas/aius/` 含 input_schema（DAG 编排规范）+ validation_rules（AST 验证规则）
+- ✅ **动态注册表增强**：`aiu_registry.py` v2.0 支持 `get_input_schema()` / `get_validation_rules()` / `get_layer_affinity()` 新接口
+- ✅ **custom/ 子目录支持**：用户自定义 AIU（如 K8S_ADD_SIDECAR）只需放入 YAML 文件，无需改代码
+
+**图谱矛盾检测自动化**
+
+- ✅ **detect_contradictions()**：两阶段检测（关键词级离线 + LLM 语义在线），爆炸半径控制（同层 + hot/warm + max 20 候选）
+- ✅ **apply_contradiction_resolution()**：自动建立 contradicts 边 + archive_node 降级（切断入边，hybrid_search 永久忽略）
+- ✅ **graph_resolver 扩展**：`get_candidates_for_contradiction_check()` / `add_contradicts_edge()` / `archive_node()` 新方法
+
 ### 中期目标（v4.5）
 
 - **多 Agent 并行执行**：多个 UnitRunner 并行处理同一 EP 中无依赖关系的 Unit 批次
 - **两阶段提交（2PC）**：引入 git worktree shadow workspace，所有 AIU 通过后才 squash merge
-- **矛盾检测自动化**：LLM 辅助识别 `contradicts` 边候选
 - **完全离线模式**：意图分类、代价估算、上下文压缩全部切换为规则/本地模型
 
 ### 长期目标（v5.x）

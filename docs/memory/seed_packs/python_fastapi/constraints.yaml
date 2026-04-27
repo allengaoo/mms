@@ -1,0 +1,52 @@
+# Python FastAPI 架构约束定义
+# 供 arch_check.py 静态扫描使用（离线，< 1ms/file）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+pack_id: python_fastapi
+
+constraints:
+  - id: AC-PY-01
+    name: "DB 会话依赖注入"
+    severity: critical
+    description: "在 API Route 层，禁止手动实例化 SessionLocal()，必须通过 Depends(get_db) 获取 DB 会话"
+    detection:
+      type: ast_pattern
+      language: python
+      pattern: "SessionLocal()"
+      context: "function_def"              # 仅检查函数体内
+      exclude_files: ["conftest.py", "database.py", "deps.py"]
+      message: "直接实例化 SessionLocal() 违反依赖注入原则，请改用 Depends(get_db)"
+
+  - id: AC-PY-02
+    name: "路由响应契约"
+    severity: high
+    description: "路由的 response_model 必须绑定 Pydantic BaseModel 子类，禁止返回裸字典"
+    detection:
+      type: regex
+      language: python
+      pattern: "return\\s+\\{['\"]\\w"     # return {"key": ...}
+      context: "router_function"           # 仅检查有 @router. 装饰器的函数
+      message: "路由函数直接返回字典，请使用 response_model 绑定 Pydantic Schema"
+
+  - id: AC-PY-06
+    name: "结构化日志"
+    severity: medium
+    description: "禁止裸 print() 和 logging.error()，必须使用 structlog"
+    detection:
+      type: regex
+      language: python
+      pattern: "^\\s*print\\("
+      exclude_files: ["scripts/", "tests/", "conftest.py"]
+      message: "禁止使用 print()，请改用 structlog.get_logger().info()"
+
+  - id: AC-PY-10
+    name: "async 路由禁止同步 IO"
+    severity: high
+    description: "async def 路由函数内禁止调用 requests.get/post（同步阻塞 IO）"
+    detection:
+      type: regex
+      language: python
+      pattern: "requests\\.(get|post|put|delete|patch)\\("
+      context: "async_function"
+      message: "async 函数内使用同步 requests 会阻塞事件循环，请改用 httpx.AsyncClient"

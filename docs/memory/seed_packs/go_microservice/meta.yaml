@@ -1,0 +1,26 @@
+id: go_microservice
+name: "Go 微服务种子包"
+version: "1.0.0"
+description: |
+  基于 golang-standards/project-layout 和 go-kratos/kratos 提取的核心架构约束与代码模式。
+  技术栈：Go + GORM + errgroup + Wire + Prometheus
+  参考仓库：
+    - https://github.com/golang-standards/project-layout (48k+ ⭐)
+    - https://github.com/go-kratos/kratos (23k+ ⭐)
+    - https://github.com/uber-go/guide (15k+ ⭐)
+
+arch_paradigm: "DDD 目录结构 + GORM + 错误冒泡机制"
+language: go
+layer_affinity: [ADAPTER, DOMAIN, APP, PLATFORM]
+
+memories:
+  - { id: AC-GO-01, type: arch_constraint, tier: hot }
+  - { id: AC-GO-02, type: arch_constraint, tier: hot }
+  - { id: AC-GO-03, type: arch_constraint, tier: hot }
+  - { id: AC-GO-04, type: anti_pattern, tier: warm }
+  - { id: AC-GO-05, type: lesson, tier: hot }
+  - { id: AC-GO-06, type: arch_constraint, tier: hot }
+  - { id: AC-GO-07, type: pattern, tier: warm }
+  - { id: AC-GO-08, type: lesson, tier: warm }
+  - { id: AC-GO-09, type: pattern, tier: warm }
+  - { id: AC-GO-10, type: lesson, tier: warm }

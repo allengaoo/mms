@@ -1,0 +1,26 @@
+id: typescript_nestjs
+name: "TypeScript NestJS + React 种子包"
+version: "1.0.0"
+description: |
+  基于 nestjs/nest 和 alan2207/bulletproof-react 提取的核心架构约束与代码模式。
+  技术栈：NestJS (后端) / React + Feature-Sliced Design (前端) / TypeScript
+  参考仓库：
+    - https://github.com/nestjs/nest (68k+ ⭐)
+    - https://github.com/alan2207/bulletproof-react (29k+ ⭐)
+    - https://github.com/trpc/trpc (35k+ ⭐)
+
+arch_paradigm: "NestJS (后端) / React Feature-Sliced Design (前端)"
+language: typescript
+layer_affinity: [ADAPTER, DOMAIN, APP]
+
+memories:
+  - { id: AC-TS-01, type: arch_constraint, tier: hot }
+  - { id: AC-TS-02, type: arch_constraint, tier: hot }
+  - { id: AC-TS-03, type: arch_constraint, tier: hot }
+  - { id: AC-TS-04, type: anti_pattern, tier: warm }
+  - { id: AC-TS-05, type: arch_constraint, tier: warm }
+  - { id: AC-TS-06, type: lesson, tier: warm }
+  - { id: AC-TS-07, type: lesson, tier: warm }
+  - { id: AC-TS-08, type: anti_pattern, tier: warm }
+  - { id: AC-TS-09, type: pattern, tier: warm }
+  - { id: AC-TS-10, type: lesson, tier: warm }

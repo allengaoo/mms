@@ -1,0 +1,24 @@
+id: cross_cutting
+name: "跨语言通用架构模式种子包"
+version: "1.0.0"
+description: |
+  适用于所有语言和框架的跨语言通用架构约束与模式。
+  这些约束在任何生产级软件系统中都应遵守，与具体技术栈无关。
+  参考标准：
+    - OWASP Top 10
+    - The Twelve-Factor App (12factor.net)
+    - Cloud Native Patterns
+
+arch_paradigm: "跨语言通用架构原则"
+language: all
+layer_affinity: [CC, PLATFORM]
+
+memories:
+  - { id: AC-ARCH-01, type: arch_constraint, tier: hot }
+  - { id: AC-ARCH-02, type: arch_constraint, tier: hot }
+  - { id: AC-ARCH-03, type: arch_constraint, tier: hot }
+  - { id: AC-ARCH-04, type: arch_constraint, tier: hot }
+  - { id: AC-ARCH-05, type: pattern, tier: hot }
+  - { id: AC-ARCH-06, type: lesson, tier: warm }
+  - { id: AC-ARCH-07, type: lesson, tier: hot }
+  - { id: AC-ARCH-08, type: pattern, tier: warm }

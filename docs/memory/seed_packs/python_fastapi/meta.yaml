@@ -1,0 +1,45 @@
+id: python_fastapi
+name: "Python FastAPI 种子包"
+version: "1.0.0"
+description: |
+  基于 tiangolo/full-stack-fastapi-template 提取的核心架构约束与代码模式。
+  技术栈：FastAPI + SQLAlchemy 2.x + Pydantic v2 + Alembic + structlog
+  参考仓库：
+    - https://github.com/tiangolo/full-stack-fastapi-template (45k+ ⭐)
+    - https://github.com/fastapi/fastapi (80k+ ⭐)
+
+arch_paradigm: "FastAPI + SQLAlchemy + Pydantic v2"
+language: python
+layer_affinity: [ADAPTER, DOMAIN, APP]
+
+memories:
+  - id: AC-PY-01
+    type: arch_constraint
+    tier: hot
+  - id: AC-PY-02
+    type: arch_constraint
+    tier: hot
+  - id: AC-PY-03
+    type: anti_pattern
+    tier: hot
+  - id: AC-PY-04
+    type: lesson
+    tier: warm
+  - id: AC-PY-05
+    type: lesson
+    tier: warm
+  - id: AC-PY-06
+    type: arch_constraint
+    tier: hot
+  - id: AC-PY-07
+    type: lesson
+    tier: warm
+  - id: AC-PY-08
+    type: anti_pattern
+    tier: warm
+  - id: AC-PY-09
+    type: pattern
+    tier: warm
+  - id: AC-PY-10
+    type: lesson
+    tier: hot

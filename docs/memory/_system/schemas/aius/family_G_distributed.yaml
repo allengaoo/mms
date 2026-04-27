@@ -1,0 +1,160 @@
+# AIU 族 G：分布式协调类（Distributed Operators）v3.0 新增
+# 版本：v1.0 | 2026-04-27 | Schema-Driven AIU（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: G_distributed
+layer_affinity: [APP, DOMAIN]
+
+aius:
+  - id: DIST_ADD_SAGA
+    family: G_distributed
+    layer_affinity: [APP, DOMAIN]
+    exec_order: 5
+    base_cost: 6000
+    description: "新增 Saga 编排器（分布式事务，多服务补偿流程）"
+    input_schema:
+      saga_name:
+        type: string
+        required: true
+        description: "Saga 名称（如 PlaceOrderSaga）"
+      steps:
+        type: array
+        required: true
+        description: "Saga 步骤列表（每步骤含正向操作和补偿操作）"
+        items:
+          name: { type: string }
+          action: { type: string, description: "正向操作（Service 调用）" }
+          compensation: { type: string, description: "补偿操作（回滚逻辑）" }
+          timeout_seconds: { type: integer, default: 30 }
+      orchestration_type:
+        type: string
+        required: false
+        default: "choreography"
+        enum: [orchestration, choreography]
+        description: "编排模式：orchestration=集中编排器，choreography=事件驱动"
+      persistence:
+        type: string
+        required: false
+        default: "database"
+        enum: [database, redis, kafka]
+        description: "Saga 状态持久化方式"
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "compensate|rollback|compensation"    # 必须有补偿逻辑
+        - "idempotent|idempotency_key"          # 每步骤必须幂等
+      forbidden_patterns:
+        - "time\\.sleep|Thread\\.sleep"         # Saga 内禁止阻塞等待
+
+  - id: DIST_ADD_LOCK
+    family: G_distributed
+    layer_affinity: [APP]
+    exec_order: 3
+    base_cost: 2500
+    description: "新增分布式锁（Redis/Redisson/ZooKeeper，防止集群并发冲突）"
+    input_schema:
+      lock_name:
+        type: string
+        required: true
+        description: "锁键名（如 order:create:{userId}）"
+      lock_provider:
+        type: string
+        required: false
+        default: "redis"
+        enum: [redis, redisson, zookeeper, database]
+      timeout_seconds:
+        type: integer
+        required: false
+        default: 30
+        description: "锁最长持有时间（超时自动释放）"
+      wait_seconds:
+        type: integer
+        required: false
+        default: 0
+        description: "获取锁的等待时间（0=不等待，立即返回）"
+      use_case:
+        type: string
+        required: true
+        description: "锁的使用场景（如定时任务、库存扣减）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "try.*finally|with.*lock"    # 必须保证 finally 释放锁
+        - "is_held_by_current_thread|isHeldByCurrentThread"
+      forbidden_patterns:
+        - "time\\.sleep"    # 等锁时不应 sleep（会阻塞事件循环）
+
+  - id: DIST_ADD_CACHE_INVALIDATION
+    family: G_distributed
+    layer_affinity: [DOMAIN]
+    exec_order: 3
+    base_cost: 2000
+    description: "新增缓存失效策略（Cache-Aside / Write-Through / Event-Driven）"
+    input_schema:
+      cache_key_pattern:
+        type: string
+        required: true
+        description: "缓存键模式（如 user:{userId}）"
+      invalidation_trigger:
+        type: string
+        required: true
+        enum: [on_update, on_delete, on_event, ttl_only, manual]
+        description: "缓存失效触发时机"
+      strategy:
+        type: string
+        required: false
+        default: "cache_aside"
+        enum: [cache_aside, write_through, write_behind]
+      ttl_seconds:
+        type: integer
+        required: false
+        default: 3600
+      consistency_level:
+        type: string
+        required: false
+        default: "eventual"
+        enum: [strong, eventual]
+        description: "一致性要求（strong=写完立即失效，eventual=异步失效）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "delete|invalidate|evict"    # 必须有失效操作
+      forbidden_patterns:
+        - "KEYS \\*"    # 禁止 Redis KEYS * 全量扫描（生产禁止！）
+
+  - id: DIST_ADD_RATE_LIMIT
+    family: G_distributed
+    layer_affinity: [ADAPTER]
+    exec_order: 4
+    base_cost: 2000
+    description: "新增 API 限流规则（Token Bucket / Sliding Window）"
+    input_schema:
+      target_endpoint:
+        type: string
+        required: true
+        description: "目标路由路径"
+      rate:
+        type: string
+        required: true
+        description: "限流规则（如 '100/minute', '10/second'）"
+      limit_by:
+        type: string
+        required: false
+        default: "ip"
+        enum: [ip, user_id, api_key, global]
+        description: "限流维度"
+      algorithm:
+        type: string
+        required: false
+        default: "sliding_window"
+        enum: [token_bucket, sliding_window, fixed_window, leaky_bucket]
+      burst_size:
+        type: integer
+        required: false
+        description: "允许的突发请求量（Token Bucket 的桶容量）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "@limiter|@rate_limit|RateLimit|ThrottlerGuard"
+      forbidden_patterns: []

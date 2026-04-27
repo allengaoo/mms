@@ -1,0 +1,51 @@
+id: java_spring_boot
+name: "Java Spring Boot 种子包"
+version: "1.0.0"
+description: |
+  基于 macrozheng/mall 和 spring-projects/spring-petclinic 提取的核心架构约束与代码模式。
+  技术栈：Spring Boot + MyBatis/JPA + MapStruct + Lombok + Redisson
+  参考仓库：
+    - https://github.com/macrozheng/mall (80k+ ⭐)
+    - https://github.com/spring-projects/spring-petclinic (7k+ ⭐)
+
+arch_paradigm: "Spring Boot + MyBatis/JPA + MapStruct"
+language: java
+layer_affinity: [ADAPTER, DOMAIN, APP, PLATFORM]
+
+memories:
+  - id: AC-JAV-01
+    type: arch_constraint
+    tier: hot
+  - id: AC-JAV-02
+    type: arch_constraint
+    tier: hot
+  - id: AC-JAV-03
+    type: arch_constraint
+    tier: hot
+  - id: AC-JAV-04
+    type: anti_pattern
+    tier: warm
+  - id: AC-JAV-05
+    type: lesson
+    tier: warm
+  - id: AC-JAV-06
+    type: arch_constraint
+    tier: hot
+  - id: AC-JAV-07
+    type: lesson
+    tier: warm
+  - id: AC-JAV-08
+    type: lesson
+    tier: warm
+  - id: AC-JAV-09
+    type: pattern
+    tier: warm
+  - id: AC-JAV-10
+    type: lesson
+    tier: warm
+  - id: AC-JAV-11
+    type: lesson
+    tier: warm
+  - id: AC-JAV-12
+    type: anti_pattern
+    tier: warm

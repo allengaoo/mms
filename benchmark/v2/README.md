@@ -5,17 +5,105 @@
 
 ---
 
+## 核心命题
+
+木兰 Benchmark v2 所验证的核心命题是：
+
+> **动态本体路由（Vectorless Ontology Routing）在代码生成质量、安全性、知识留存上，是否系统性地优于传统纯文本 BM25 检索？**
+
+| 对比维度 | 传统方案（BM25 / ES / Milvus） | 木兰本体路由 |
+|---|---|---|
+| 检索粒度 | 文档级关键词匹配 | 概念图谱 + 语义哈希 + 架构层过滤 |
+| 上下文质量 | 全量噪音（依赖向量相似度） | 精准注入（架构约束 + 记忆图谱） |
+| 离线能力 | 依赖 ES/Milvus 服务 | **完全离线**（Layer 3 / Layer 2 D1/D4） |
+| 可解释性 | 黑盒相似度分数 | 可溯源的 `about_concepts` + `cites_files` 链路 |
+| 扩展方式 | 重新索引全量文档 | 向 `docs/memory/` 添加一个 Markdown 文件 |
+
+> ⚠️ **已废弃**：v1 Benchmark 中的 "ES+Milvus 混合 RAG" 描述已完全移除。木兰不依赖任何向量数据库。
+
+---
+
+## 分层评估体系（L1 / L2 / L3）
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  L1: SWE-bench 信用锚（Credibility Anchor）                          │
+│  与工业标准基准对齐，证明"小模型+精准上下文 > 大模型+全量噪音"          │
+│  核心指标：ΔPass@1（有/无记忆注入的代码通过率差值）                     │
+│  运行条件：离线=格式验证；在线=需 LLM + Docker 沙盒                    │
+├─────────────────────────────────────────────────────────────────────┤
+│  L2: 记忆质量评测（Memory Quality）                                    │
+│  验证"动态本体路由 → 代码生成质量提升"的核心价值主张                     │
+│  核心指标：Info Density（信息密度）= ΔPass@1 / avg_injection_tokens   │
+│  4 维度：D1 准确检索 / D2 注入提升 / D3 跨任务保留 / D4 漂移检测        │
+│  运行条件：D1/D4 离线可运行；D2/D3 需 LLM API                          │
+├─────────────────────────────────────────────────────────────────────┤
+│  L3: 安全门控评测（Safety Gates）                                      │
+│  验证"代码不上传，知识不泄露，架构不退化"的工程安全底线                  │
+│  3 子系统：SanitizationGate / MigrationGate / ArchCheck              │
+│  运行条件：完全离线，< 1 秒                                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 分层指标速查表
+
+| 层级 | 核心指标 | 目标值 | 是否需要 LLM |
+|---|---|---|---|
+| **L3 安全层** | SanitizeGate 检出率 | ≥ 90% | ❌ 完全离线 |
+| **L3 安全层** | MigrationGate 阻断精度 | ≥ 85% | ❌ 完全离线 |
+| **L3 安全层** | ArchCheck 覆盖率 | ≥ 75% | ❌ 完全离线 |
+| **L2 记忆层** | Recall@5 (D1) | ≥ 0.60 | ❌ 离线可运行 |
+| **L2 记忆层** | Info Density (D2) | > 0 | ✅ 需要 LLM |
+| **L2 记忆层** | 漂移检出率 (D4) | ≥ 80% | ❌ 离线可运行 |
+| **L1 执行层** | ΔPass@1 | > 0 | ✅ 需要 LLM + Docker |
+
+### L2 核心指标说明：Info Density（信息密度）
+
+```
+Info Density = ΔPass@1 / avg_injection_tokens × 1000
+
+其中：
+  ΔPass@1          = Pass@1(有记忆注入) - Pass@1(无记忆注入)
+  avg_injection_tokens = 平均注入的记忆 token 数
+
+含义：每注入 1000 个记忆 token，代码通过率提升多少个百分点。
+
+为何使用 Info Density 而非 Recall@K？
+  - 传统 Recall@K 只验证"检索到了没有"，不验证"检索到的是否真正有用"
+  - Info Density 直接度量记忆注入对下游任务的实际贡献
+  - 对小模型（端侧 8B~32B）尤其关键：噪音注入会显著降低 Pass@1
+```
+
+---
+
+## 企业级靶机（Enterprise Fixtures）
+
+木兰 v3.0 引入了来自真实 GitHub 万星项目的结构化 Benchmark 靶机，代表真实的工业复杂度。
+
+| 项目 | Stars | 领域 | 技术栈 | Case 数 |
+|---|---|---|---|---|
+| `macrozheng/mall` | 80k+ | 电商订单服务 | Java Spring Boot + MyBatis | 4 |
+| `halo-dev/halo` | 35k+ | 内容管理模块 | Java Spring Boot + JPA | 2 |
+
+### 为何选择这两个项目？
+
+- **真实复杂度**：两者均是生产级 Java 单体/微服务项目，包含完整的 Service/Repository/Controller 分层
+- **可验证性**：代码结构明确，AIU 类型和目标文件可精确标注 ground truth
+- **无外部依赖**：所有测试基于提取的 fixture 代码片段，无需 clone 完整仓库或访问网络
+
+> 测试用例位于 `benchmark/v2/layer2_memory/tasks/enterprise_projects/`
+
+---
+
 ## 设计原则
 
-
-| 原则          | 实现方式                                                |
-| ----------- | --------------------------------------------------- |
-| **分层隔离**    | 三层独立评测，每层可单独运行，互不依赖                                 |
+| 原则 | 实现方式 |
+|---|---|
+| **分层隔离** | 三层独立评测，每层可单独运行，互不依赖 |
 | **YAML 驱动** | 新增测试 case 只需在 `fixtures/` 或 `tasks/` 添加 YAML，无需修改代码 |
-| **离线优先**    | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行            |
-| **公平对比**    | Layer 1 对接 SWE-bench 行业标准，保证结果可信                    |
-| **模块注册**    | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成   |
-
+| **离线优先** | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行 |
+| **公平对比** | Layer 1 对接 SWE-bench 行业标准，保证结果可信 |
+| **模块注册** | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成 |
 
 ---
 
@@ -43,29 +131,6 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 ---
 
-## 三层架构
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Layer 1: SWE-bench 信用锚（Credibility Anchor）                     │
-│  对接 princeton-nlp/SWE-bench，与工业标准对齐                         │
-│  核心指标：Pass@1 / Resolve Rate vs. baseline                        │
-│  运行条件：离线=格式验证；在线=需 LLM + Docker 沙盒                   │
-├─────────────────────────────────────────────────────────────────────┤
-│  Layer 2: 记忆质量评测（Memory Quality）                              │
-│  验证木兰"记忆 → 代码质量提升"的核心价值主张                            │
-│  4 个子维度：D1 准确检索 / D2 注入提升 / D3 跨任务保留 / D4 漂移检测     │
-│  运行条件：D1/D4 离线可运行；D2/D3 需 LLM API                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Layer 3: 安全门控评测（Safety Gates）                                │
-│  验证木兰"代码不上传，知识不泄露"的工程安全底线                          │
-│  3 个子系统：SanitizationGate / MigrationGate / ArchCheck            │
-│  运行条件：完全离线，< 1 秒                                            │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
 ## Layer 3：安全门控评测（完全离线）
 
 ### 三个子系统
@@ -74,13 +139,11 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/core/sanitize.py` 能否正确拦截各类敏感凭证。
 
-
-| 类别                       | 覆盖场景（fixture 数） | 指标              |
-| ------------------------ | --------------- | --------------- |
-| API Key                  | 12 条（含阴性样例 3 条） | 检出率 / 误报率       |
-| JWT / 密码 / IP / 邮箱 / DSN | 14 条            | 检出率（critical 级） |
-| 误报防护                     | 6 条             | 假阳性率（目标 = 0%）   |
-
+| 类别 | 覆盖场景（fixture 数） | 指标 |
+|---|---|---|
+| API Key | 12 条（含阴性样例 3 条） | 检出率 / 误报率 |
+| JWT / 密码 / IP / 邮箱 / DSN | 14 条 | 检出率（critical 级） |
+| 误报防护 | 6 条 | 假阳性率（目标 = 0%） |
 
 **检测类别：**
 
@@ -96,31 +159,27 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/workflow/migration_gate.py` 能否正确阻断"ORM 变更但无迁移脚本"的场景。
 
-
-| 场景                     | 预期行为 |
-| ---------------------- | ---- |
-| 新增 Model 字段，无迁移脚本      | 阻断   |
-| 删除 Model 字段，无迁移脚本      | 阻断   |
-| 新增整张表（Model 类），无迁移脚本   | 阻断   |
-| 字段重命名，无迁移脚本            | 阻断   |
-| 有完整 `up() / down()` 迁移 | 通过   |
-| 无 ORM 变更（纯 Service 修改） | 不触发  |
-
+| 场景 | 预期行为 |
+|---|---|
+| 新增 Model 字段，无迁移脚本 | 阻断 |
+| 删除 Model 字段，无迁移脚本 | 阻断 |
+| 新增整张表（Model 类），无迁移脚本 | 阻断 |
+| 字段重命名，无迁移脚本 | 阻断 |
+| 有完整 `up() / down()` 迁移 | 通过 |
+| 无 ORM 变更（纯 Service 修改） | 不触发 |
 
 #### ArchCheck — 架构约束扫描
 
 验证架构规则检测覆盖率（AC-1~AC-6）。
 
-
-| 规则   | 约束内容                                               | 阳性 case | 阴性 case |
-| ---- | -------------------------------------------------- | ------- | ------- |
-| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka）               | 1       | 1       |
-| AC-2 | Service 函数必须以 `RequestContext` 作为首参                | 1       | 1       |
-| AC-3 | 写操作必须调用 `AuditService.log()`                       | 1       | 1       |
-| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`）          | 1       | 1       |
-| AC-5 | 禁止在 Service 层使用 `session.begin()`（使用 autobegin 模式） | 1       | 1       |
-| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog）                   | 1       | 1       |
-
+| 规则 | 约束内容 | 阳性 case | 阴性 case |
+|---|---|---|---|
+| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka） | 1 | 1 |
+| AC-2 | Service 函数必须以 `RequestContext` 作为首参 | 1 | 1 |
+| AC-3 | 写操作必须调用 `AuditService.log()` | 1 | 1 |
+| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`） | 1 | 1 |
+| AC-5 | 禁止在 Service 层使用 `session.begin()`（使用 autobegin 模式） | 1 | 1 |
+| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog） | 1 | 1 |
 
 ### 综合得分计算
 
@@ -161,7 +220,7 @@ Layer 3: 安全门控评测
 
 评测 `hybrid_search` / `find_by_concept` 能否从记忆图谱中检索到必要知识。
 
-```python
+```
 指标：
   Recall@K    — 前 K 条结果中包含了多少"必要记忆"
   Precision@K — 前 K 条结果中有多少是真正相关的
@@ -177,11 +236,11 @@ Layer 3: 安全门控评测
 
 评测"有记忆注入 vs 无记忆注入"对代码生成质量的提升。
 
-```python
-指标：
-  lift_pass_at_1   = Pass@1(with_injection) - Pass@1(without_injection)
-  token_roi        = lift_pass_at_1 / avg_injection_tokens * 1000
-                     （每千个注入 token 带来的 Pass@1 提升）
+```
+核心指标：
+  ΔPass@1      = Pass@1(with_injection) - Pass@1(without_injection)
+  Info Density = ΔPass@1 / avg_injection_tokens × 1000
+                 （每注入 1000 token 带来的 Pass@1 提升）
 
 无 LLM API 时：D2 全部 SKIPPED，其权重（0.35）转移给 D1（0.55）和 D4（0.45）
 ```
@@ -194,7 +253,7 @@ Layer 3: 安全门控评测
 
 评测记忆新鲜度系统能否正确检测"代码被修改后，引用该代码的记忆应被标记为过时"。
 
-```python
+```
 评测方式（自包含，无需真实记忆库）：
   1. 构造初始代码内容 + 引用该代码的记忆文件
   2. 计算原始语义哈希
@@ -208,13 +267,11 @@ Layer 3: 安全门控评测
 
 **D4 覆盖场景：**
 
-
-| 场景                      | 预期结果  |
-| ----------------------- | ----- |
-| 函数参数类型 + 数量变更           | 触发漂移  |
+| 场景 | 预期结果 |
+|---|---|
+| 函数参数类型 + 数量变更 | 触发漂移 |
 | 仅添加注释和空行（gofmt / Black） | 不触发漂移 |
-| 文件内容清空（模拟删除）            | 触发漂移  |
-
+| 文件内容清空（模拟删除） | 触发漂移 |
 
 ### 综合得分计算
 
@@ -234,12 +291,24 @@ Layer 3: 安全门控评测
 
 将木兰的代码生成能力与工业标准基准对齐，确保评测结果可被外部验证和比较。
 
+### 核心价值主张验证
+
+```
+实验设计（双轨对比）：
+  Baseline（无注入）：直接提供 Issue 描述，让 Coder 生成 patch
+  Mulan-Enhanced（有注入）：注入木兰基于本体路由检索到的架构上下文
+
+核心输出：
+  ΔPass@1 = Pass@1(Mulan-Enhanced) - Pass@1(Baseline)
+  目标：ΔPass@1 > 0，证明"端侧小模型+精准上下文 > 大模型+全量噪音"
+```
+
 ### 离线模式（当前实现）
 
 在无 LLM API 的环境下，Layer 1 执行：
 
 - 任务格式完整性验证（6 个必填字段）
-- `expected_aiu_type` 是否在 28 种内置类型中
+- `expected_aiu_type` 是否在 43 种内置类型中
 - AIU 类型覆盖率统计
 
 ```
@@ -253,27 +322,26 @@ Layer 3: 安全门控评测
 if config.llm_available and not config.dry_run:
     # TODO: 调用 mulan ep run 生成 patch
     # TODO: 在 Docker 沙盒中运行 fail_tests → pass_tests
-    # TODO: 计算 Pass@1 和 Resolve Rate
+    # TODO: 计算 ΔPass@1 和 Resolve Rate vs Baseline
     pass
 ```
 
 在线模式的完整流程：
 
 1. 读取 SWE-bench 任务（本地 YAML 或 princeton-nlp/SWE-bench HuggingFace 数据集）
-2. 为每个任务调用 `mulan ep run` 生成 patch
-3. 在 Docker 沙盒中执行 `fail_tests`，验证 `pass_tests` 是否全部通过
-4. 与 baseline（直接 LLM，无记忆注入）对比，计算 ΔPass@1
+2. 为每个任务调用 `mulan ep run` 生成 patch（Mulan-Enhanced 组）
+3. 同任务使用裸 LLM（无记忆注入）生成 patch（Baseline 组）
+4. 在 Docker 沙盒中执行 `fail_tests`，验证 `pass_tests` 是否全部通过
+5. 计算 ΔPass@1 和 Info Density
 
 ### 内置样本任务
 
-
-| ID                   | 仓库                    | 难度  | AIU 类型  |
-| -------------------- | --------------------- | --- | ------- |
-| `swe_django_001`     | django/django         | 中   | BUG_FIX |
-| `swe_django_002`     | django/django         | 易   | BUG_FIX |
-| `swe_fastapi_001`    | tiangolo/fastapi      | 中   | BUG_FIX |
-| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难   | BUG_FIX |
-
+| ID | 仓库 | 难度 | AIU 类型 |
+|---|---|---|---|
+| `swe_django_001` | django/django | 中 | BUG_FIX |
+| `swe_django_002` | django/django | 易 | BUG_FIX |
+| `swe_fastapi_001` | tiangolo/fastapi | 中 | BUG_FIX |
+| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难 | BUG_FIX |
 
 ---
 
@@ -298,32 +366,13 @@ cases:
 
 **无需修改任何 Python 代码**，评测器自动加载新文件。
 
-### 新增 Migration 测试场景
-
-在 `layer3_safety/fixtures/migration/` 下创建或编辑 YAML 文件：
-
-```yaml
-schema_version: "1.0"
-gate: "MigrationGate"
-
-cases:
-  - id: mig_new_001
-    category: constraint_add_no_migration
-    description: "新增唯一约束，无迁移脚本 → 应阻断"
-    orm_diff: |
-      +    __table_args__ = (UniqueConstraint("user_id", "tenant_id"),)
-    migration_files: []
-    should_block: true
-    severity: critical
-```
-
 ### 新增 ArchCheck 规则 case
 
-在 `layer3_safety/fixtures/arch/violations.yaml` 添加 case：
+在 `layer3_safety/fixtures/arch/violations.yaml` 添加 case（同时在 `ArchCheckSubEvaluator._RULES` 添加对应正则）：
 
 ```yaml
   - id: arc_ac7_001
-    rule_id: "AC-7"           # 与 arch_check.py 中的新规则 ID 一致
+    rule_id: "AC-7"
     description: "新规则：禁止 Service 层直接读取环境变量"
     code: |
       import os
@@ -332,8 +381,6 @@ cases:
     expected_violations: 1
     should_flag: true
 ```
-
-同时在 `ArchCheckSubEvaluator._RULES` 中添加对应正则。
 
 ### 新增记忆质量检索 case
 
@@ -349,42 +396,18 @@ cases:
     description: "Spring Boot @Transactional 相关记忆检索"
     query: "Spring Boot transaction propagation rollback"
     relevant_ids:
-      - "MEM-L-045"    # 填写真实记忆 ID
+      - "MEM-L-045"
       - "AD-012"
     domain_concepts: ["transaction", "spring-boot", "rollback"]
     k: 5
 ```
 
-### 新增 D4 漂移检测场景
+### 新增企业级靶机项目
 
-在 `layer2_memory/tasks/<domain>/` 下创建 `*_drift.yaml`：
-
-```yaml
-schema_version: "1.0"
-domain: "go_gin"
-category: "drift"
-
-cases:
-  - id: go_drift_001
-    description: "Go Gin handler 返回类型变更"
-    memory_content: |
-      ---
-      id: MEM-DRIFT-001
-      cites_files:
-        - "{cited_file}"
-      ---
-      # 用户 API 规范
-      GET /users/:id 返回 UserResponse 结构体。
-    cited_file_content: |
-      func GetUser(c *gin.Context) {
-          c.JSON(200, UserResponse{})
-      }
-    modified_content: |
-      func GetUser(c *gin.Context) (UserResponse, error) {
-          return UserResponse{}, nil
-      }
-    should_drift: true
-```
+1. 在 `layer2_memory/tasks/enterprise_projects/<project_name>/` 创建目录
+2. 添加 `README.md`（项目背景说明）
+3. 添加 `*_cases.yaml`（测试用例，含 fixture 代码片段）
+4. 评测器自动扫描并加载
 
 ### 新增评测层（4 步完成）
 
@@ -392,37 +415,26 @@ cases:
 # 步骤 1: 创建目录 benchmark/v2/layer4_<name>/
 
 # 步骤 2: 实现 Evaluator
-# benchmark/v2/layer4_<name>/evaluator.py
 from benchmark.v2.schema import BaseEvaluator, BenchmarkLayer, BenchmarkConfig, LayerResult
 
 class MyEvaluator(BaseEvaluator):
-
     @property
     def layer(self) -> BenchmarkLayer:
-        return BenchmarkLayer.LAYER4_NEW  # 先在 schema.py 的 BenchmarkLayer 枚举中添加
+        return BenchmarkLayer.LAYER4_NEW
 
     @property
     def is_offline_capable(self) -> bool:
-        return True  # 如果可以离线运行
+        return True
 
     def run(self, config: BenchmarkConfig) -> LayerResult:
-        # 实现评测逻辑
         ...
 
 # 步骤 3: 在 schema.py 中扩展枚举
 class BenchmarkLayer(Enum):
-    LAYER1_SWEBENCH = 1
-    LAYER2_MEMORY   = 2
-    LAYER3_SAFETY   = 3
-    LAYER4_NEW      = 4  # 新增
+    LAYER4_NEW = 4  # 新增
 
 # 步骤 4: 在 runner.py 中注册
-from benchmark.v2.layer4_new.evaluator import MyEvaluator
-
-_EVALUATOR_REGISTRY = {
-    ...
-    BenchmarkLayer.LAYER4_NEW: MyEvaluator,  # 注册
-}
+_EVALUATOR_REGISTRY[BenchmarkLayer.LAYER4_NEW] = MyEvaluator
 _LEVEL_LAYERS[RunLevel.FULL].append(BenchmarkLayer.LAYER4_NEW)
 ```
 
@@ -435,62 +447,40 @@ benchmark/v2/
 ├── README.md                        # 本文件
 ├── __init__.py                      # 公共 API 导出
 ├── schema.py                        # 共享数据结构
-│   ├── BenchmarkLayer（层级枚举）
-│   ├── RunLevel（运行级别：offline/fast/full）
-│   ├── TaskResult（单任务结果）
-│   ├── LayerResult（单层汇总）
-│   ├── BenchmarkResult（整体结果）
-│   ├── BenchmarkConfig（运行配置）
-│   └── BaseEvaluator（评测器基类）
-│
 ├── runner.py                        # 主调度器
-│   ├── _EVALUATOR_REGISTRY          # 评测器注册表（扩展入口）
-│   ├── _LEVEL_LAYERS                # 各级别默认层配置
-│   ├── run_benchmark()              # 核心执行函数
-│   ├── report()                     # 报告输出路由
-│   └── main()                      # CLI 入口
-│
 ├── config.yaml                      # 默认阈值配置
 │
-├── layer1_swebench/                 # SWE-bench 信用锚层
-│   ├── __init__.py
-│   ├── evaluator.py                 # SWEBenchEvaluator
+├── layer1_swebench/                 # L1: SWE-bench 信用锚层
+│   ├── evaluator.py
 │   └── tasks/
 │       └── sample_django_001.yaml   # 内置样本任务（4 个）
 │
-├── layer2_memory/                   # 记忆质量评测层
-│   ├── __init__.py
-│   ├── evaluator.py                 # MemoryEvaluator（4 个子维度）
+├── layer2_memory/                   # L2: 记忆质量评测层
+│   ├── evaluator.py
 │   ├── metrics/
-│   │   ├── __init__.py
 │   │   ├── retrieval.py             # D1 准确检索（Recall@K / MRR / Hit@1）
-│   │   ├── injection_lift.py        # D2 注入提升（ΔPass@1 / Token ROI）
-│   │   ├── retention.py             # D3 跨任务保留（占位，待实现）
-│   │   └── drift.py                 # D4 漂移检测（语义哈希对比）
+│   │   ├── injection_lift.py        # D2 注入提升（ΔPass@1 / Info Density）
+│   │   ├── retention.py             # D3 跨任务保留（占位）
+│   │   ├── drift.py                 # D4 漂移检测（语义哈希对比）
+│   │   └── funnel.py                # 三层漏斗检索评测
+│   ├── fixtures/memories/           # 漏斗测试 ground-truth 记忆节点
 │   └── tasks/
-│       └── generic_python/
-│           ├── gp_retrieval.yaml    # D1 检索 case（5 个）
-│           └── gp_drift.yaml        # D4 漂移 case（3 个）
+│       ├── generic_python/          # Python 通用检索 / 漂移 case
+│       ├── funnel_test/             # 三层检索漏斗验证 case（9 个）
+│       └── enterprise_projects/
+│           ├── mall_order/          # macrozheng/mall 订单服务（4 case）
+│           └── halo_content/        # halo-dev/halo 内容管理（2 case）
 │
-├── layer3_safety/                   # 安全门控评测层（完全离线）
-│   ├── __init__.py
-│   ├── evaluator.py                 # SafetyEvaluator（3 个子评测器）
-│   │   ├── SanitizeSubEvaluator     # 凭证检测
-│   │   ├── MigrationSubEvaluator    # ORM 变更拦截
-│   │   └── ArchCheckSubEvaluator    # 架构规则扫描
+├── layer3_safety/                   # L3: 安全门控评测层（完全离线）
+│   ├── evaluator.py
 │   └── fixtures/
-│       ├── sanitize/
-│       │   ├── api_keys.yaml        # 12 个 API Key case
-│       │   └── secrets.yaml         # 14 个 JWT/IP/密码/邮箱 case
-│       ├── migration/
-│       │   └── orm_migration.yaml   # 8 个 ORM 变更 case
-│       └── arch/
-│           └── violations.yaml      # 12 个架构违规 case（AC-1~AC-6 各 2 个）
+│       ├── sanitize/                # 凭证检测（26 个 case）
+│       ├── migration/               # ORM 变更拦截（8 个 case）
+│       └── arch/                    # 架构规则（12 个 case，AC-1~AC-6）
 │
 └── reporters/                       # 报告输出
-    ├── __init__.py
-    ├── console.py                   # 彩色终端输出
-    └── markdown.py                  # GitHub 可渲染 Markdown 报告
+    ├── console.py                   # 彩色终端
+    └── markdown.py                  # GitHub 可渲染 Markdown
 ```
 
 ---
@@ -510,7 +500,7 @@ mulan benchmark [OPTIONS]
   --llm                          声明 LLM API 可用（开启在线评测维度）
   --dry-run                      仅打印将要执行的任务，不实际运行
   --output {console,json,markdown}  报告格式（默认: console）
-  --output-path PATH             报告保存路径（json/markdown 格式时有效）
+  --output-path PATH             报告保存路径
   --max-tasks N                  每层最多运行任务数（调试用）
   -v, --verbose                  详细输出（展示每条 case 的结果）
 ```
@@ -524,25 +514,25 @@ mulan benchmark [OPTIONS]
 ```yaml
 layer3:
   weights:
-    sanitize:  0.50    # SanitizationGate 权重最高（安全底线）
+    sanitize:  0.50
     migration: 0.30
     arch:      0.20
-  sanitize_critical_min_detection_rate: 0.90   # critical 检出率警戒线
-  migration_min_block_accuracy: 0.85           # 阻断精度警戒线
-  arch_min_detection_rate: 0.75                # 规则覆盖率警戒线
+  sanitize_critical_min_detection_rate: 0.90
+  migration_min_block_accuracy: 0.85
+  arch_min_detection_rate: 0.75
 
 layer2:
   weights:
     d1_retrieval: 0.35
-    d2_injection: 0.35    # 无 LLM 时权重转移
+    d2_injection: 0.35
     d4_drift:     0.30
   retrieval_min_recall_at_5: 0.60
   drift_min_detection_rate:  0.80
 
 layer1:
-  min_format_compliance: 1.00    # 格式合规性 100%
-  min_aiu_coverage: 0.50         # AIU 类型覆盖率 50%
-  target_pass_at_1: 0.30         # 在线目标（参考值）
+  min_format_compliance: 1.00
+  min_aiu_coverage: 0.50
+  target_delta_pass_at_1: 0.10   # ΔPass@1 目标：Mulan-Enhanced 比 Baseline 至少提升 10pp
   target_resolve_rate: 0.45
 ```
 
@@ -550,23 +540,21 @@ layer1:
 
 ## 与 v1 Benchmark 的关系
 
-
-| 维度   | v1 Benchmark          | v2 Benchmark                                                     |
-| ---- | --------------------- | ---------------------------------------------------------------- |
-| 定位   | 验证记忆检索 vs keyword 的优劣 | 全面评测木兰工具链的三大核心价值                                                 |
-| 依赖   | 需要向量数据库（可选）+ LLM API  | Layer 3 完全离线；Layer 2 D1/D4 离线                                    |
-| 扩展性  | 固定指标，需修改代码添加场景        | YAML 驱动，添加 case 无需改代码                                            |
-| 行业对齐 | 内部 MDP 任务集            | SWE-bench Verified（Layer 1 信用锚）                                  |
-| 测试覆盖 | ~20 个任务               | 46 个 L3 + 8 个 L2 + 4 个 L1 = 58+（可通过 synthetic pipeline 扩充至 300+） |
-
+| 维度 | v1 Benchmark | v2 Benchmark |
+|---|---|---|
+| 定位 | 验证记忆检索 vs keyword 的优劣 | 全面评测木兰工具链的三大核心价值 |
+| 检索方案 | 向量数据库（ES/Milvus 可选）+ LLM | **本体路由**（无向量库）+ 语义哈希 |
+| 依赖 | 需 ES/Milvus + LLM API | Layer 3 完全离线；Layer 2 D1/D4 离线 |
+| 扩展性 | 固定指标，需修改代码添加场景 | YAML 驱动，添加 case 无需改代码 |
+| 行业对齐 | 内部 MDP 任务集 | SWE-bench Verified（Layer 1 信用锚）|
+| 测试覆盖 | ~20 个任务 | 58+ 个（可通过 synthetic pipeline 扩充至 300+）|
+| 企业靶机 | 无 | mall (80k⭐) + halo (35k⭐) 真实工业用例 |
 
 v1 Benchmark 代码保留在 `benchmark/src/` 目录，向后兼容。
 
 ---
 
-## Phase 3 / Phase 4 扩展
-
-### 合成数据生成（Phase 3）
+## 合成数据生成
 
 ```bash
 # 从当前仓库的 commit 生成合成测试 case（dry-run 预览）
@@ -584,21 +572,6 @@ python3 scripts/benchmark_generator.py --repo . --max 20 --llm
 > **防过拟合设计**：合成数据单独存放在 `tasks/synthetic/`，通过 `--include-synthetic`
 > 标志才会参与评测，并在报告中与 human case 分开呈现。
 
-### Pass@1 闭环评测（Phase 4）
-
-Layer 2 D2 维度现支持真实双轨 LLM 对比（需 LLM API）：
-
-```bash
-# 运行 Pass@1 闭环评测
-mulan benchmark --level full --llm
-
-# 报告将展示：
-# Pass@1(无注入): 18%
-# Pass@1(有注入): 55%  (+37pp，Token ROI = 24.6/1kT)
-```
-
-`SandboxedCodeRunner` 在临时目录中执行代码 + pytest，保证不污染主仓库。
-
 ---
 
 ## 测试
@@ -610,10 +583,9 @@ Benchmark v2 本身也有完整的单元测试：
 pytest tests/benchmark/ -v
 
 # 覆盖内容：
-# - test_schema.py              Schema 数据结构（含 source / syntax_pass / pytest_pass）
+# - test_schema.py              Schema 数据结构
 # - test_layer3_safety.py       SanitizeGate / MigrationGate / ArchCheck
 # - test_layer2_memory.py       检索指标计算 / 漂移检测 / 注入提升（离线）
 # - test_layer1_swebench.py     任务格式验证 / AIU 类型覆盖
 # - test_phase4_pass_at_1.py    SandboxedCodeRunner / dual-rail 降级
 ```
-
