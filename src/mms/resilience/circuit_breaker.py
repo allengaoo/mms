@@ -15,11 +15,22 @@
 配置（来自 config.yaml::resilience.circuit_breaker）：
   failure_threshold:        3   连续失败 N 次后开路
   recovery_timeout_seconds: 60  开路后等待 N 秒进入半开状态
+
+状态转移时同步写入 alert_mulan.log（MDR 全局告警日志）：
+  CLOSED → OPEN:      FATAL — 外部算力掉线告警
+  OPEN → HALF_OPEN:   WARN  — 正在尝试恢复
+  HALF_OPEN → CLOSED: INFO  — 熔断器已恢复
 """
 import datetime
 import json
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
+
+# 安全导入告警日志（避免循环依赖，失败时静默降级）
+try:
+    from mms.observability.logger import alert_circuit as _alert_circuit  # type: ignore[import]
+except Exception:
+    _alert_circuit = None  # type: ignore[assignment]
 
 R = TypeVar("R")
 
@@ -127,22 +138,38 @@ class CircuitBreaker:
             remaining = self._recovery_timeout - elapsed
             if remaining > 0:
                 raise CircuitOpenError(self.model_name, remaining)
+            # OPEN → HALF_OPEN：冷却期结束，准备探测
             state["status"] = _STATE_HALF_OPEN
             self._save_state(state)
+            if _alert_circuit:
+                _alert_circuit(self.model_name, _STATE_OPEN, _STATE_HALF_OPEN, f"冷却期结束（{self._recovery_timeout}s），开始探测")
 
         try:
             result = func(*args, **kwargs)
+            prev_status = state["status"]
             state["status"] = _STATE_CLOSED
             state["failure_count"] = 0
             state["last_success_at"] = now
             self._save_state(state)
+            # HALF_OPEN → CLOSED：恢复通知
+            if prev_status == _STATE_HALF_OPEN and _alert_circuit:
+                _alert_circuit(self.model_name, _STATE_HALF_OPEN, _STATE_CLOSED, "探测成功，熔断器已恢复")
             return result
 
         except Exception:
+            prev_status = state["status"]
             state["failure_count"] = state.get("failure_count", 0) + 1
             state["last_failure_at"] = now
             if state["failure_count"] >= self._threshold:
                 state["status"] = _STATE_OPEN
+                # CLOSED / HALF_OPEN → OPEN：致命告警
+                if _alert_circuit:
+                    _alert_circuit(
+                        self.model_name,
+                        prev_status,
+                        _STATE_OPEN,
+                        f"连续失败 {state['failure_count']} 次",
+                    )
             self._save_state(state)
             raise
 

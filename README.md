@@ -9,7 +9,7 @@
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
-[Tests: 823 passed](#测试)
+[Tests: 847 passed](#测试)
 [License: MIT](LICENSE)
 
 ---
@@ -167,6 +167,8 @@
 | 架构约束扫描             | ✅ 稳定 | 6 条硬性规则（AC-1~AC-6），可通过 seed_packs 自定义扩展       |
 | 多语言 AST 骨架化        | ✅ 稳定 | Python / Java / Go / TypeScript 四语言统一指纹提取     |
 | 诊断追踪（Trace）        | ✅ 稳定 | Oracle 10046 风格，4 级诊断级别，完整 LLM 调用审计           |
+| 全局告警日志（alert）    | ✅ 稳定 | `alert_mulan.log` 系统心电图，熔断/崩溃事件自动写入，按天轮转      |
+| 崩溃现场保全（Incident） | ✅ 稳定 | sys.excepthook 接管，自动保全 call_stack.dmp + LLM 有毒提示词 |
 
 
 **第五层：自学习**
@@ -187,7 +189,8 @@
 | ------------- | ---- | ----------------------------------------- |
 | src/mms/ 分包重组 | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅通过 `__init__.py` 暴露 |
 | Benchmark v2  | ✅ 稳定 | 三层模块化评测框架，完全离线可运行（见 [基准测试](#基准测试)）        |
-| 测试套件          | ✅ 稳定 | **757** 测试用例，无需 LLM API 可全部通过             |
+| 测试套件          | ✅ 稳定 | **847** 测试用例，无需 LLM API 可全部通过             |
+| MDR 诊断基础设施   | ✅ 稳定 | Oracle ADR 风格：alert_mulan.log + Incident Dump + `mulan diag` CLI |
 
 
 ### 技术栈
@@ -1073,6 +1076,20 @@ pytest tests/ --cov=src/mms --cov-report=html
 - ✅ **detect_contradictions()**：两阶段检测（关键词级离线 + LLM 语义在线），爆炸半径控制（同层 + hot/warm + max 20 候选）
 - ✅ **apply_contradiction_resolution()**：自动建立 contradicts 边 + archive_node 降级（切断入边，hybrid_search 永久忽略）
 - ✅ **graph_resolver 扩展**：`get_candidates_for_contradiction_check()` / `add_contradicts_edge()` / `archive_node()` 新方法
+
+### 已完成（v3.2）
+
+**MDR 诊断基础设施（Oracle ADR 哲学落地）**
+
+- ✅ **全局告警日志 `alert_mulan.log`**：`src/mms/observability/logger.py` 新建，写入路径 `docs/memory/private/mdr/alert/`，按天轮转（保留 30 天），仅记录系统级重大事件（启动/关闭/熔断/崩溃），对外暴露 `alert_info/alert_warn/alert_fatal/alert_circuit` 四个模块级函数，运维人员只需 `tail -f alert_mulan.log` 实时监控系统存活状态
+
+- ✅ **熔断器状态转移告警**：`circuit_breaker.py` 集成告警日志，三个状态转移节点均触发：`CLOSED→OPEN`（FATAL 级，算力掉线）/ `OPEN→HALF_OPEN`（WARN 级，恢复探测）/ `HALF_OPEN→CLOSED`（INFO 级，正常恢复）；通过安全 import（try/except）设计，避免循环依赖
+
+- ✅ **Incident Dump 黑匣子**：`src/mms/observability/incident.py` 新建，通过 `sys.excepthook` 全局接管致命崩溃现场，自动保全三份文件：`call_stack.dmp`（完整 traceback + 最深崩溃帧的局部变量快照）/ `prompt_context.txt`（LLM 有毒提示词，供开发者直接复现幻觉行为）/ `incident_manifest.json`（结构化元数据），处理器自身有双重 try/except 保护，不会因诊断代码 bug 导致二次崩溃
+
+- ✅ **ContextVars 上下文捕获**：`set_last_llm_context(prompt, response)` 通过 Python 原生 `contextvars.ContextVar` 存储最后一次 LLM 调用输入输出，asyncio / 多线程场景下各 EP 互不干扰，崩溃时自动写入 `prompt_context.txt`
+
+- ✅ **`mulan diag` CLI**：`cli.py` 新增三个子命令：`diag status`（读取 `alert_mulan.log` 尾部，统计 FATAL/WARN 告警，存在未处理 FATAL 时退出码为 1）/ `diag list`（列出所有 Incident 记录）/ `diag pack <incident_id>`（打包 Incident 目录 + 相关 EP trace + ast_index.json 为 ZIP，供附到 GitHub Issue）
 
 ### 中期目标（v4.5）
 

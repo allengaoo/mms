@@ -27,6 +27,10 @@
     private list [--status active] — 列出所有 EP 工作区
     private promote <EP-NNN> <file> <layer> <new-id> — 升级为 shared 记忆
     private close <EP-NNN>       — 关闭 EP 工作区
+  diag            — MDR 诊断工具（类 Oracle ADRCI）
+    diag status                 — 查看 alert_mulan.log 告警状态
+    diag list                   — 列出所有 Incident 记录
+    diag pack <incident_id>     — 打包 Incident 诊断数据为 ZIP
 
 用法示例：
   mulan status
@@ -1333,6 +1337,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_tcfg.add_argument("--level", type=int, choices=[1, 4, 8, 12], default=None,
                         help="修改诊断级别")
 
+    # ─── diag 命令（MDR 诊断工具，类比 Oracle ADRCI）────────────────────────
+    p_diag = sub.add_parser(
+        "diag",
+        help="诊断工具：查看系统告警日志 / 打包崩溃现场（类 Oracle ADRCI）",
+    )
+    p_diag_sub = p_diag.add_subparsers(dest="subcommand", metavar="<subcommand>")
+
+    # diag status
+    p_diag_sub.add_parser(
+        "status",
+        help="读取 alert_mulan.log 尾部，报告当前系统是否有未处理的 FATAL 告警",
+    )
+
+    # diag pack
+    p_dpack = p_diag_sub.add_parser(
+        "pack",
+        help="打包指定 Incident 的诊断数据为 ZIP（供附到 GitHub Issue）",
+    )
+    p_dpack.add_argument("incident_id", metavar="<incident_id>", help="Incident ID（如 inc_20260427_2347_JSONDecodeError）")
+    p_dpack.add_argument("--output-dir", metavar="DIR", default=None,
+                         help="ZIP 输出目录（默认：项目根目录）")
+
+    # diag list
+    p_diag_sub.add_parser(
+        "list",
+        help="列出所有已记录的 Incident（时间倒序）",
+    )
+
     # ── EP-130: bootstrap ────────────────────────────────────────────────────
     p_bootstrap = sub.add_parser(
         "bootstrap",
@@ -2466,6 +2498,149 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     return bench_main(bench_argv)
 
 
+def cmd_diag(args: argparse.Namespace) -> int:
+    """diag 子命令：MDR 诊断工具（类比 Oracle ADRCI）"""
+    subcommand = getattr(args, "subcommand", None)
+
+    # ── 路径解析 ──────────────────────────────────────────────────────────────
+    _cli_root = Path(__file__).resolve().parent
+    _mdr_root = _cli_root / "docs" / "memory" / "private" / "mdr"
+    _incident_dir = _mdr_root / "incident"
+    _trace_dir = _cli_root / "docs" / "memory" / "private" / "trace"
+
+    # ── diag status ───────────────────────────────────────────────────────────
+    if subcommand == "status" or subcommand is None:
+        try:
+            from mms.observability.logger import tail_log, get_log_path  # type: ignore[import]
+        except ImportError as e:
+            err(f"无法加载 observability.logger: {e}")
+            return 1
+
+        log_path = get_log_path()
+        if not log_path.exists():
+            print("  ✅ alert_mulan.log 尚不存在（系统未记录过告警）")
+            return 0
+
+        lines = tail_log(50)
+        fatal_lines = [l for l in lines if "[CRITICAL]" in l or "[FATAL]" in l or "FATAL" in l]
+        warn_lines  = [l for l in lines if "[WARNING]" in l or "[WARN]" in l or "WARN" in l]
+
+        print(f"\n{'─'*66}")
+        print(f"  Mulan Diag Status  |  {log_path}")
+        print(f"{'─'*66}")
+        print(f"  最近 {len(lines)} 行  |  FATAL: {len(fatal_lines)}  WARN: {len(warn_lines)}")
+        print(f"{'─'*66}")
+
+        # 最近 10 条（倒序显示最新的）
+        recent = lines[-10:]
+        for line in recent:
+            if "FATAL" in line or "CRITICAL" in line:
+                print(f"  \033[91m{line}\033[0m")
+            elif "WARN" in line or "WARNING" in line:
+                print(f"  \033[93m{line}\033[0m")
+            else:
+                print(f"  {line}")
+        print()
+
+        if fatal_lines:
+            print(f"  \033[91m⚠️  存在 {len(fatal_lines)} 条 FATAL 告警，请检查系统状态！\033[0m")
+            return 1
+        print("  ✅ 未发现 FATAL 告警，系统运行正常。")
+        return 0
+
+    # ── diag list ─────────────────────────────────────────────────────────────
+    if subcommand == "list":
+        if not _incident_dir.exists():
+            print("  暂无 Incident 记录（docs/memory/private/mdr/incident/ 不存在）")
+            return 0
+        incidents = sorted(
+            [d for d in _incident_dir.iterdir() if d.is_dir()],
+            key=lambda d: d.name,
+            reverse=True,
+        )
+        if not incidents:
+            print("  暂无 Incident 记录。")
+            return 0
+        print(f"\n{'─'*66}")
+        print(f"  {'Incident ID':<50} {'状态':>8}")
+        print(f"{'─'*66}")
+        for inc in incidents:
+            manifest_path = inc / "incident_manifest.json"
+            exc_type = "?"
+            if manifest_path.exists():
+                try:
+                    import json as _json
+                    m = _json.loads(manifest_path.read_text(encoding="utf-8"))
+                    exc_type = m.get("exc_type", "?")
+                except Exception:
+                    pass
+            print(f"  {inc.name:<50} {exc_type:>8}")
+        print()
+        return 0
+
+    # ── diag pack ─────────────────────────────────────────────────────────────
+    if subcommand == "pack":
+        import shutil
+        import zipfile
+        import json as _json
+
+        incident_id = getattr(args, "incident_id", "")
+        if not incident_id:
+            err("请提供 incident_id，例如：mulan diag pack inc_20260427_2347_JSONDecodeError")
+            return 1
+
+        inc_dir = _incident_dir / incident_id
+        if not inc_dir.exists():
+            err(f"Incident 目录不存在：{inc_dir}")
+            return 1
+
+        output_dir = Path(getattr(args, "output_dir", None) or _cli_root)
+        zip_name = f"mulan_incident_{incident_id}.zip"
+        zip_path = output_dir / zip_name
+
+        # 读取 manifest 以获取 related_ep_id
+        related_ep_id = None
+        manifest_path = inc_dir / "incident_manifest.json"
+        if manifest_path.exists():
+            try:
+                m = _json.loads(manifest_path.read_text(encoding="utf-8"))
+                related_ep_id = m.get("related_ep_id")
+            except Exception:
+                pass
+
+        # 收集文件
+        files_to_pack: list[tuple[Path, str]] = []
+        for f in inc_dir.iterdir():
+            if f.is_file():
+                files_to_pack.append((f, f"incident/{f.name}"))
+
+        # 附加 EP trace 文件
+        if related_ep_id:
+            ep_trace = _trace_dir / related_ep_id.upper() / "mms.trace.jsonl"
+            if ep_trace.exists():
+                files_to_pack.append((ep_trace, f"trace/{related_ep_id}/mms.trace.jsonl"))
+
+        # 附加 ast_index.json（代码地图快照）
+        ast_index = _cli_root / "docs" / "memory" / "_system" / "ast_index.json"
+        if ast_index.exists():
+            files_to_pack.append((ast_index, "system/ast_index.json"))
+
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for src_path, arc_name in files_to_pack:
+                zf.write(src_path, arc_name)
+
+        total_kb = zip_path.stat().st_size // 1024
+        print(f"\n  ✅ 诊断包已生成：{zip_path}  ({total_kb} KB)")
+        print(f"  包含 {len(files_to_pack)} 个文件：")
+        for _, arc in files_to_pack:
+            print(f"    - {arc}")
+        print(f"\n  请将此 ZIP 附到 GitHub Issue，帮助开发者复现问题。")
+        return 0
+
+    err("请指定子命令：status / list / pack <incident_id>")
+    return 1
+
+
 _COMMAND_HANDLERS = {
     "help":          cmd_help,
     "status":        cmd_status,
@@ -2497,10 +2672,18 @@ _COMMAND_HANDLERS = {
     "ast-diff":      cmd_ast_diff,     # EP-130: AST 契约变更检测
     "seed":          cmd_seed,         # EP-131: 种子包管理 + Rule Absorber
     "benchmark":     cmd_benchmark,    # v2 三层 Benchmark
+    "diag":          cmd_diag,         # MDR 诊断工具（类 Oracle ADRCI）
 }
 
 
 def main() -> int:
+    # 安装全局崩溃处理器（MDR Incident Dump），KeyboardInterrupt 不受影响
+    try:
+        from mms.observability.incident import install_crash_handler  # type: ignore[import]
+        install_crash_handler()
+    except Exception:
+        pass  # 诊断模块不可用时静默降级，不影响正常功能
+
     parser = build_parser()
     args = parser.parse_args()
     handler = _COMMAND_HANDLERS.get(args.command)
