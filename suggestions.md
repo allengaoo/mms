@@ -1,183 +1,529 @@
+以下是对木兰（Mulan）系统底层架构、诊断机制、评测体系及组件的结构化深度解析。所有图表均采用高维抽象的 ASCII/文本层级图，方便直接嵌入你的技术白皮书或架构文档中。
 
-
-### 一、 Git Worktree 沙箱隔离的落地细节与优先级
-
-**工程定位与优先级：P0（最高级阻断项）**。在没有物理隔离的情况下，让 AI 直接操作主干代码是工程灾难。必须在木兰的核心调度层强制推行。
-
-**详细实施方案**：
-
-1. **工作区生命周期管理**：
-
-   * 在 `ep_runner.py` 启动阶段，拦截原有就地修改逻辑。
-
-   * 执行 `git worktree add -b mulan-ep-<ID> .mulan-shadow/EP-<ID>`。将生成的目录加入主仓库的 `.gitignore`。
-
-   * 修改 `_paths.py` 的上下文路径解析，将当前执行的 `root_dir` 动态重定向到这个 Shadow Worktree。
-
-2. **AIU 执行与门控（The Execution Loop）**：
-
-   * 所有的 `qwen3-coder-next` 生成`file_applier` 写入、以及 `pytest` 和 `arch_check`，完全在该 Worktree 下独立运行。
-
-   * **Crash Consistency（崩溃一致性）保障**：如果 API 超时、进程被 Kill，主代码库不受任何污染，开发者只需清理 `.mulan-shadow` 目录。
-
-3. **两阶段提交（2PC）合并**：
-
-   * 当 `postcheck` 返回全绿时，触发 Commit 阶段。
-
-   * 切换回主干目录`git checkout main && git merge --squash mulan-ep-<ID>`。
-
-   * 清理沙箱`git worktree remove --force .mulan-shadow/EP-<ID>`。
+最后部分针对你提出的“Oracle 风格诊断与 Trace 基础设施”给出了直接落地的工程重构方案。
 
 ---
 
-### 二、 图谱维护（矛盾检测自动化）的优化方案
+### 图 1：木兰 EP 工作流全景业务流程图 (Business Process Flowchart)
 
-**事实依据**：随着系统演进，基于本体的图谱必定产生逻辑互斥的节点。手工维护 `contradicts` 边在知识量突破 1000 个节点时将彻底失效。
+该图展示了木兰系统从接收任务到完成知识回流的端到端（Top-to-Bottom）单次 Episode（EP）生命周期。
 
-**详细实施方案**：
+```text
 
-1. **触发时机（Trigger Point）**：
+========================================================================================
 
-   * 挂载在 `dream.py` 和 `distill.py` 生成新的 `Pattern` 或 `ADR`（架构决策）写入存储前。
+                      木兰 EP 业务工作流 (Top-to-Bottom Execution)
 
-2. **爆炸半径控制（Blast Radius）**：
+========================================================================================[Start] 用户自然语言输入: "修改 XXX 功能"
 
-   * 不要全图比对。新节点生成后，仅提取与其具有相同 `layer_affinity`（如同属 `DOMAIN` 层）且 `tier` 为 `hot/warm` 的现有图谱节点（控制在 10-20 个内）。
+   │
 
-3. **对抗性 LLM 审查（Adversarial Review）**：
+   ▼
 
-   * 调用 `qwen3-32b`，注入特定的系统提示词：
+【Phase 0: 意图合成】 ──▶ src/mms/workflow/[synthesizer.py](http://synthesizer.py)
 
-     *“你是架构仲裁者。对比【新规则 A】与【旧规则集 B】。若发现互斥（如 A 要求使用 gRPC，B 要求使用 REST），请输出包含冲突节点 ID 的 JSON 数组及理由。”*
+   │  └─ 漏斗分类 (RBO -> Ontology -> LLM)
 
-4. **自动化图谱重构（Graph Mutation）**：
+   │  └─ 输出: [EP-NNN.md](http://EP-NNN.md) (Cursor 提示词任务书)
 
-   * 一旦检测到冲突，木兰底层 API 自动在新旧节点间建立 `contradicts` 边。
+   ▼
 
-   * 触发图谱降级逻辑：将引发冲突的旧节点 `tier` 强制降为 `archive`，切断其所有的 `about` 和 `cites` 入边，使其在未来的 `hybrid_search` 中被永久忽略。
+【Phase 1: 前置检查】 ──▶ src/mms/workflow/[precheck.py](http://precheck.py)
 
----
+   │  └─ 建立 Git Worktree 沙箱 (隔离主分支)
 
-### 三、 Benchmark 的优化方向与 README 重构
+   │  └─ 扫描物理代码，生成 AST 快照 (ast_index.json)
 
-#### 1. Benchmark 优化方向
+   ▼
 
-* **引入执行结果（Pass@1）闭环**：检索的终极目的是代码通过率。在 Benchmark 中必须加入端到端的执行对比。
+【Phase 2: 任务编排】 ──▶ src/mms/execution/unit_[generate.py](http://generate.py)
 
-  * **实验组设计**：提取 SWE-bench Lite 中 20 个 Python 任务。第一组（Baseline）仅提供 Issue 描述让 Coder 生成代码；第二组（Mulan-Enhanced）注入木兰基于本体检索到的项目架构上下文。
+   │  └─ Qwen3-32B 读取 [EP-NNN.md](http://EP-NNN.md)
 
-  * **核心输出**：不仅输出 `Recall@5`，必须输出 `ΔPass@1`（即木兰上下文让通过率提升了多少百分点）。这是证明“端侧小模型+极简高质量上下文 > 云端大模型+全量噪音上下文”的唯一数学武器。
+   │  └─ 输出: DAG (有向无环图) & AIU_Steps (原子工序列表)
 
-#### 2. Benchmark README 更新指南
+   ▼
 
-原 README 仍保留着废弃的“ES+Milvus 混合 RAG”描述，必须彻底改写以反映系统最新状态。
+【Phase 3: 织造循环】 ──▶ src/mms/execution/unit_[runner.py](http://runner.py) 
 
-**重构框架建议**：
+   │  ┌───────────────────[ AIU 执行环 (Loop AIUs) ]────────────────────────┐
 
-* **核心命题修正**：明确声明评测的核心是 **“动态本体路由（Vectorless Ontology）” vs “传统纯文本 BM25”**。彻底删除对 ES/Milvus 的依赖说明。
+   │  │ 1. 上下文注入: graph_[resolver.py](http://resolver.py) (按 layer_affinity 召回 Ontology)    │
 
-* **数据集声明**：重点突出 v3.0 引入的企业级靶机。说明 `mall_order_cases` 和 `halo_content_cases` 是从真实 GitHub 万星项目中提取的结构，代表真实的工业复杂度。
+   │  │ 2. CBO 预算: aiu_cost_[estimator.py](http://estimator.py) (计算 Token 上限)                  │
 
-* **分层评估体系（L1/L2/L3）可视化**：在文档中用表格明确定义：
+   │  │ 3. 代码生成: qwen3-coder-next -> file_[applier.py](http://applier.py) (写入沙箱文件)       │
 
-  * **L3 安全层（完全离线）**：评估木兰是否能拦截代码中的硬编码 Token 和危险 DB 迁移。
+   │  │ 4. 内部评审(可选): internal_[reviewer.py](http://reviewer.py) (Qwen3-32B 拦截)              │
 
-  * **L2 记忆层（离线+LLM）**：展示 `Info Density` 公式，说明为何它比传统的 Recall 更适合评估小模型。
+   │  │ 5. 失败回退: aiu_[feedback.py](http://feedback.py) (触发 3-Strike 扩预算/拆分子任务)          │
 
-  * **L1 执行层**：展示 SWE-bench 的抽样执行通过率（Pass@1）。
+   │  └───────────────────────────────────────────────────────────────────┘
 
----
+   ▼
 
-### 四、 构建高可扩展的 AIU（原子意图单元）体系
+【Phase 4: 质量门控】 ──▶ src/mms/workflow/[postcheck.py](http://postcheck.py)
 
-目前的 43 种 AIU 仍可能存在盲区。硬编码在 Python 代码中的 AIU 体系违反了开闭原则（OCP）。
+   │  └─ AST 漂移检测 (ast_[diff.py](http://diff.py) 验证契约一致性)
 
-**可扩展架构方案（Schema-Driven AIU）**：
+   │  └─ 沙箱中运行 Pytest
 
-1. **纯 YAML 驱动（Data as Code）**：
+   │  └─ 执行 2PC: 验证全绿则 Squash Merge 回主干，否则移除 Worktree
 
-    *彻底废弃 Python 中的 Enum 硬编码。所有 AIU 定义迁移至* `docs/memory/_system/schemas/aius/.yaml`。
+   ▼
 
-2. **定义 AIU 标准契约（Contract Schema）**：
+【Phase 5: 知识回流】 ──▶ src/mms/memory/[distill.py](http://distill.py) & [dream.py](http://dream.py)
 
-   每个 AIU 文件必须包含以下字段，以确保其可执行、可验证：
+   │  └─ 脱敏屏障 (SanitizationGate) 剔除 Token / IP
 
-   ```yaml
+   │  └─ 自动建边 (Auto-Link) 更新 L1-L5 记忆图谱
 
-   id: ROUTE_ADD_ENDPOINT
+   │
 
-   family: D_Interface
+[End] 任务结束，更新图谱健康度
 
-   layer_affinity: ADAPTER
-
-   # 核心：必须明确输入参数的 JSON Schema，供 DAG 编排模型（qwen3-32b）生成时严格遵守
-
-   input_schema:
-
-     method: {type: string, enum: [GET, POST, PUT, DELETE]}
-
-     path: {type: string}
-
-     auth_required: {type: boolean}
-
-   # 核心：验证规则的 AST 选择器
-
-   validation_rules:
-
-     ast_target: "FunctionDef"
-
-     required_decorators:["@router."]
-
-   ```
-
-3. **动态注册表（Dynamic Registry）**：
-
-   * 木兰启动时，读取所有 YAML 文件，动态生成内部可调用的 AIU 策略类。
-
-   * 当用户需要为特定的微服务系统增加一种独有操作（如 `K8S_ADD_SIDECAR`）时，只需放入一个 YAML 文件，木兰的 `task_decomposer` 在下一次规划 DAG 时会自动读取并使用其 `input_schema`。
+```
 
 ---
 
-### 五、 从 GitHub 顶级开源仓库提取的“种子基因（Seed Genes）”
+### 图 2：诊断与追踪层级映射图 (Diagnostic & Trace Layered Diagram)
 
-为了让木兰的 `seed_packs` 具有真实的工业实战价值，以下是从四种语言的 GitHub SOTA（State-of-the-Art）仓库中提取的核心架构红线（AC）与代码模式，可直接转化为木兰的 Ontology 约束。
+解答：“诊断时会产生什么数据？会调用哪些代码段？”
 
-#### 1. Python (参考标的: `tiangolo/full-stack-fastapi-template`)
+```text
 
-*   **架构范式**：FastAPI + SQLAlchemy + Pydantic v2。
+========================================================================================
 
-*   **种子基因（AC 约束）**：
+                      诊断级别与代码调用栈映射 (Oracle 10046 风格)
 
-    *   **AC-PY-01 (DB 会话隔离)**：在 API Route 层，绝对禁止手动实例化 `SessionLocal()`。必须且只能通过 `Depends(get_db)` 依赖注入获取数据库会话。
+========================================================================================
 
-    *   **AC-PY-02 (响应契约)**：路由的 `response_model` 必须绑定继承自 `pydantic.BaseModel` 的类。禁止在返回语句中直接构造并返回 Python 字典`return {"user": ...}`）。
+【Level 1: Basic】(基础状态流转)
 
-#### 2. Java (参考标的: `macrozheng/mall` & `spring-projects/spring-petclinic`)
+ ├── 产生数据：步骤耗时 (Latency)、成功/失败标志、DAG 状态机变迁、AIU_Step 启停事件。
 
-*   **架构范式**：Spring Boot 单体/微服务 + MyBatis/JPA + MapStruct。
+ ├── 核心定位：宏观感知系统"卡在哪一步"。
 
-*   **种子基因（AC 约束）**：
+ └── 追踪源码段：
 
-    *   **AC-JAV-01 (严格充血/贫血边界)**`@Entity` 标注的数据库模型类绝对不允许跨越 `Service` 层边界返回给 `Controller`。所有流出 `Service` 的对象必须通过 MapStruct 转化为 `XxxDTO` 或 `XxxVO`。
+     ├── src/mms/dag/dag_[model.py](http://model.py)       (状态更新钩子)
 
-    *   **AC-JAV-02 (全局异常收敛)**：禁止在 Controller 层书写 `try-catch` 块捕捉业务异常。必须直接抛出自定义的 `BusinessException`，由标注了 `@RestControllerAdvice` 的全局异常处理器统一接管并封装为标准 JSON 信封格式`{"code":..., "message":..., "data":...}`）。
+     ├── src/mms/execution/unit_[cmd.py](http://cmd.py)  (状态机控制器)
 
-#### 3. Go (参考标的: `golang-standards/project-layout` & `go-kratos/kratos`)
+     └── src/mms/workflow/ep_[runner.py](http://runner.py)  (Phase 级别切换)
 
-*   **架构范式**：领域驱动目录结构 + GORM + 错误冒泡机制。
+【Level 4: LLM】(模型调用与成本)
 
-*   **种子基因（AC 约束）**：
+ ├── 产生数据：LLM 模型名称、Prompt Tokens、Completion Tokens、API 请求头、重试计数。
 
-    *   **AC-GO-01 (可见性屏障)**：核心业务逻辑和数据访问层代码必须存放于 `internal/` 目录下`pkg/` 目录只能存放无副作用的纯工具函数。
+ ├── 核心定位：排查 Token 预算溢出、模型幻觉触发频率、并发限流 (Rate Limit)。
 
-    *   **AC-GO-02 (错误包裹栈)**：在非最外层的函数调用中，当捕获到 `err != nil` 时，严禁直接返回原 `err`。必须使用 `fmt.Errorf("do action failed: %w", err)` 进行错误栈包裹（Error Wrapping），保留完整的堆栈上下文。
+ └── 追踪源码段：
 
-#### 4. TypeScript (参考标的: `nestjs/nest` & `alan2207/bulletproof-react`)
+     ├── src/mms/providers/[bailian.py](http://bailian.py)   (API 请求底层)
 
-*   **架构范式**：NestJS (后端) / React Feature-Sliced Design (前端)。
+     ├── src/mms/utils/model_[tracker.py](http://tracker.py) (用量统计器)
 
-*   **种子基因（AC 约束）**：
+     └── src/mms/resilience/[retry.py](http://retry.py)    (退避重试拦截器)
 
-    *   **AC-TS-01 (NestJS 守卫越权防范)**：任何负责处理写操作`@Post`, `@Put`, `@Delete`）的控制器方法，在 AST 层面必须检测到绑定了 `@UseGuards(JwtAuthGuard)` 或类似的权限校验装饰器，禁止存在无鉴权的裸露写接口。
+【Level 8: FileOps】(物理层与沙箱操作)
 
-    *   **AC-TS-02 (React 状态下放)**：对于前端组件，严禁在顶层页面组件（Page Component）中书写直接的 `fetch` 或 `axios` 调用。所有网络请求必须封装在特征目录`features/xxx/api/`）下的自定义 Hook（如 `useQuery` 或 SWR）中。
+ ├── 产生数据：AST 提取耗时、真实写入的沙箱文件路径、写入行数、DB 迁移拦截日志。
+
+ ├── 核心定位：排查"为什么代码没写进去"、沙箱合并失败原因、Git 锁冲突。
+
+ └── 追踪源码段：
+
+     ├── src/mms/execution/[sandbox.py](http://sandbox.py)   (Git Worktree 操作)
+
+     ├── src/mms/execution/file_[applier.py](http://applier.py) (Diff 应用器)
+
+     └── src/mms/core/[writer.py](http://writer.py)         (落盘操作)
+
+【Level 12: Full】(全量语义日志)
+
+ ├── 产生数据：完整的 Prompt 拼接原文、LLM 吐出的原始 JSON/Markdown 文本、SanitizationGate 脱敏详情。
+
+ ├── 核心定位：排查小模型不遵循指令 (Instruction Following) 的语义级 Bug、格式解析崩溃。
+
+ └── 追踪源码段：
+
+     ├── src/mms/memory/[injector.py](http://injector.py)     (上下文拼接组装)
+
+     ├── src/mms/dag/task_[decomposer.py](http://decomposer.py) (输出解析层)
+
+     └── src/mms/core/[sanitize.py](http://sanitize.py)       (正则脱敏引擎)
+
+```
+
+---
+
+### 图 3：Benchmark 测试架构图 (Benchmark Architectural Perspective)
+
+解答：“未来如何修改 Benchmark 代码以及 Debug 时从何处切入？”
+
+```text
+
+========================================================================================
+
+                      Benchmark v2 架构图与 Debug 切入点
+
+========================================================================================
+
+[Entry Point] ──▶ benchmark/run_benchmark_[v2.py](http://v2.py) (入口脚本)
+
+   │
+
+   ▼
+
+[Registry & Dispatcher] ──▶ benchmark/v2/[runner.py](http://runner.py)
+
+   │  └─ 核心逻辑：读取 fixtures/*.yaml，分配至对应层级的 Evaluator
+
+   │  └─ Debug 切入点：如需限制并发或增加超时，在此修改 asyncio / ThreadPool
+
+   │
+
+   ├─▶ 【Layer 1: SWE-Bench 执行锚】 ──▶ benchmark/v2/layer1_swebench/
+
+   │      ├── [evaluator.py](http://evaluator.py) (调度 Git Worktree，触发 `pytest`)
+
+   │      └── tasks/       (存放如 Python 真实项目的 Issue 描述)
+
+   │      └─ 关注指标：Pass@1 (代码通过率), Resolve Rate
+
+   │      └─ Debug 切入点：沙箱隔离失败或测试框架找不到时，断点打在此处。
+
+   │
+
+   ├─▶ 【Layer 2: 记忆检索质量】 ──▶ benchmark/v2/layer2_memory/
+
+   │      ├── [evaluator.py](http://evaluator.py) (调用 hybrid_search，统计 Token)
+
+   │      ├── tasks/funnel_retrieval.yaml (漏斗有效性测试)
+
+   │      └── tasks/mall_order_cases.yaml (企业靶机结构)
+
+   │      └─ 关注指标：Info Density (有效信息密度), Recall@5
+
+   │      └─ Debug 切入点：如果木兰"找不到对应的记忆"，断点打在 `hybrid_search()` 调用处。
+
+   │
+
+   └─▶ 【Layer 3: 安全门控拦截】 ──▶ benchmark/v2/layer3_safety/
+
+          ├── [evaluator.py](http://evaluator.py) (纯离线，输入脏数据测试拦截率)
+
+          └── fixtures/    (存放带假 Token/IP 的文本，非法迁移脚本)
+
+          └─ 关注指标：凭证检出率, 架构规则覆盖率
+
+          └─ Debug 切入点：测试脱敏正则是否误杀，断点打在 `sanitize.py` 内部。
+
+```
+
+---
+
+### 图 4：系统组件详图 (System Component Diagrams)
+
+#### 4.1 全局五层组件图 (Overall System)
+
+```text
+
+┌─────────────────────────────────────────────────────────────┐
+
+│ 1. Task Eng (工作流与任务)   synthesizer | ep_runner | ep_wizard│
+
+├─────────────────────────────────────────────────────────────┤
+
+│ 2. Knowledge (记忆与知识)    hybrid_search | ontology | dream   │
+
+├─────────────────────────────────────────────────────────────┤
+
+│ 3. Code Gen (执行与代码)     unit_generate | unit_runner      │
+
+├─────────────────────────────────────────────────────────────┤
+
+│ 4. Safety (门控与沙箱)       sandbox | arch_check | sanitize  │
+
+├─────────────────────────────────────────────────────────────┤
+
+│ 5. Foundation (基础设施)     providers(llm) | trace | audit   │
+
+└─────────────────────────────────────────────────────────────┘
+
+```
+
+#### 4.2 意图识别、DAG 与 AIU 的内部组件图 (Intent, DAG, AIU)
+
+```text
+
+[用户输入任务]
+
+      │
+
+      ▼
+
+【Intent Classifier 意图漏斗】
+
+  ├── Level 1: RBO (正则/AST特征极速匹配)
+
+  ├── Level 2: Ontology Match (匹配 layers.yaml 实体)
+
+  └── Level 3: LLM 分类 (Qwen3-32B 兜底识别)
+
+      │
+
+      ▼
+
+【Task Decomposer & DAG Generator】
+
+  ├── 读取 aiu_[registry.py](http://registry.py) (获取 43 种 AIU 的 Schema)
+
+  ├── 识别依赖关系 -> 组装 DagState (有向无环图)
+
+  └── 吐出任务队列：[A族_Schema] ->[C族_Data] -> [D族_Interface]
+
+      │
+
+      ▼
+
+【AIU Cost Estimator (CBO)】
+
+  └── 为当前出列的 AIU_Step 估算 Token Budget。
+
+      │
+
+      ▼
+
+【Unit Runner 执行环】
+
+  └── 在沙箱中完成：LLM 翻译 -> File Apply -> 门控检查 -> aiu_feedback 回退
+
+```
+
+#### 4.3 记忆层内部组件图 (Memory Layer)
+
+```text
+
+【Layer 0: 物理数据】 (ast_index.json / Git History)
+
+      ▲
+
+      │ (AST 同步 / Cites 边)
+
+      ▼
+
+【Layer 1: Ontology 引擎】 (ObjectType / LinkType YAML定义)
+
+      ▲
+
+      │ (Typed Explore)
+
+      ▼
+
+【Layer 2: 核心图检索算法】 (graph_[resolver.py](http://resolver.py))
+
+  ├── 1. find_by_concept()[零LLM, 基于关键词定位节点]
+
+  ├── 2. concept_lookup()    [向外探索 about/related_to 边]
+
+  └── 3. *keyword*fallback() [BM25 全文降级]
+
+      │
+
+      ▼
+
+【Context Builder】 ([injector.py](http://injector.py))
+
+  └── 剪裁/压缩图谱片段，保证 Token < 4k，注入给 Coder 模型
+
+```
+
+---
+
+第五部分：  
+基于 Oracle 数据库极其成熟的 ADR（Automatic Diagnostic Repository，自动诊断库）架构哲学，为木兰（Mulan）系统重构 Trace 与诊断基础设施，是解决“AI 智能体黑盒化”与“并发任务难以调试”的关键战役。
+
+在企业级软件工程中，系统崩溃时的“案发现场”往往稍纵即逝。大模型 API 的超时、返回 JSON 格式的断裂、沙箱挂载的失败，如果仅靠控制台标准输出`stdout`），在并发或后台执行时将根本无法追溯。
+
+以下是基于 Oracle 诊断哲学，为木兰系统设计的详细工程实施方案与底层架构落地细节。
+
+---
+
+### 一、 物理目录抽象：MDR (Mulan Diagnostic Repository)
+
+借鉴 Oracle 的 `DIAGNOSTIC_DEST` 参数，在木兰的工作区中建立集中的诊断层，物理隔离业务代码与诊断数据。
+
+在 `docs/memory/private/` 目录下创建 `mdr/` 目录：
+
+```text
+
+docs/memory/private/mdr/
+
+├── alert/
+
+│   └── alert_mulan.log                # 全局告警日志（系统生命体征）
+
+├── trace/
+
+│   ├── mulan_ep_1024_1117.trc         # 单个 EP 的全生命周期追踪（类比 10046 trace）
+
+│   └── mulan_ep_1025_1120.trc
+
+└── incident/
+
+    ├── inc_20260427_1117_JSON_ERR/    # 致命崩溃的独立案发现场
+
+    │   ├── call_stack.dmp             # 堆栈快照与内存变量
+
+    │   └── prompt_context.txt         # 触发崩溃的毒性 Prompt 副本
+
+    └── inc_20260427_1125_OOM/
+
+```
+
+---
+
+### 二、 核心组件实施细节与源码映射
+
+#### 1. 宏观监控基建：全局告警日志 `alert_mulan.log`)
+
+**定位**：系统的“心电图”。只记录重大系统级事件与级联故障，**绝对不记录**某行代码生成了什么。
+
+**实施细节**：
+
+- 在 `src/mms/observability/logger.py` 中初始化一个专属的全局 Logger，绑定到 `alert/alert_mulan.log`，采用 Append-Only（仅追加）与按天轮转（Log Rotation）模式。
+- **记录的触发点（Triggers）**：
+  - **Startup/Shutdown**：木兰引擎启动、加载配置文件完毕、索引构建完成。
+  - **Resilience Events**`circuit_breaker.py`（熔断器）被触发（例如 Bailian API 连续超时 3 次，熔断器打开）。
+  - **Resource Limits**：检测到磁盘空间不足、Git Worktree 创建失败。
+- **工程价值**：当木兰作为企业后台守护进程（Daemon）批量处理上百个 PR 时，运维人员只需 `tail -f alert_mulan.log` 即可确认系统存活状态。一旦出现 `[FATAL] Circuit Breaker OPEN for qwen3-coder-next`，立刻知道是外部算力掉线。
+
+#### 2. 会话级追踪基建：Oracle 10046 风格 Trace `.trc`)
+
+**定位**：针对单个 EP（Execution Plan）的显微镜。类比 Oracle 中通过 `ALTER SESSION SET EVENTS '10046 trace name context forever, level 12'` 开启的 SQL 追踪。
+
+**实施细节**：
+
+- **ContextVars 绑定 (关键)**：为了支持未来多 Agent 并发，不能使用全局 Logger。必须使用 Python 原生的 `contextvars` 绑定当前的 `ep_id`。
+- 在 `ep_runner.py` 启动时：
+  ```python
+
+  import contextvars
+
+  from structlog.contextvars import bind_contextvars
+
+
+
+  ep_id_var = contextvars.ContextVar("ep_id")
+
+  ep_id_var.set("EP-1024")
+
+  bind_contextvars(ep_id="EP-1024")
+
+  # 初始化专属的文件 Handler 指向 trace/mulan_ep_1024.trc
+
+  ```
+- **动态级别注入 (Dynamic Trace Levels)**：
+系统在接收任务时，可通过 `mulan trace enable EP-1024 --level 12` 动态调整该文件的颗粒度：
+  - *Level 4 (LLM)*：拦截所有 `src/mms/providers/` 的出站 HTTP 请求和响应耗时。
+  - *Level 8 (FileOps)*：拦截 `src/mms/execution/sandbox.py` 的所有 `open()` 和 `write()`。
+  - *Level 12 (Full)*：拦截 `src/mms/memory/injector.py`，完整写入拼接了 4k Token 的 Prompt 原文。
+
+#### 3. 致命崩溃现场基建：Incident Dump `.dmp`)
+
+**定位**：系统的“黑匣子”。当木兰因为大模型幻觉、非预期 JSON 断裂或底层异常崩溃时，系统不再只是在终端抛出一堆难以追踪的 Traceback 然后死掉。
+
+**实施细节**：
+
+- **全局异常接管 `sys.excepthook`)**：
+在木兰的 CLI 入口 `src/mms/cli.py`)，重写系统异常捕获钩子：
+  ```python
+
+  import sys
+
+  import traceback
+
+  from datetime import datetime
+
+
+
+  def mulan_crash_handler(exc_type, exc_value, exc_traceback):
+
+      # 1. 抑制普通的 KeyboardInterrupt
+
+      if issubclass(exc_type, KeyboardInterrupt):
+
+          sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+          return
+
+          
+
+      # 2. 生成 Incident ID
+
+      incident_id = f"inc_{[datetime.now](http://datetime.now)().strftime('%Y%m%d_%H%M%S')}_{exc_type.__name__}"
+
+      dump_dir = Path(f"docs/memory/private/mdr/incident/{incident_id}")
+
+      dump_dir.mkdir(parents=True, exist_ok=True)
+
+      
+
+      # 3. 写入 Call Stack Dump
+
+      with open(dump_dir / "call_stack.dmp", "w") as f:
+
+          f.write(f"FATAL ERROR: {exc_type.__name__}: {exc_value}\n")
+
+          f.write("="*50 + "\n[TRACEBACK]\n")
+
+          traceback.print_tb(exc_traceback, file=f)
+
+          
+
+          # 4. 提取崩溃栈帧中的局部变量（Locals）
+
+          f.write("\n" + "="*50 + "\n[LOCAL VARIABLES OF CRASH FRAME]\n")
+
+          tb = exc_traceback
+
+          while tb.tb_next:
+
+              tb = tb.tb_next # 追溯到最深处的报错栈帧
+
+          for key, value in tb.tb_frame.f_locals.items():
+
+              f.write(f"{key} = {repr(value)}\n")
+
+      
+
+      # 5. 通知用户
+
+      print(f"\n[CRITICAL] Mulan encountered a fatal error.")
+
+      print(f"Incident details dumped to: {dump_dir}")
+
+      
+
+  sys.excepthook = mulan_crash_handler
+
+  ```
+- **现场物证留存 (The Poisonous Prompt)**：
+如果崩溃是由大模型返回的错误 JSON 引发的（如 `json.decoder.JSONDecodeError`），钩子会读取当前 `contextvars` 中的最后一次 Prompt 和最后一次 Response，将其原封不动地写入 `prompt_context.txt`。这使得开发者可以直接复制这个文件去复现大模型的幻觉行为，无需重新跑整个繁重的 EP。
+
+---
+
+### 三、 辅助诊断命令行：Mulan Diag (类比 Oracle ADRCI)
+
+为了让这套基础设施真正在日常开发和 Debug 中发挥作用，增加对应的 CLI 工具。
+
+在 `src/mms/cli.py` 中增加子命令：
+
+1. *`mulan diag status`**：
+  读取 `alert_mulan.log` 尾部，报告当前系统是否有未处理的 FATAL 报错。
+2. *`mulan diag pack <incident_id>`**：
+  (类比 Oracle 的 `adrci> ips pack incident`)。
+    当用户或开源贡献者遇到报错时，执行该命令，木兰会自动将 `call_stack.dmpprompt_context.txt`、相关的 `mulan_ep_xxx.trc` 以及当时的 `ast_index.json` 打包成一个 `.zip` 文件。用户只需将此 ZIP 附在 GitHub Issue 中，核心开发者即可获取 100% 完美的上下文进行 Debug，极大提升开源项目的维护效率。
+

@@ -1,7 +1,6 @@
 # 木兰 Benchmark v2 — 三层模块化评测框架
 
-> 评测的目的不是给工具打分，而是**找到它的弱点**。  
-> 每一个 FAILED case 都是一个未修复的 bug 或一条未覆盖的规则。
+
 
 ---
 
@@ -11,13 +10,15 @@
 
 > **动态本体路由（Vectorless Ontology Routing）在代码生成质量、安全性、知识留存上，是否系统性地优于传统纯文本 BM25 检索？**
 
-| 对比维度 | 传统方案（BM25 / ES / Milvus） | 木兰本体路由 |
-|---|---|---|
-| 检索粒度 | 文档级关键词匹配 | 概念图谱 + 语义哈希 + 架构层过滤 |
-| 上下文质量 | 全量噪音（依赖向量相似度） | 精准注入（架构约束 + 记忆图谱） |
-| 离线能力 | 依赖 ES/Milvus 服务 | **完全离线**（Layer 3 / Layer 2 D1/D4） |
-| 可解释性 | 黑盒相似度分数 | 可溯源的 `about_concepts` + `cites_files` 链路 |
-| 扩展方式 | 重新索引全量文档 | 向 `docs/memory/` 添加一个 Markdown 文件 |
+
+| 对比维度  | 传统方案（BM25 / ES / Milvus） | 木兰本体路由                                   |
+| ----- | ------------------------ | ---------------------------------------- |
+| 检索粒度  | 文档级关键词匹配                 | 概念图谱 + 语义哈希 + 架构层过滤                      |
+| 上下文质量 | 全量噪音（依赖向量相似度）            | 精准注入（架构约束 + 记忆图谱）                        |
+| 离线能力  | 依赖 ES/Milvus 服务          | **完全离线**（Layer 3 / Layer 2 D1/D4）        |
+| 可解释性  | 黑盒相似度分数                  | 可溯源的 `about_concepts` + `cites_files` 链路 |
+| 扩展方式  | 重新索引全量文档                 | 向 `docs/memory/` 添加一个 Markdown 文件        |
+
 
 > ⚠️ **已废弃**：v1 Benchmark 中的 "ES+Milvus 混合 RAG" 描述已完全移除。木兰不依赖任何向量数据库。
 
@@ -47,15 +48,17 @@
 
 ### 分层指标速查表
 
-| 层级 | 核心指标 | 目标值 | 是否需要 LLM |
-|---|---|---|---|
-| **L3 安全层** | SanitizeGate 检出率 | ≥ 90% | ❌ 完全离线 |
-| **L3 安全层** | MigrationGate 阻断精度 | ≥ 85% | ❌ 完全离线 |
-| **L3 安全层** | ArchCheck 覆盖率 | ≥ 75% | ❌ 完全离线 |
-| **L2 记忆层** | Recall@5 (D1) | ≥ 0.60 | ❌ 离线可运行 |
-| **L2 记忆层** | Info Density (D2) | > 0 | ✅ 需要 LLM |
-| **L2 记忆层** | 漂移检出率 (D4) | ≥ 80% | ❌ 离线可运行 |
-| **L1 执行层** | ΔPass@1 | > 0 | ✅ 需要 LLM + Docker |
+
+| 层级         | 核心指标               | 目标值    | 是否需要 LLM          |
+| ---------- | ------------------ | ------ | ----------------- |
+| **L3 安全层** | SanitizeGate 检出率   | ≥ 90%  | ❌ 完全离线            |
+| **L3 安全层** | MigrationGate 阻断精度 | ≥ 85%  | ❌ 完全离线            |
+| **L3 安全层** | ArchCheck 覆盖率      | ≥ 75%  | ❌ 完全离线            |
+| **L2 记忆层** | Recall@5 (D1)      | ≥ 0.60 | ❌ 离线可运行           |
+| **L2 记忆层** | Info Density (D2)  | > 0    | ✅ 需要 LLM          |
+| **L2 记忆层** | 漂移检出率 (D4)         | ≥ 80%  | ❌ 离线可运行           |
+| **L1 执行层** | ΔPass@1            | > 0    | ✅ 需要 LLM + Docker |
+
 
 ### L2 核心指标说明：Info Density（信息密度）
 
@@ -80,10 +83,12 @@ Info Density = ΔPass@1 / avg_injection_tokens × 1000
 
 木兰 v3.0 引入了来自真实 GitHub 万星项目的结构化 Benchmark 靶机，代表真实的工业复杂度。
 
-| 项目 | Stars | 领域 | 技术栈 | Case 数 |
-|---|---|---|---|---|
-| `macrozheng/mall` | 80k+ | 电商订单服务 | Java Spring Boot + MyBatis | 4 |
-| `halo-dev/halo` | 35k+ | 内容管理模块 | Java Spring Boot + JPA | 2 |
+
+| 项目                | Stars | 领域     | 技术栈                        | Case 数 |
+| ----------------- | ----- | ------ | -------------------------- | ------ |
+| `macrozheng/mall` | 80k+  | 电商订单服务 | Java Spring Boot + MyBatis | 4      |
+| `halo-dev/halo`   | 35k+  | 内容管理模块 | Java Spring Boot + JPA     | 2      |
+
 
 ### 为何选择这两个项目？
 
@@ -97,13 +102,15 @@ Info Density = ΔPass@1 / avg_injection_tokens × 1000
 
 ## 设计原则
 
-| 原则 | 实现方式 |
-|---|---|
-| **分层隔离** | 三层独立评测，每层可单独运行，互不依赖 |
+
+| 原则          | 实现方式                                                |
+| ----------- | --------------------------------------------------- |
+| **分层隔离**    | 三层独立评测，每层可单独运行，互不依赖                                 |
 | **YAML 驱动** | 新增测试 case 只需在 `fixtures/` 或 `tasks/` 添加 YAML，无需修改代码 |
-| **离线优先** | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行 |
-| **公平对比** | Layer 1 对接 SWE-bench 行业标准，保证结果可信 |
-| **模块注册** | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成 |
+| **离线优先**    | Layer 3 完全离线（< 1s）；Layer 2 D1/D4 维度离线可运行            |
+| **公平对比**    | Layer 1 对接 SWE-bench 行业标准，保证结果可信                    |
+| **模块注册**    | 新增评测层只需继承 `BaseEvaluator` 并在 `runner.py` 注册，3 步完成   |
+
 
 ---
 
@@ -139,11 +146,13 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/core/sanitize.py` 能否正确拦截各类敏感凭证。
 
-| 类别 | 覆盖场景（fixture 数） | 指标 |
-|---|---|---|
-| API Key | 12 条（含阴性样例 3 条） | 检出率 / 误报率 |
-| JWT / 密码 / IP / 邮箱 / DSN | 14 条 | 检出率（critical 级） |
-| 误报防护 | 6 条 | 假阳性率（目标 = 0%） |
+
+| 类别                       | 覆盖场景（fixture 数） | 指标              |
+| ------------------------ | --------------- | --------------- |
+| API Key                  | 12 条（含阴性样例 3 条） | 检出率 / 误报率       |
+| JWT / 密码 / IP / 邮箱 / DSN | 14 条            | 检出率（critical 级） |
+| 误报防护                     | 6 条             | 假阳性率（目标 = 0%）   |
+
 
 **检测类别：**
 
@@ -159,27 +168,31 @@ mulan benchmark --output markdown --output-path reports/bench_$(date +%Y%m%d).md
 
 验证 `src/mms/workflow/migration_gate.py` 能否正确阻断"ORM 变更但无迁移脚本"的场景。
 
-| 场景 | 预期行为 |
-|---|---|
-| 新增 Model 字段，无迁移脚本 | 阻断 |
-| 删除 Model 字段，无迁移脚本 | 阻断 |
-| 新增整张表（Model 类），无迁移脚本 | 阻断 |
-| 字段重命名，无迁移脚本 | 阻断 |
-| 有完整 `up() / down()` 迁移 | 通过 |
-| 无 ORM 变更（纯 Service 修改） | 不触发 |
+
+| 场景                     | 预期行为 |
+| ---------------------- | ---- |
+| 新增 Model 字段，无迁移脚本      | 阻断   |
+| 删除 Model 字段，无迁移脚本      | 阻断   |
+| 新增整张表（Model 类），无迁移脚本   | 阻断   |
+| 字段重命名，无迁移脚本            | 阻断   |
+| 有完整 `up() / down()` 迁移 | 通过   |
+| 无 ORM 变更（纯 Service 修改） | 不触发  |
+
 
 #### ArchCheck — 架构约束扫描
 
 验证架构规则检测覆盖率（AC-1~AC-6）。
 
-| 规则 | 约束内容 | 阳性 case | 阴性 case |
-|---|---|---|---|
-| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka） | 1 | 1 |
-| AC-2 | Service 函数必须以 `RequestContext` 作为首参 | 1 | 1 |
-| AC-3 | 写操作必须调用 `AuditService.log()` | 1 | 1 |
-| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`） | 1 | 1 |
-| AC-5 | 禁止在 Service 层使用 `session.begin()`（使用 autobegin 模式） | 1 | 1 |
-| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog） | 1 | 1 |
+
+| 规则   | 约束内容                                               | 阳性 case | 阴性 case |
+| ---- | -------------------------------------------------- | ------- | ------- |
+| AC-1 | 禁止在非基础设施层直接 import 消息队列客户端（aiokafka）               | 1       | 1       |
+| AC-2 | Service 函数必须以 `RequestContext` 作为首参                | 1       | 1       |
+| AC-3 | 写操作必须调用 `AuditService.log()`                       | 1       | 1       |
+| AC-4 | API Endpoint 必须使用标准信封格式（`ResponseHelper`）          | 1       | 1       |
+| AC-5 | 禁止在 Service 层使用 `session.begin()`（使用 autobegin 模式） | 1       | 1       |
+| AC-6 | 禁止裸 `print()` 调用（必须使用 structlog）                   | 1       | 1       |
+
 
 ### 综合得分计算
 
@@ -267,11 +280,13 @@ Layer 3: 安全门控评测
 
 **D4 覆盖场景：**
 
-| 场景 | 预期结果 |
-|---|---|
-| 函数参数类型 + 数量变更 | 触发漂移 |
+
+| 场景                      | 预期结果  |
+| ----------------------- | ----- |
+| 函数参数类型 + 数量变更           | 触发漂移  |
 | 仅添加注释和空行（gofmt / Black） | 不触发漂移 |
-| 文件内容清空（模拟删除） | 触发漂移 |
+| 文件内容清空（模拟删除）            | 触发漂移  |
+
 
 ### 综合得分计算
 
@@ -336,12 +351,14 @@ if config.llm_available and not config.dry_run:
 
 ### 内置样本任务
 
-| ID | 仓库 | 难度 | AIU 类型 |
-|---|---|---|---|
-| `swe_django_001` | django/django | 中 | BUG_FIX |
-| `swe_django_002` | django/django | 易 | BUG_FIX |
-| `swe_fastapi_001` | tiangolo/fastapi | 中 | BUG_FIX |
-| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难 | BUG_FIX |
+
+| ID                   | 仓库                    | 难度  | AIU 类型  |
+| -------------------- | --------------------- | --- | ------- |
+| `swe_django_001`     | django/django         | 中   | BUG_FIX |
+| `swe_django_002`     | django/django         | 易   | BUG_FIX |
+| `swe_fastapi_001`    | tiangolo/fastapi      | 中   | BUG_FIX |
+| `swe_sqlalchemy_001` | sqlalchemy/sqlalchemy | 难   | BUG_FIX |
+
 
 ---
 
@@ -540,15 +557,17 @@ layer1:
 
 ## 与 v1 Benchmark 的关系
 
-| 维度 | v1 Benchmark | v2 Benchmark |
-|---|---|---|
-| 定位 | 验证记忆检索 vs keyword 的优劣 | 全面评测木兰工具链的三大核心价值 |
-| 检索方案 | 向量数据库（ES/Milvus 可选）+ LLM | **本体路由**（无向量库）+ 语义哈希 |
-| 依赖 | 需 ES/Milvus + LLM API | Layer 3 完全离线；Layer 2 D1/D4 离线 |
-| 扩展性 | 固定指标，需修改代码添加场景 | YAML 驱动，添加 case 无需改代码 |
-| 行业对齐 | 内部 MDP 任务集 | SWE-bench Verified（Layer 1 信用锚）|
-| 测试覆盖 | ~20 个任务 | 58+ 个（可通过 synthetic pipeline 扩充至 300+）|
-| 企业靶机 | 无 | mall (80k⭐) + halo (35k⭐) 真实工业用例 |
+
+| 维度   | v1 Benchmark             | v2 Benchmark                           |
+| ---- | ------------------------ | -------------------------------------- |
+| 定位   | 验证记忆检索 vs keyword 的优劣    | 全面评测木兰工具链的三大核心价值                       |
+| 检索方案 | 向量数据库（ES/Milvus 可选）+ LLM | **本体路由**（无向量库）+ 语义哈希                   |
+| 依赖   | 需 ES/Milvus + LLM API    | Layer 3 完全离线；Layer 2 D1/D4 离线          |
+| 扩展性  | 固定指标，需修改代码添加场景           | YAML 驱动，添加 case 无需改代码                  |
+| 行业对齐 | 内部 MDP 任务集               | SWE-bench Verified（Layer 1 信用锚）        |
+| 测试覆盖 | ~20 个任务                  | 58+ 个（可通过 synthetic pipeline 扩充至 300+） |
+| 企业靶机 | 无                        | mall (80k⭐) + halo (35k⭐) 真实工业用例       |
+
 
 v1 Benchmark 代码保留在 `benchmark/src/` 目录，向后兼容。
 
@@ -589,3 +608,4 @@ pytest tests/benchmark/ -v
 # - test_layer1_swebench.py     任务格式验证 / AIU 类型覆盖
 # - test_phase4_pass_at_1.py    SandboxedCodeRunner / dual-rail 降级
 ```
+
