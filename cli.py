@@ -1471,6 +1471,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--format", choices=["v31", "v2"], default="v31", dest="output_format",
         help="输出格式：v31（推荐）或 v2（旧格式）",
     )
+    p_sib.add_argument(
+        "--github-token", default=None, dest="github_token", metavar="TOKEN",
+        help="GitHub Personal Access Token（也可通过 GITHUB_TOKEN 环境变量设置）",
+    )
 
     # ── benchmark — 三层模块化评测（v2）────────────────────────────────────────
     p_bench = sub.add_parser(
@@ -1694,6 +1698,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
         output_format = getattr(args, "output_format", "v31")
         seed_prefix = getattr(args, "seed_prefix", "")
         name_filter = getattr(args, "name_filter", None)
+        github_token = getattr(args, "github_token", None)
 
         print(f"\n{'='*60}")
         print(f"  MMS Rule Absorber v2 — 批量规则吸收")
@@ -1705,6 +1710,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
             force=force,
             output_format=output_format,
             name_filter=name_filter,
+            github_token=github_token,
         )
         if not dry_run and results:
             print(f"\n  ✅ 已生成 {len(results)} 个种子包，运行 `mulan seed list` 查看")

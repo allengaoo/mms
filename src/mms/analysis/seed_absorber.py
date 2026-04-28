@@ -214,29 +214,80 @@ def _fetch_content(url_or_path: str, timeout: int = 15) -> Tuple[str, str]:
         return p.read_text(encoding='utf-8', errors='replace'), p.name
 
 
-def _fetch_github_dir_listing(dir_url: str) -> List[dict]:
+def _fetch_github_dir_listing(dir_url: str, github_token: Optional[str] = None) -> List[dict]:
     """
-    获取 GitHub 目录的文件列表（通过 API）。
+    获取 GitHub 目录的文件列表（通过 GitHub Contents API）。
+
     dir_url 形如：https://github.com/user/repo/tree/main/path/to/dir
+
+    github_token 优先级：参数 > 环境变量 GITHUB_TOKEN
+    未认证请求限速 60次/小时；认证后 5000次/小时。
     """
-    # 将 tree URL 转为 API URL
-    # https://github.com/user/repo/tree/main/path → https://api.github.com/repos/user/repo/contents/path?ref=main
+    import json as _json
+
     m = re.match(
         r'https://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/?(.*)',
         dir_url
     )
     if not m:
-        raise ValueError(f"无法解析 GitHub 目录 URL：{dir_url}")
+        raise ValueError(
+            f"无法解析 GitHub 目录 URL：{dir_url}\n"
+            f"  期望格式：https://github.com/<owner>/<repo>/tree/<branch>/<path>"
+        )
     owner, repo, ref, path = m.groups()
     api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
 
-    req = urllib.request.Request(
-        api_url,
-        headers={"User-Agent": "MMS-SeedAbsorber/2.0", "Accept": "application/vnd.github.v3+json"},
-    )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        import json
-        return json.loads(resp.read().decode('utf-8'))
+    token = github_token or os.environ.get("GITHUB_TOKEN", "")
+    headers: dict = {
+        "User-Agent": "MMS-SeedAbsorber/2.0",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(api_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return _json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode('utf-8', errors='replace')
+        except Exception:
+            pass
+
+        if e.code == 404:
+            raise ValueError(
+                f"GitHub API 返回 404：仓库或路径不存在。\n"
+                f"  请检查 URL 是否正确（owner/repo/path）：\n"
+                f"    {dir_url}\n"
+                f"  API 地址：{api_url}"
+            ) from e
+        elif e.code in (401, 403):
+            rate_reset = e.headers.get("X-RateLimit-Reset", "")
+            remaining = e.headers.get("X-RateLimit-Remaining", "?")
+            msg = (
+                f"GitHub API 认证/限速错误（HTTP {e.code}）。\n"
+                f"  剩余配额：{remaining} 次"
+            )
+            if rate_reset:
+                import datetime
+                try:
+                    reset_time = datetime.datetime.fromtimestamp(int(rate_reset)).strftime('%H:%M:%S')
+                    msg += f"，配额重置时间：{reset_time}"
+                except Exception:
+                    pass
+            msg += (
+                f"\n  解决方法：设置 GITHUB_TOKEN 环境变量后重试：\n"
+                f"    export GITHUB_TOKEN=ghp_xxxxxxxxxxxx\n"
+                f"    mulan seed ingest-batch \"{dir_url}\" --dry-run\n"
+                f"  或使用 --github-token 参数直接传入 Token。"
+            )
+            raise ValueError(msg) from e
+        else:
+            raise ValueError(
+                f"GitHub API 错误（HTTP {e.code}）：{body[:200]}"
+            ) from e
 
 
 def _derive_seed_name(source_name: str) -> str:
@@ -619,34 +670,50 @@ def ingest_batch(
     force: bool = False,
     output_format: str = "v31",
     name_filter: Optional[str] = None,
+    github_token: Optional[str] = None,
 ) -> List[Path]:
     """
     批量吸收多个规则 URL。
 
     Args:
-        urls:         规则文件 URL 列表（或 GitHub 目录 URL）
-        seed_prefix:  种子包名称前缀（如 "absorbed_"）
-        dry_run:      只预览不写文件
-        force:        覆盖已有种子包
+        urls:          规则文件 URL 列表（或 GitHub 目录 URL）
+        seed_prefix:   种子包名称前缀（如 "absorbed_"）
+        dry_run:       只预览不写文件
+        force:         覆盖已有种子包
         output_format: "v31" 或 "v2"
-        name_filter:  只处理文件名包含此关键词的规则（逗号分隔多个）
+        name_filter:   只处理文件名包含此关键词的规则（逗号分隔多个）
+        github_token:  GitHub Personal Access Token（也可通过 GITHUB_TOKEN 环境变量设置）
+                       未设置时使用匿名 API（限速 60次/小时）
 
     Returns:
         List of generated seed pack directories
     """
+    # Token 优先级：参数 > 环境变量
+    token = github_token or os.environ.get("GITHUB_TOKEN", "")
+    if token:
+        print(f"  🔑 使用 GitHub Token 认证（配额 5000次/小时）")
+    else:
+        print(f"  ℹ️  未设置 GITHUB_TOKEN，使用匿名 API（限速 60次/小时）")
+        print(f"     如遇 403 错误，请：export GITHUB_TOKEN=ghp_xxxxxxxxxxxx")
+
     # 如果是 GitHub 目录 URL，先展开文件列表
     expanded_urls: List[str] = []
     for url in urls:
         if 'github.com' in url and '/tree/' in url:
             print(f"\n  📂 获取目录列表：{url}")
             try:
-                entries = _fetch_github_dir_listing(url)
+                entries = _fetch_github_dir_listing(url, github_token=token)
                 for entry in entries:
                     if entry.get('type') == 'file' and entry['name'].endswith(('.mdc', '.md', '.cursorrules')):
                         expanded_urls.append(entry['download_url'])
                 print(f"  📋 发现 {len(expanded_urls)} 个规则文件")
+            except ValueError as e:
+                # 友好错误：直接打印多行消息，不截断
+                print(f"  ❌ 目录获取失败：\n{e}")
+                return []
             except Exception as e:
-                print(f"  ❌ 目录获取失败：{e}")
+                print(f"  ❌ 目录获取失败（未知错误）：{e}")
+                return []
         else:
             expanded_urls.append(url)
 
