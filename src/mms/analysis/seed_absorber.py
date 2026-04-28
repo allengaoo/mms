@@ -416,7 +416,7 @@ def _distill_with_llm(cleaned_content: str) -> Tuple[str, str]:
             print(f"\n  ⏳ LLM 处于 Pending 模式，prompt 已保存至:")
             print(f"     {pending_path}")
             print(f"  💡 在 Cursor 中执行 prompt 后，规则将自动蒸馏。")
-            print(f"  📝 也可使用 --format v31-manual 手动写入种子记忆。")
+            print(f"  📝 也可手动编辑生成的占位符文件来填写种子记忆。")
             return _FALLBACK_YAML, "pending"
         else:
             print(f"\n  ⚠️  LLM 调用失败 ({type(e).__name__}: {str(e)[:80]})")
@@ -609,7 +609,7 @@ def ingest(
     dry_run: bool = False,
     force: bool = False,
     output_format: str = "v31",  # "v31" | "v2"
-) -> Path:
+) -> Tuple[Path, str]:
     """
     Rule Absorber 主入口（单文件）。
 
@@ -621,7 +621,7 @@ def ingest(
         output_format:  "v31"（推荐）或 "v2"（向后兼容）
 
     Returns:
-        生成的种子包目录路径
+        (path, status) — status 为 "written" | "skipped" | "dry_run"
     """
     print(f"  🔍 获取内容：{url_or_path}")
     content, source_name = _fetch_content(url_or_path)
@@ -644,8 +644,9 @@ def ingest(
         target_dir = _ROOT / 'seed_packs' / seed_name
 
     if target_dir.exists() and not force and not dry_run:
-        print(f"  ⚠️  种子包已存在：{target_dir.relative_to(_ROOT)}（使用 --force 覆盖）")
-        return target_dir
+        print(f"  ⏭️  种子包已存在，跳过：{target_dir.relative_to(_ROOT)}")
+        print(f"     使用 --force 强制覆盖")
+        return target_dir, "skipped"
 
     # LLM 蒸馏
     print(f"  🤖 调用 LLM 蒸馏规范...")
@@ -657,10 +658,12 @@ def ingest(
     # 写入输出
     if output_format == "v31":
         sections = _parse_sections_v2(llm_output)
-        return _write_v31_format(seed_name, source_name, url_or_path, sections, dry_run)
+        result_path = _write_v31_format(seed_name, source_name, url_or_path, sections, dry_run)
     else:
         sections = _parse_sections(llm_output)
-        return _write_v2_format(seed_name, source_name, url_or_path, sections, dry_run)
+        result_path = _write_v2_format(seed_name, source_name, url_or_path, sections, dry_run)
+
+    return result_path, ("dry_run" if dry_run else "written")
 
 
 def ingest_batch(
@@ -690,11 +693,15 @@ def ingest_batch(
     """
     # Token 优先级：参数 > 环境变量
     token = github_token or os.environ.get("GITHUB_TOKEN", "")
-    if token:
-        print(f"  🔑 使用 GitHub Token 认证（配额 5000次/小时）")
-    else:
-        print(f"  ℹ️  未设置 GITHUB_TOKEN，使用匿名 API（限速 60次/小时）")
-        print(f"     如遇 403 错误，请：export GITHUB_TOKEN=ghp_xxxxxxxxxxxx")
+
+    # 只有存在目录 URL 时才需要 GitHub API，才显示 Token 状态
+    has_dir_url = any('github.com' in u and '/tree/' in u for u in urls)
+    if has_dir_url:
+        if token:
+            print(f"  🔑 使用 GitHub Token 认证（配额 5000次/小时）")
+        else:
+            print(f"  ℹ️  未设置 GITHUB_TOKEN，使用匿名 API（限速 60次/小时）")
+            print(f"     如遇 403 错误，请：export GITHUB_TOKEN=ghp_xxxxxxxxxxxx")
 
     # 如果是 GitHub 目录 URL，先展开文件列表
     expanded_urls: List[str] = []
@@ -732,9 +739,9 @@ def ingest_batch(
         print(f"  [{i}/{total}] {url.split('/')[-1]}")
         try:
             seed_name = seed_prefix + _derive_seed_name(url.split('/')[-1])
-            result = ingest(url, seed_name=seed_name, dry_run=dry_run,
-                          force=force, output_format=output_format)
-            results.append(result)
+            result_path, _ = ingest(url, seed_name=seed_name, dry_run=dry_run,
+                                    force=force, output_format=output_format)
+            results.append(result_path)
         except Exception as e:
             print(f"  ❌ 失败：{e}")
 

@@ -1623,30 +1623,68 @@ def cmd_seed(args: argparse.Namespace) -> int:
     subcmd = getattr(args, "subcommand", None)
 
     if subcmd == "list" or subcmd is None:
-        seed_root = _PROJECT_ROOT / "seed_packs"
-        packs = sorted(
-            p for p in seed_root.iterdir()
-            if p.is_dir() and not p.name.startswith("_") and not p.name.startswith(".")
-        )
-        if not packs:
-            print("  (无种子包)")
-            return 0
-        print(f"\n  已安装种子包（{len(packs)} 个）：\n")
-        for p in packs:
-            mc = p / "match_conditions.yaml"
-            desc = ""
-            if mc.exists():
-                for line in mc.read_text(encoding="utf-8").splitlines():
-                    if line.startswith("description:"):
-                        desc = line.split(":", 1)[1].strip().strip('"')
-                        break
-            layers = sum(1 for _ in (p / "arch_schema").glob("*.yaml")) if (p / "arch_schema").exists() else 0
-            onto = sum(1 for _ in (p / "ontology").glob("*.yaml")) if (p / "ontology").exists() else 0
-            cons = sum(1 for _ in (p / "constraints").glob("*.yaml")) if (p / "constraints").exists() else 0
-            print(f"  📦  {p.name:<25} arch:{layers} ontology:{onto} constraints:{cons}")
-            if desc:
-                print(f"       {desc}")
-        print()
+        any_found = False
+
+        # ── v3.1 格式：docs/memory/seed_packs/ ──────────────────────────────
+        v31_root = _PROJECT_ROOT / "docs" / "memory" / "seed_packs"
+        if v31_root.exists():
+            v31_packs = sorted(
+                p for p in v31_root.iterdir()
+                if p.is_dir() and not p.name.startswith("_") and not p.name.startswith(".")
+            )
+            if v31_packs:
+                any_found = True
+                print(f"\n  ── v3.1 种子包（{len(v31_packs)} 个）：docs/memory/seed_packs/ ──\n")
+                for p in v31_packs:
+                    meta = p / "meta.yaml"
+                    desc = ""
+                    if meta.exists():
+                        lines = meta.read_text(encoding="utf-8").splitlines()
+                        for idx, line in enumerate(lines):
+                            if line.startswith("description:"):
+                                val = line.split(":", 1)[1].strip().strip('"')
+                                if val in ("|", ">", "|-", ">-", ""):
+                                    # YAML 块字面量：取下一行内容
+                                    if idx + 1 < len(lines):
+                                        desc = lines[idx + 1].strip()
+                                else:
+                                    desc = val
+                                break
+                    mem_count = len(list((p / "memories").glob("*.md"))) if (p / "memories").exists() else 0
+                    has_constraints = (p / "constraints.yaml").exists()
+                    print(f"  📦  {p.name:<30} memories:{mem_count}  constraints:{'✓' if has_constraints else '✗'}")
+                    if desc:
+                        print(f"       {desc}")
+                print()
+
+        # ── v2 格式：seed_packs/ ──────────────────────────────────────────────
+        v2_root = _PROJECT_ROOT / "seed_packs"
+        if v2_root.exists():
+            v2_packs = sorted(
+                p for p in v2_root.iterdir()
+                if p.is_dir() and not p.name.startswith("_") and not p.name.startswith(".")
+            )
+            if v2_packs:
+                any_found = True
+                print(f"  ── v2 种子包（{len(v2_packs)} 个）：seed_packs/ ──\n")
+                for p in v2_packs:
+                    mc = p / "match_conditions.yaml"
+                    desc = ""
+                    if mc.exists():
+                        for line in mc.read_text(encoding="utf-8").splitlines():
+                            if line.startswith("description:"):
+                                desc = line.split(":", 1)[1].strip().strip('"')
+                                break
+                    layers = sum(1 for _ in (p / "arch_schema").glob("*.yaml")) if (p / "arch_schema").exists() else 0
+                    onto = sum(1 for _ in (p / "ontology").glob("*.yaml")) if (p / "ontology").exists() else 0
+                    cons = sum(1 for _ in (p / "constraints").glob("*.yaml")) if (p / "constraints").exists() else 0
+                    print(f"  📦  {p.name:<30} arch:{layers} ontology:{onto} constraints:{cons}")
+                    if desc:
+                        print(f"       {desc}")
+                print()
+
+        if not any_found:
+            print("  (无种子包)\n  提示：使用 `mulan seed ingest <url>` 吸收外部规则")
         return 0
 
     elif subcmd == "ingest":
@@ -1670,12 +1708,15 @@ def cmd_seed(args: argparse.Namespace) -> int:
         print(f"  MMS Rule Absorber v2 — 规则吸收器")
         print(f"{'='*60}")
         try:
-            result_dir = ingest(url, seed_name=seed_name, dry_run=dry_run,
-                                force=force, output_format=output_format)
-            if not dry_run:
-                print(f"\n  ✅ 种子包就绪：{result_dir}")
-                print(f"  提示：运行 `mulan seed list` 查看所有种子包")
+            result_dir, ingest_status = ingest(url, seed_name=seed_name, dry_run=dry_run,
+                                               force=force, output_format=output_format)
+            if ingest_status == "written":
+                print(f"\n  ✅ 种子包已写入：{result_dir}")
+                print(f"  提示：运行 `mulan seed list` 查看所有种子包（含 v3.1 和 v2 格式）")
                 print(f"  提示：运行 `mulan bootstrap` 将种子包注入到当前项目\n")
+            elif ingest_status == "skipped":
+                pass  # ⏭️ 已在 ingest() 内打印，此处不重复输出
+            # dry_run：不打印额外成功信息
         except (FileNotFoundError, ValueError) as e:
             print(f"\n  ❌ 获取失败：{e}\n")
             return 1
@@ -1713,7 +1754,10 @@ def cmd_seed(args: argparse.Namespace) -> int:
             github_token=github_token,
         )
         if not dry_run and results:
-            print(f"\n  ✅ 已生成 {len(results)} 个种子包，运行 `mulan seed list` 查看")
+            print(f"\n  ✅ 已生成 {len(results)} 个种子包，运行 `mulan seed list` 查看（含 v3.1 格式）")
+        # 处理结果为空（目录 404 / filter 无匹配 / 全部失败）→ exit 1，便于脚本检测
+        if not results:
+            return 1
         return 0
 
     else:
