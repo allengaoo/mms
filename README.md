@@ -1,9 +1,9 @@
-# 木兰（Mulan）— 端侧 AI 代码工程工具链
+# 木兰（Mulan）— 端侧 AI 编码工具
 
 > 唧唧复唧唧，木兰当户织。
 >
 > 织布，是最古老的工程：经线定骨架，纬线填逻辑，梭来梭往积累出完整的布匹。  
-> 写代码亦如此。**木兰**将复杂的软件任务分解为原子工序（AIU），  
+> 写代码也是这样，**木兰工具**将复杂的软件任务分解为原子工序（AIU），  
 > 以积累的架构知识为经、以精准生成的代码为纬，一梭一线织出符合企业约束的高质量工程产物——  
 > 全程在端侧完成，不上传一行代码。
 
@@ -31,7 +31,6 @@
       ▼
 ④ 织造（代码生成）    qwen3-coder-next 生成 Diff，受模板骨架约束
       │
-      ├─ 可选：双角色内部评审（qwen3-32b 作 Reviewer 检查合规性）
       │
       ▼
 ⑤ 验布（自动验证）    postcheck：pytest + AST 契约检查 + DB 迁移对齐 + 记忆新鲜度检测
@@ -60,15 +59,11 @@
 | **无状态**   | 大模型不记得上次任务发生了什么，每次都从零开始            |
 
 
-### 木兰的解法
 
-> 花木兰以普通士兵之身，凭借智谋和积累，完成了重将才能完成的征战。  
-> 木兰工具链以 32B 端侧模型为基础，凭借精准的上下文和系统化的工序，完成只有云端大模型才能胜任的代码工程。
 
 **核心假设：限制代码生成质量的主要因素不是模型能力，而是上下文质量和任务粒度。**
 
-将任务分解为足够细的原子工序（AIU，≤4k tokens），并为每道工序精准注入最相关的历史知识——  
-这正是织布的道理：不是一次把整匹布织完，而是经纬交替、梭梭积累。
+将任务分解为足够细的原子工序（AIU，≤4k tokens），并为每道工序精准注入最相关的历史知识。
 
 ### 设计原则
 
@@ -159,16 +154,16 @@
 **第四层：安全验证**
 
 
-| 模块                 | 状态   | 说明                                            |
-| ------------------ | ---- | --------------------------------------------- |
-| AST 契约变更检测         | ✅ 稳定 | precheck 快照 vs postcheck diff；语义哈希防虚假漂移       |
-| DB 迁移脚本门控          | ✅ 稳定 | postcheck 强制验证 ORM 变更 ↔ up()/down() 迁移脚本对齐    |
-| 脱敏屏障（SanitizeGate） | ✅ 稳定 | 落盘前拦截 API Key / JWT / IP，自动替换为 `[REDACTED_*]` |
-| 架构约束扫描             | ✅ 稳定 | 6 条硬性规则（AC-1~AC-6），可通过 seed_packs 自定义扩展       |
-| 多语言 AST 骨架化        | ✅ 稳定 | Python / Java / Go / TypeScript 四语言统一指纹提取     |
-| 诊断追踪（Trace）        | ✅ 稳定 | Oracle 10046 风格，4 级诊断级别，完整 LLM 调用审计           |
-| 全局告警日志（alert）    | ✅ 稳定 | `alert_mulan.log` 系统心电图，熔断/崩溃事件自动写入，按天轮转      |
-| 崩溃现场保全（Incident） | ✅ 稳定 | sys.excepthook 接管，自动保全 call_stack.dmp + LLM 有毒提示词 |
+| 模块                 | 状态   | 说明                                                |
+| ------------------ | ---- | ------------------------------------------------- |
+| AST 契约变更检测         | ✅ 稳定 | precheck 快照 vs postcheck diff；语义哈希防虚假漂移           |
+| DB 迁移脚本门控          | ✅ 稳定 | postcheck 强制验证 ORM 变更 ↔ up()/down() 迁移脚本对齐        |
+| 脱敏屏障（SanitizeGate） | ✅ 稳定 | 落盘前拦截 API Key / JWT / IP，自动替换为 `[REDACTED_*]`     |
+| 架构约束扫描             | ✅ 稳定 | 6 条硬性规则（AC-1~AC-6），可通过 seed_packs 自定义扩展           |
+| 多语言 AST 骨架化        | ✅ 稳定 | Python / Java / Go / TypeScript 四语言统一指纹提取         |
+| 诊断追踪（Trace）        | ✅ 稳定 | Oracle 10046 风格，4 级诊断级别，完整 LLM 调用审计               |
+| 全局告警日志（alert）      | ✅ 稳定 | `alert_mulan.log` 系统心电图，熔断/崩溃事件自动写入，按天轮转          |
+| 崩溃现场保全（Incident）   | ✅ 稳定 | sys.excepthook 接管，自动保全 call_stack.dmp + LLM 有毒提示词 |
 
 
 **第五层：自学习**
@@ -185,12 +180,12 @@
 **工程基础设施**
 
 
-| 模块            | 状态   | 说明                                        |
-| ------------- | ---- | ----------------------------------------- |
-| src/mms/ 分包重组 | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅通过 `__init__.py` 暴露 |
-| Benchmark v2  | ✅ 稳定 | 三层模块化评测框架，完全离线可运行（见 [基准测试](#基准测试)）        |
-| 测试套件          | ✅ 稳定 | **847** 测试用例，无需 LLM API 可全部通过             |
-| MDR 诊断基础设施   | ✅ 稳定 | Oracle ADR 风格：alert_mulan.log + Incident Dump + `mulan diag` CLI |
+| 模块            | 状态   | 说明                                                               |
+| ------------- | ---- | ---------------------------------------------------------------- |
+| src/mms/ 分包重组 | ✅ 稳定 | 48 个模块按职责整理为 8 个子包，对外仅通过 `__init__.py` 暴露                        |
+| Benchmark v2  | ✅ 稳定 | 三层模块化评测框架，完全离线可运行（见 [基准测试](#基准测试)）                               |
+| 测试套件          | ✅ 稳定 | **847** 测试用例，无需 LLM API 可全部通过                                    |
+| MDR 诊断基础设施    | ✅ 稳定 | Oracle ADR 风格：alert_mulan.log + Incident Dump + `mulan diag` CLI |
 
 
 ### 技术栈
@@ -317,19 +312,6 @@ docs/memory/shared/
 └── ADAPTER/     # 外部适配（REST/DB/MQ/Cache/UI 组件）  [保护系数 0.0，最易淘汰]
 ```
 
-**与 MDP 旧层级的映射关系（兼容迁移）：**
-
-
-| 旧层级（MDP 专用）       | 新层级（通用）  | 说明                   |
-| ----------------- | -------- | -------------------- |
-| L1_platform       | PLATFORM | 安全、配置、可观测            |
-| L2_infrastructure | ADAPTER  | DB、Kafka、Redis 等外部适配 |
-| L3_domain         | DOMAIN   | 领域业务逻辑               |
-| L4_application    | APP      | 应用服务层                |
-| L5_interface      | ADAPTER  | API、前端               |
-| cross_cutting     | CC       | 架构决策                 |
-
-
 新记忆文件自动写入新路径；`dream.py` 保留对旧路径格式的向后兼容读取。
 
 **章节入口的全文检索预筛：**
@@ -413,19 +395,19 @@ git commit + mark_done                 Level 3: 拆分为子 AIUStep
 
 ### 5. EP 工作流（全自动 Pipeline）
 
-EP（Execution Plan）是木兰的核心工作单元。**默认形态是全自动 Pipeline**：
+EP（Episode）是木兰的核心工作单元。**默认形态是全自动 Pipeline**：
 
 ```bash
 # 标准启动方式（推荐）
 mulan synthesize "新增对象类型批量导出 API" --template ep-backend-api
-# → 生成起手提示词，在 Cursor 中生成 EP 文件后执行：
+# 为一个章节生成执行计划并自动运行
 mulan ep run EP-NNN --auto-confirm
 ```
 
 `mulan ep run` 自动完成以下阶段，无需人工逐步确认：
 
 ```
-Phase 0  mulan synthesize            意图合成 → 章节提示词
+Phase 0  mulan synthesize            意图合成 → 章节执行计划（提示词）
 Phase 1  mulan precheck              arch_check 基线 + AST 快照 + 记忆注入
 Phase 2  mulan unit generate         qwen3-32b 编排 DAG，生成 Unit 列表
 Phase 3  mulan unit run-all          qwen3-coder-next 逐批执行（3-Strike + 沙箱回滚）
@@ -443,20 +425,9 @@ mulan ep run EP-NNN --only U1 U2         # 只执行指定 Unit
 mulan ep run EP-NNN --dry-run            # 模拟执行，不写文件，不提交 git
 ```
 
-### 6. 双模型对比执行（可选高级模式）
-
-默认流程由 `qwen3-coder-next` 独立完成代码生成。若需要与 Cursor Sonnet 进行对比选优：
-
-```
-qwen3-coder-next → qwen.txt  ─┐
-                               ├─ mulan unit compare → 机械 diff + qwen3-32b 语义评审报告
-Cursor Sonnet    → sonnet.txt ─┘
-                               └─ mulan unit compare --apply qwen|sonnet  → 写入业务文件
-```
-
 启用方式：在执行 Unit 时加 `--save-output` 标志，存盘后手动触发对比。
 
-### 7. 诊断追踪（Oracle 10046 风格）
+### 6. 诊断追踪（Oracle 10046 风格）
 
 4 级诊断级别，类比 Oracle 10046 Trace：
 
@@ -471,8 +442,9 @@ Level 12 Full     — + LLM prompt/response 片段（前 N 字符）
 
 ```
 mms/
-├── cli.py                       # 统一 CLI 入口（mulan <command>）
+├── cli.py                       # 统一 CLI 入口（mulan <command>，含 diag 子命令）
 ├── pyproject.toml               # 项目配置（setuptools / pytest）
+├── conftest.py                  # pytest 全局 fixtures
 │
 ├── src/mms/                     # 核心包（pip install -e . 后可 import mms）
 │   ├── workflow/                # EP 工作流编排
@@ -486,10 +458,10 @@ mms/
 │   │
 │   ├── dag/                     # DAG & AIU 引擎
 │   │   ├── dag_model.py         # DagUnit / DagState 数据模型
-│   │   ├── aiu_types.py         # 28 种原子意图类型（6 族）枚举
+│   │   ├── aiu_types.py         # AIU 原子意图类型枚举（9 族 / 43 种基础类型）
 │   │   ├── aiu_cost_estimator.py # CBO 风格代价估算
 │   │   ├── aiu_feedback.py      # 3 级回退反馈
-│   │   ├── aiu_registry.py      # YAML 驱动 AIU 扩展注册表
+│   │   ├── aiu_registry.py      # Schema-Driven 动态注册表（YAML 优先 / Enum 兜底）
 │   │   ├── task_decomposer.py   # AIU 分解器
 │   │   └── atomicity_check.py   # Unit 原子化评分
 │   │
@@ -502,12 +474,15 @@ mms/
 │   │   ├── unit_cmd.py          # unit 子命令（status/next/done/reset）
 │   │   ├── file_applier.py      # 解析并应用 LLM BEGIN/END-CHANGES 块
 │   │   ├── sandbox.py           # GitSandbox（文件操作隔离 + 自动回滚）
+│   │   ├── sandboxed_runner.py  # Sandbox 化 Unit 执行包装器
 │   │   └── fix_gen.py           # 自动生成修复建议
 │   │
 │   ├── memory/                  # 记忆检索与注入
 │   │   ├── injector.py          # 记忆注入（检索 + 压缩 → Cursor 上下文前缀）
 │   │   ├── intent_classifier.py # 3 级意图漏斗（RBO → 本体匹配 → LLM）
-│   │   ├── graph_resolver.py    # 知识图谱（hybrid_search / typed_explore）
+│   │   ├── graph_resolver.py    # 知识图谱（hybrid_search / typed_explore / contradicts）
+│   │   ├── memory_functions.py  # 纯函数层（无副作用，可测试）
+│   │   ├── memory_actions.py    # 有状态动作层（写入 / 矛盾检测 / Provenance）
 │   │   ├── link_registry.py     # LinkType YAML 注册表
 │   │   ├── freshness_checker.py # 记忆新鲜度检测（cites 边反查 + drift 传播）
 │   │   ├── graph_health.py      # 图健康监控（节点分布 / 边覆盖率 / 孤立率）
@@ -521,7 +496,7 @@ mms/
 │   │   └── private.py           # EP 私有工作区（草稿笔记）
 │   │
 │   ├── analysis/                # 代码静态分析
-│   │   ├── arch_check.py        # 架构约束扫描（6 条规则 AC-1~AC-6）
+│   │   ├── arch_check.py        # 架构约束扫描（规则可由 seed_packs 扩展）
 │   │   ├── arch_resolver.py     # 层 → 文件路径解析器
 │   │   ├── ast_skeleton.py      # AST 骨架化（Python/Java/Go/TS，语义哈希）
 │   │   ├── ast_diff.py          # AST diff（接口契约变更检测）
@@ -542,23 +517,28 @@ mms/
 │   │   └── indexer.py           # 记忆索引构建器
 │   │
 │   ├── providers/               # LLM Provider 适配器
+│   │   ├── base.py              # ProviderBase 抽象基类
 │   │   ├── factory.py           # 任务 → Provider 路由
-│   │   ├── bailian.py           # 阿里云百炼（qwen3-32b / qwen3-coder-next）
-│   │   └── claude.py            # Anthropic Claude（fallback / 人工介入）
+│   │   ├── bailian.py           # 阿里云百炼（qwen3-32b / qwen3-coder-next）[主力]
+│   │   ├── claude.py            # Anthropic Claude（fallback / 人工介入）
+│   │   ├── gemini.py            # Google Gemini（备用，默认不启用）
+│   │   └── ollama.py            # Ollama 本地模型（备用，默认不启用）
 │   │
-│   ├── trace/                   # 诊断追踪（Oracle 10046 风格）
-│   │   ├── tracer.py            # EPTracer：记录 LLM 调用、文件操作、事件
-│   │   ├── collector.py         # Trace 数据采集
-│   │   ├── reporter.py          # 报告生成（text / json / html）
-│   │   └── event.py             # 事件类型 + 4 级诊断级别
+│   ├── trace/                   # EP 级诊断追踪（Oracle 10046 风格）
+│   │   ├── event.py             # TraceEvent 数据结构 + 4 级诊断级别（1/4/8/12）
+│   │   ├── tracer.py            # EPTracer：生命周期管理、线程安全写入
+│   │   ├── collector.py         # 进程级 Tracer 注册表（懒加载，线程安全）
+│   │   └── reporter.py          # tkprof 风格报告生成（text / json / html）
 │   │
-│   ├── observability/           # 可观测性
-│   │   ├── audit.py             # Append-only JSONL 审计日志
-│   │   └── tracer.py            # Trace ID 生成器
+│   ├── observability/           # 系统级可观测性（MDR 诊断基础设施）
+│   │   ├── audit.py             # Append-only JSONL 操作审计日志
+│   │   ├── logger.py            # 全局告警日志（alert_mulan.log，按天轮转）[v3.2]
+│   │   ├── incident.py          # 崩溃现场保全（sys.excepthook + Incident Dump）[v3.2]
+│   │   └── tracer.py            # 轻量 Trace ID 生成器（observability 内部使用）
 │   │
 │   ├── resilience/              # 可靠性原语
 │   │   ├── retry.py             # 指数退避重试装饰器
-│   │   ├── circuit_breaker.py   # 熔断器（防止 LLM API 级联故障）
+│   │   ├── circuit_breaker.py   # 熔断器（三态机，状态转移写入 alert_mulan.log）
 │   │   └── checkpoint.py        # 断点保存/恢复（长时间任务续跑）
 │   │
 │   └── utils/                   # 工具集
@@ -567,37 +547,88 @@ mms/
 │       ├── router.py            # 任务 → Provider 路由
 │       ├── validate.py          # Schema 校验
 │       ├── verify.py            # 系统健康检查
-│       └── _paths.py            # 项目路径解析
+│       └── _paths.py            # 项目路径解析（_PROJECT_ROOT 等常量）
 │
-├── seed_packs/                  # 冷启动种子知识包（6 个）
+├── seed_packs/                  # 冷启动种子知识包（技术栈级，6 个）
 │   ├── base/                    # 通用架构模式（安全、事务）
 │   ├── fastapi_sqlmodel/        # FastAPI + SQLModel 后端模式
 │   ├── react_zustand/           # React + Zustand 前端模式
 │   ├── palantir_arch/           # 本体/元数据平台模式
 │   ├── spring_boot/             # Java Spring Boot（Maven/Gradle）模式
 │   └── go_gin/                  # Go + Gin Web 框架模式
-│       └── {arch_schema/ ontology/ constraints/}  # 每包含三层结构
+│       └── {arch_schema/ ontology/ constraints/ match_conditions.yaml}
 │
 ├── benchmark/                   # 三层模块化 Benchmark v2
 │   ├── run_benchmark_v2.py      # 独立运行入口
 │   ├── v2/                      # v2 评测框架（见 benchmark/v2/README.md）
 │   │   ├── schema.py            # 共享数据结构
 │   │   ├── runner.py            # 主调度器 + 注册表
-│   │   ├── layer1_swebench/     # SWE-bench 信用锚
-│   │   ├── layer2_memory/       # 记忆质量评测
-│   │   └── layer3_safety/       # 安全门控评测（完全离线）
+│   │   ├── config.yaml          # 评测配置（模型/阈值/报告格式）
+│   │   ├── layer1_swebench/     # SWE-bench 信用锚（Pass@1 / Resolve Rate）
+│   │   ├── layer2_memory/       # 记忆质量评测（Info Density / Funnel / Drift）
+│   │   └── layer3_safety/       # 安全门控评测（arch / sanitize / migration）
 │   └── src/                     # v1 检索质量基准（保留向后兼容）
 │
 ├── docs/memory/                 # 知识库（由 mulan 命令自动维护）
-│   ├── _system/                 # 系统文件（config.yaml、ast_index、feedback_stats）
-│   ├── shared/                  # 积累的记忆（L1–L5 + cross_cutting）
-│   ├── ontology/                # 动态本体（objects / links / actions / _config）
-│   ├── private/                 # EP 私有草稿工作区 + trace 数据
-│   └── templates/               # EP 任务模板（7 种类型）
+│   ├── _system/                 # 系统运行时文件
+│   │   ├── config.yaml          # 记忆系统配置（路由 / 淘汰 / 熔断阈值）
+│   │   ├── schemas/             # 系统对象 Schema 定义
+│   │   │   ├── dag_unit.yaml / aiu_step.yaml / diagnostic_event.yaml
+│   │   │   ├── aiu_types_extended.yaml   # 轻量 AIU 扩展（新类型不改 Python 源码）
+│   │   │   └── aius/            # Schema-Driven AIU 合约（input_schema + validation_rules）
+│   │   │       ├── family_A_schema.yaml  # Schema/Contract 族（6 种 AIU）
+│   │   │       ├── family_D_interface.yaml # Interface/Route 族（5 种 AIU）
+│   │   │       ├── family_G_distributed.yaml # Distributed 族（4 种 AIU）
+│   │   │       └── custom/      # 用户自定义 AIU（放入即生效，无需改代码）
+│   │   └── routing/             # 路由配置
+│   │       ├── layers.yaml      # 通用 5 层架构 + 关键词 + 路径前缀
+│   │       └── intent_map.yaml / operations.yaml / query_synonyms.yaml
+│   │
+│   ├── shared/                  # 积累的共享记忆（5 层架构）
+│   │   ├── CC/                  # 架构约束（ADR / 反模式 / 红线）[保护系数 0.5]
+│   │   ├── PLATFORM/            # 横切平台能力（认证/鉴权/配置）[保护系数 0.2]
+│   │   ├── DOMAIN/              # 业务领域核心（实体/聚合根/规则）[保护系数 0.3]
+│   │   ├── APP/                 # 应用用例编排（Handler/Saga/工作流）[保护系数 0.1]
+│   │   └── ADAPTER/             # 外部适配（REST/DB/MQ/Cache）[保护系数 0.0]
+│   │
+│   ├── seed_packs/              # 工业级种子记忆（语言/框架级，50 条）[v3.1]
+│   │   ├── python_fastapi/      # Python × 10 条（AC-PY-01~10）
+│   │   │   ├── meta.yaml        # 种子包元数据（语言 / arch_paradigm / layer_affinity）
+│   │   │   ├── constraints.yaml # arch_check 可扫描的静态约束规则
+│   │   │   └── memories/        # AC-PY-01.md … AC-PY-10.md（含代码示例）
+│   │   ├── java_spring_boot/    # Java × 12 条（AC-JAV-01~12）
+│   │   ├── go_microservice/     # Go × 10 条（AC-GO-01~10）
+│   │   ├── typescript_nestjs/   # TypeScript × 10 条（AC-TS-01~10）
+│   │   └── cross_cutting/       # 通用架构 × 8 条（AC-ARCH-01~08）
+│   │
+│   ├── ontology/                # 动态本体定义
+│   │   ├── objects/             # 5 种 ObjectType（memory_node / arch_decision / …）
+│   │   ├── links/               # 5 种 LinkType（cites / about / contradicts / …）
+│   │   ├── actions/             # distill / dream 等 Action 定义
+│   │   └── _config/
+│   │       └── traversal_paths.yaml   # 图遍历路径配置（新增路径不改代码）
+│   │
+│   ├── private/                 # EP 私有工作区 + 诊断数据（不进入共享记忆）
+│   │   ├── EP-NNN/              # EP 私有草稿笔记（mulan private）
+│   │   ├── trace/               # EP 级诊断 trace 数据（mulan trace enable）
+│   │   │   └── EP-NNN/          # mms.trace.jsonl + trace_config.json + report/
+│   │   └── mdr/                 # MDR 诊断仓库（类 Oracle ADR）[v3.2]
+│   │       ├── alert/           # alert_mulan.log（系统心电图，按天轮转）
+│   │       └── incident/        # 致命崩溃现场（call_stack.dmp / prompt_context.txt）
+│   │
+│   └── templates/               # EP 任务模板（9 种类型）
+│       ├── ep-backend-api.md / ep-frontend.md / ep-debug.md / …
+│       └── code/                # 填空式代码骨架（api-endpoint / service-method / …）
 │
-└── tests/                       # 测试套件（757 测试用例）
-    ├── benchmark/               # Benchmark v2 单元测试（含 Phase 4 Pass@1）
-    └── ...                      # 核心模块测试
+└── tests/                       # 测试套件（847 测试用例，完全离线可运行）
+    ├── benchmark/               # Benchmark v2 单元测试（layer1/2/3 + Phase 4 Pass@1）
+    ├── test_alert_logger.py     # 全局告警日志测试（v3.2）
+    ├── test_incident.py         # 崩溃现场保全测试（v3.2）
+    ├── test_aiu_registry.py     # AIU 注册表基础测试
+    ├── test_aiu_registry_v2.py  # Schema-Driven AIU 新接口测试（v3.1）
+    ├── test_contradiction_detection.py  # 图谱矛盾检测测试（v3.1）
+    ├── test_trace_*.py          # 诊断追踪模块测试（tracer/event/collector/reporter）
+    └── test_*.py                # 各核心模块测试（dag / memory / analysis / execution …）
 ```
 
 ---
@@ -637,21 +668,6 @@ mulan bootstrap --root /path/to/your/project
 # 3. AST 骨架化扫描 → docs/memory/_system/ast_index.json
 # 4. 架构层入口点绑定 → ast_pointer 写入本体 YAML
 ```
-
-可用种子包：
-
-
-| 种子包                | 触发条件                                  | 注入内容                    |
-| ------------------ | ------------------------------------- | ----------------------- |
-| `base`             | 任意项目                                  | 安全、事务、通用架构模式            |
-| `fastapi_sqlmodel` | requirements 中有 fastapi + sqlmodel    | FastAPI 后端 API 模式       |
-| `react_zustand`    | package.json 中有 react + zustand       | 前端页面模式                  |
-| `palantir_arch`    | 含本体/元数据关键词                            | 领域建模模式                  |
-| `spring_boot`      | pom.xml / build.gradle 中含 spring-boot | Java 分层架构 + DTO + 迁移规则  |
-| `go_gin`           | go.mod 中含 gin                         | Go 接口分层 + GORM + 错误包裹规则 |
-
-
-每个种子包含三层结构：`arch_schema/`（层级定义）、`ontology/`（预置业务概念）、`constraints/`（硬性规则）。
 
 通过 `mulan seed ingest` 可从 GitHub 吸收外部规范自动生成新种子包（见 [Rule Absorber](#种子包管理rule-absorber)）。
 
@@ -1079,89 +1095,21 @@ pytest tests/ --cov=src/mms --cov-report=html
 
 ### 已完成（v3.2）
 
-**MDR 诊断基础设施（Oracle ADR 哲学落地）**
+**MDR 诊断基础设施**
 
 - ✅ **全局告警日志 `alert_mulan.log`**：`src/mms/observability/logger.py` 新建，写入路径 `docs/memory/private/mdr/alert/`，按天轮转（保留 30 天），仅记录系统级重大事件（启动/关闭/熔断/崩溃），对外暴露 `alert_info/alert_warn/alert_fatal/alert_circuit` 四个模块级函数，运维人员只需 `tail -f alert_mulan.log` 实时监控系统存活状态
-
 - ✅ **熔断器状态转移告警**：`circuit_breaker.py` 集成告警日志，三个状态转移节点均触发：`CLOSED→OPEN`（FATAL 级，算力掉线）/ `OPEN→HALF_OPEN`（WARN 级，恢复探测）/ `HALF_OPEN→CLOSED`（INFO 级，正常恢复）；通过安全 import（try/except）设计，避免循环依赖
-
 - ✅ **Incident Dump 黑匣子**：`src/mms/observability/incident.py` 新建，通过 `sys.excepthook` 全局接管致命崩溃现场，自动保全三份文件：`call_stack.dmp`（完整 traceback + 最深崩溃帧的局部变量快照）/ `prompt_context.txt`（LLM 有毒提示词，供开发者直接复现幻觉行为）/ `incident_manifest.json`（结构化元数据），处理器自身有双重 try/except 保护，不会因诊断代码 bug 导致二次崩溃
-
 - ✅ **ContextVars 上下文捕获**：`set_last_llm_context(prompt, response)` 通过 Python 原生 `contextvars.ContextVar` 存储最后一次 LLM 调用输入输出，asyncio / 多线程场景下各 EP 互不干扰，崩溃时自动写入 `prompt_context.txt`
+- ✅ `**mulan diag` CLI**：`cli.py` 新增三个子命令：`diag status`（读取 `alert_mulan.log` 尾部，统计 FATAL/WARN 告警，存在未处理 FATAL 时退出码为 1）/ `diag list`（列出所有 Incident 记录）/ `diag pack <incident_id>`（打包 Incident 目录 + 相关 EP trace + ast_index.json 为 ZIP，供附到 GitHub Issue）
 
-- ✅ **`mulan diag` CLI**：`cli.py` 新增三个子命令：`diag status`（读取 `alert_mulan.log` 尾部，统计 FATAL/WARN 告警，存在未处理 FATAL 时退出码为 1）/ `diag list`（列出所有 Incident 记录）/ `diag pack <incident_id>`（打包 Incident 目录 + 相关 EP trace + ast_index.json 为 ZIP，供附到 GitHub Issue）
 
-### 中期目标（v4.5）
-
-- **多 Agent 并行执行**：多个 UnitRunner 并行处理同一 EP 中无依赖关系的 Unit 批次
-- **两阶段提交（2PC）**：引入 git worktree shadow workspace，所有 AIU 通过后才 squash merge
-- **完全离线模式**：意图分类、代价估算、上下文压缩全部切换为规则/本地模型
-
-### 长期目标（v5.x）
+### 待完成（v5.x）
 
 - **自适应 AIU 引擎**：根据执行历史自动调整 AIU 类型权重和拆分粒度
-- **团队知识联邦**：多开发者本地记忆库可选择性同步
 - **代码基因组（Code Genome）**：为每个核心模块维护变更历史 + 依赖图 + 架构决策链
-- **端侧 Agent 网络**：多个木兰实例分布在不同机器，协同完成跨服务任务
 
 ---
-
-## 如何贡献
-
-木兰的设计目标之一是让贡献尽可能低门槛——大多数扩展通过 **YAML 文件**完成，无需修改 Python 源码。
-
-### 贡献方向
-
-**YAML 驱动的扩展（无需改 Python 源码）：**
-
-
-| 方向                   | 难度   | 入口文件                                                                  |
-| -------------------- | ---- | --------------------------------------------------------------------- |
-| 新增种子包                | ⭐ 低  | `seed_packs/<name>/{arch_schema,ontology,constraints}/`               |
-| 扩充 EP 任务模板           | ⭐ 低  | `docs/memory/templates/`                                              |
-| 扩充 AIU 类型            | ⭐ 低  | `docs/memory/_system/schemas/aiu_types_extended.yaml`                 |
-| 新增记忆图遍历路径            | ⭐ 低  | `docs/memory/ontology/_config/traversal_paths.yaml`                   |
-| 新增 Benchmark 测试 case | ⭐ 低  | `benchmark/v2/layer3_safety/fixtures/*.yaml` 或 `layer2_memory/tasks/` |
-| 新增 LinkType（图边类型）    | ⭐⭐ 中 | `docs/memory/ontology/links/<name>.yaml`                              |
-
-
-**Python 代码级扩展：**
-
-
-| 方向                    | 难度   | 描述                                                        |
-| --------------------- | ---- | --------------------------------------------------------- |
-| 新增 LLM Provider       | ⭐⭐ 中 | 在 `src/mms/providers/` 实现 `ProviderBase`，注册到 `factory.py` |
-| 扩充 Rule Absorber 噪声规则 | ⭐⭐ 中 | 改进 `src/mms/analysis/seed_absorber.py` 噪声清洗正则             |
-| 新增 postcheck 验证步骤     | ⭐⭐ 中 | 在 `src/mms/workflow/postcheck.py` 添加新的验证门控                |
-| 新增安全脱敏规则              | ⭐⭐ 中 | 在 `src/mms/core/sanitize.py` 扩充敏感凭证正则                     |
-| 新增 Benchmark 评测层      | ⭐⭐ 中 | 继承 `BaseEvaluator`，在 `benchmark/v2/runner.py` 注册          |
-
-
-### 贡献流程
-
-```bash
-# 1. Fork 并克隆
-git clone https://github.com/your-username/mms.git
-cd mms
-
-# 2. 创建特性分支
-git checkout -b feature/my-feature
-
-# 3. 安装开发依赖
-pip install pyyaml structlog pytest pytest-cov
-
-# 4. 开发并写测试（测试覆盖率要求 ≥ 80%，所有测试必须可离线运行）
-
-# 5. 本地验证
-pytest tests/ -v                                  # 全部测试通过
-python3 src/mms/analysis/arch_check.py --ci       # 架构约束检查
-mulan benchmark                                   # 离线 Benchmark 验证
-mulan validate --changed-only                     # 记忆文件 Schema 校验
-
-# 6. 提交并推送
-git commit -m "feat: add support for Django seed pack"
-git push origin feature/my-feature
-```
 
 ### 代码规范
 
