@@ -250,48 +250,49 @@ _DISTILL_PROMPT_V2 = """\
 格式：
 ```yaml
 rules:
-  - id: AC-{NAME}-01
+  - id: AC-NAME-01
     description: "规则中文描述"
     pattern: "可在代码中搜索的正则表达式"
     scope: "**/*.py"  # 适用文件范围
     severity: ERROR  # ERROR / WARN / INFO
 ```
 要求：提取 3-6 条最重要的强制性约束（MUST/禁止/不得等）。
+id 格式：AC-大写技术名缩写-两位数字（如 AC-SQLALCH-01, AC-REDIS-01）。
 
 **第二部分：memories_md**（用于 hybrid_search 检索）
-为每条约束生成一个 Markdown 记忆文件，格式：
-```
-===FILE: AC-{NAME}-01.md===
+为每条约束生成一个 Markdown 记忆文件，格式（NAME 替换为实际缩写）：
+
+===FILE: AC-NAME-01.md===
 ---
-id: AC-{NAME}-01
+id: AC-NAME-01
 tier: hot
 layer: L2
 protection_bonus: 0.3
-tags: [python, {technology}, architecture]
+tags: [python, technology, architecture]
 ---
-# AC-{NAME}-01：规则标题
+# AC-NAME-01：规则标题
 
 ## 约束
-[规则的核心约束，一句话]
+规则的核心约束，一句话。
 
 ## 反例（Anti-pattern）
+
 ```python
 # 错误做法
 ```
 
 ## 正例（Correct Pattern）
+
 ```python
 # 正确做法
 ```
 
 ## 原因
-[为什么这个约束重要]
+为什么这个约束重要。
 ===END===
-```
 
 【重要约束】
-- id 格式：AC-大写技术名缩写-两位数字（如 AC-SQLALCH-01, AC-REDIS-01）
-- 只输出代码，不要额外解释
+- 只输出两个 SECTION 块，不要额外解释
 - severity 为 ERROR 的规则才值得进入 hot tier
 """
 
@@ -431,13 +432,13 @@ layer_affinity: CC
 always_inject: false
 """
 
-    constraints_content = f"""\
-# {seed_name}/constraints.yaml
-# 由 Rule Absorber v2 从 {source_name} 蒸馏生成
-# 可被 arch_check.py 直接加载进行静态扫描
-
-{sections.get('constraints_yaml', '# LLM 未生成约束，请手动补充\nrules: []')}
-"""
+    _constraints_yaml = sections.get('constraints_yaml', '') or '# LLM 未生成约束，请手动补充\nrules: []'
+    constraints_content = (
+        f"# {seed_name}/constraints.yaml\n"
+        f"# 由 Rule Absorber v2 从 {source_name} 蒸馏生成\n"
+        f"# 可被 arch_check.py 直接加载进行静态扫描\n\n"
+        + _constraints_yaml + "\n"
+    )
 
     memory_files = _parse_memory_files(sections.get('memories_md', ''))
 
