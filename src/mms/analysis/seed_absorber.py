@@ -175,8 +175,21 @@ def _fetch_content(url_or_path: str, timeout: int = 15) -> Tuple[str, str]:
 
     Returns:
         (content: str, source_name: str)
+
+    Raises:
+        ValueError: URL 是 GitHub 目录（/tree/）或其他无法作为单文件获取的地址。
     """
     if url_or_path.startswith(('http://', 'https://')):
+        # 检测 GitHub 目录 URL（/tree/ 路径），ingest 只处理单文件
+        if 'github.com' in url_or_path and '/tree/' in url_or_path:
+            raise ValueError(
+                f"该 URL 是 GitHub 目录，不是单个规则文件。\n"
+                f"  请使用批量命令：\n"
+                f"    mulan seed ingest-batch \"{url_or_path}\" [--filter KEYWORDS] [--dry-run]\n"
+                f"  或指定具体文件的 raw URL，例如：\n"
+                f"    mulan seed ingest \"https://raw.githubusercontent.com/.../<rule>.mdc\""
+            )
+
         url = url_or_path.replace(
             'github.com/', 'raw.githubusercontent.com/'
         ).replace('/blob/', '/')
