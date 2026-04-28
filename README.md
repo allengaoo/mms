@@ -591,7 +591,7 @@ mms/
 │   │   ├── APP/                 # 应用用例编排（Handler/Saga/工作流）[保护系数 0.1]
 │   │   └── ADAPTER/             # 外部适配（REST/DB/MQ/Cache）[保护系数 0.0]
 │   │
-│   ├── seed_packs/              # 工业级种子记忆（语言/框架级，50 条）[v3.1]
+│   ├── seed_packs/              # 工业级种子记忆（语言/框架级，66 条）[v3.1~v3.3]
 │   │   ├── python_fastapi/      # Python × 10 条（AC-PY-01~10）
 │   │   │   ├── meta.yaml        # 种子包元数据（语言 / arch_paradigm / layer_affinity）
 │   │   │   ├── constraints.yaml # arch_check 可扫描的静态约束规则
@@ -599,7 +599,10 @@ mms/
 │   │   ├── java_spring_boot/    # Java × 12 条（AC-JAV-01~12）
 │   │   ├── go_microservice/     # Go × 10 条（AC-GO-01~10）
 │   │   ├── typescript_nestjs/   # TypeScript × 10 条（AC-TS-01~10）
-│   │   └── cross_cutting/       # 通用架构 × 8 条（AC-ARCH-01~08）
+│   │   ├── cross_cutting/       # 通用架构 × 8 条（AC-ARCH-01~08）
+│   │   ├── python_sqlalchemy/   # SQLAlchemy 2.x × 6 条（AC-SQLALCH-01~06）[v3.3]
+│   │   ├── infrastructure_redis/# Redis 最佳实践 × 5 条（AC-REDIS-01~05）[v3.3]
+│   │   └── infrastructure_devops/ # Docker+K8s × 5 条（AC-DEVOPS-01~05）[v3.3]
 │   │
 │   ├── ontology/                # 动态本体定义
 │   │   ├── objects/             # 5 种 ObjectType（memory_node / arch_decision / …）
@@ -819,7 +822,7 @@ mulan seed ingest <url> --dry-run                        # 预览蒸馏结果，
 mulan seed ingest <url> --force                          # 覆盖已有同名种子包
 ```
 
-Rule Absorber 工作流：URL 获取 → 噪声清洗 → 提取规则段落 → `qwen3-32b` 蒸馏 → 写入 `seed_packs/<name>/{arch_schema,ontology,constraints}/`。
+Rule Absorber v2 工作流：URL 获取 → 代码块感知噪声清洗（v2）→ 提取规则段落 → `qwen3-32b` 蒸馏 → 写入 `docs/memory/seed_packs/<name>/`（v3.1 格式：`meta.yaml` + `constraints.yaml` + `memories/AC-*.md`）。支持 `--format v2` 兼容旧格式。
 
 ### Benchmark 评测
 
@@ -1077,7 +1080,7 @@ pytest tests/ --cov=src/mms --cov-report=html
 
 **种子记忆（Seed Genes）**
 
-- ✅ **seed_packs 目录结构**：`docs/memory/seed_packs/` 含 5 个种子包（Python/Java/Go/TypeScript/CC）
+- ✅ **seed_packs 目录结构**：`docs/memory/seed_packs/` 含 8 个种子包（Python/Java/Go/TypeScript/CC/SQLAlchemy/Redis/DevOps），66 条种子记忆
 - ✅ **50 条工业级种子记忆**：Python×10 + Java×12 + Go×10 + TypeScript×10 + 通用×8，每条含代码示例和原因分析
 - ✅ **constraints.yaml**：每个种子包同时提供可被 `arch_check.py` 静态扫描的约束定义（双格式）
 
@@ -1103,6 +1106,22 @@ pytest tests/ --cov=src/mms --cov-report=html
 - ✅ **ContextVars 上下文捕获**：`set_last_llm_context(prompt, response)` 通过 Python 原生 `contextvars.ContextVar` 存储最后一次 LLM 调用输入输出，asyncio / 多线程场景下各 EP 互不干扰，崩溃时自动写入 `prompt_context.txt`
 - ✅ `**mulan diag` CLI**：`cli.py` 新增三个子命令：`diag status`（读取 `alert_mulan.log` 尾部，统计 FATAL/WARN 告警，存在未处理 FATAL 时退出码为 1）/ `diag list`（列出所有 Incident 记录）/ `diag pack <incident_id>`（打包 Incident 目录 + 相关 EP trace + ast_index.json 为 ZIP，供附到 GitHub Issue）
 
+
+### 已完成（v3.3）
+
+**Rule Absorber v2 + 三大技术栈种子包扩充**
+
+- ✅ **`seed_absorber.py` v2 重写**：彻底修复四大问题：
+  - *噪声清洗 v2*：改为代码块感知的白名单策略，保留 `❌/✅` 示例、Markdown 标题和代码块，实测保留率从 13% 提升至 65%+
+  - *LLM 降级分级*：区分 `ProviderPendingError`（显示 pending 文件路径 + 操作提示）与真实失败（显示错误类型），不再静默返回占位符
+  - *v3.1 双轨输出*：`--format v31`（默认）生成 `docs/memory/seed_packs/{name}/` 标准目录（含 `meta.yaml` + `constraints.yaml` + `memories/AC-*.md`），兼容保留旧版 `--format v2`
+  - *更新 LLM Prompt*：`_DISTILL_PROMPT_V2` 明确要求输出 `constraints_yaml` 和 `memories_md` 两段，含 `AC-*.md` 代码示例格式指令
+- ✅ **`ingest-batch` 批量子命令**：`cli.py` 新增 `mulan seed ingest-batch`，支持多 URL 输入 / GitHub 目录 URL 自动展开（`_fetch_github_dir_listing` 调用 API）/ `--filter` 关键词过滤 / `--prefix` 种子包前缀
+- ✅ **`python_sqlalchemy` 种子包**（6 条记忆）：覆盖 SQLAlchemy 2.x 全面迁移规范，含 `AC-SQLALCH-01`（Mapped[]/mapped_column）/ `AC-SQLALCH-02`（select() 替代 query()）/ `AC-SQLALCH-03`（Session context manager）/ `AC-SQLALCH-04`（back_populates 替代 backref）/ `AC-SQLALCH-05`（selectinload 避免 N+1）/ `AC-SQLALCH-06`（AsyncSession 异步场景）
+- ✅ **`infrastructure_redis` 种子包**（5 条记忆）：`AC-REDIS-01`（TTL 必填）/ `AC-REDIS-02`（连接池）/ `AC-REDIS-03`（key 命名规范）/ `AC-REDIS-04`（禁止 KEYS *）/ `AC-REDIS-05`（redis.asyncio）
+- ✅ **`infrastructure_devops` 种子包**（5 条记忆）：`AC-DEVOPS-01`（非 root 用户）/ `AC-DEVOPS-02`（固定镜像版本）/ `AC-DEVOPS-03`（K8s resources）/ `AC-DEVOPS-04`（liveness/readiness probe）/ `AC-DEVOPS-05`（多阶段构建）
+
+---
 
 ### 待完成（v5.x）
 

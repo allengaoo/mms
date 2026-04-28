@@ -1,0 +1,33 @@
+# infrastructure_devops/constraints.yaml
+# 来源：awesome-cursor-rules docker.mdc + Kubernetes 生产最佳实践
+
+rules:
+  - id: AC-DEVOPS-01
+    description: "Dockerfile 必须使用非 root 用户运行；禁止以 root 执行容器进程"
+    pattern: "^(?!.*USER\\s+(?!root)).*CMD|^(?!.*USER).*ENTRYPOINT"
+    scope: "**/Dockerfile*"
+    severity: ERROR
+
+  - id: AC-DEVOPS-02
+    description: "Docker 镜像必须固定基础镜像版本；禁止使用 :latest 标签"
+    pattern: "FROM\\s+\\w[\\w./:-]*:latest"
+    scope: "**/Dockerfile*"
+    severity: ERROR
+
+  - id: AC-DEVOPS-03
+    description: "Kubernetes Deployment 必须配置 resources.requests 和 resources.limits"
+    pattern: "kind:\\s*(?:Deployment|StatefulSet|DaemonSet)(?:(?!resources:)[\\s\\S])*?containers:"
+    scope: "**/*.yaml"
+    severity: WARN
+
+  - id: AC-DEVOPS-04
+    description: "Kubernetes Pod 必须配置 livenessProbe 和 readinessProbe"
+    pattern: "kind:\\s*(?:Deployment|StatefulSet)(?:(?!livenessProbe)[\\s\\S])*?containers:"
+    scope: "**/*.yaml"
+    severity: WARN
+
+  - id: AC-DEVOPS-05
+    description: "Dockerfile 多阶段构建：生产镜像禁止包含构建工具（gcc、git、pip install -r dev-requirements）"
+    pattern: "pip install.*dev-requirements|apt-get install.*gcc.*(?:(?!AS\\s+\\w+)[\\s\\S])*?CMD"
+    scope: "**/Dockerfile*"
+    severity: WARN

@@ -1,0 +1,40 @@
+# python_sqlalchemy/constraints.yaml
+# 可被 arch_check.py 直接加载进行静态扫描
+# 来源：awesome-cursor-rules sqlalchemy.mdc + SQLAlchemy 2.x 官方迁移指南
+
+rules:
+  - id: AC-SQLALCH-01
+    description: "禁止使用旧版 Column() 风格；必须使用 mapped_column() + Mapped[] 注解"
+    pattern: "Column\\(.*primary_key|Column\\(.*nullable|db\\.Column\\("
+    scope: "**/*.py"
+    severity: ERROR
+
+  - id: AC-SQLALCH-02
+    description: "禁止使用 session.query()；必须使用 select() 语句"
+    pattern: "session\\.query\\(|db\\.session\\.query\\("
+    scope: "**/*.py"
+    severity: ERROR
+
+  - id: AC-SQLALCH-03
+    description: "Session 必须通过 context manager（with Session() as s）使用，不得手动 close"
+    pattern: "\\.close\\(\\)\\s*#.*session|session\\.close\\("
+    scope: "**/*.py"
+    severity: WARN
+
+  - id: AC-SQLALCH-04
+    description: "一对多关联必须配置 back_populates；禁止使用已废弃的 backref"
+    pattern: "backref\\s*="
+    scope: "**/*.py"
+    severity: WARN
+
+  - id: AC-SQLALCH-05
+    description: "禁止在循环中触发 N+1 查询；必须使用 selectinload/joinedload 预加载"
+    pattern: "\\.lazy\\s*=\\s*['\"]select['\"]|relationship\\([^)]+\\)(?!.*load)"
+    scope: "**/*.py"
+    severity: WARN
+
+  - id: AC-SQLALCH-06
+    description: "异步 ORM 必须使用 AsyncSession；不得在 async def 中使用同步 Session"
+    pattern: "async def.*\\n(?:(?!AsyncSession)[^\n])*Session\\("
+    scope: "**/*.py"
+    severity: ERROR

@@ -1,0 +1,34 @@
+# infrastructure_redis/constraints.yaml
+# 可被 arch_check.py 直接加载进行静态扫描
+# 来源：awesome-cursor-rules redis.mdc + Redis 最佳实践
+
+rules:
+  - id: AC-REDIS-01
+    description: "所有 Redis SET 操作必须携带 TTL（EX/PX/EXAT）；禁止无过期时间的 SET"
+    pattern: "redis.*\\.set\\([^)]+\\)(?!.*ex=|.*px=|.*exat=|.*pxat=)"
+    scope: "**/*.py"
+    severity: ERROR
+
+  - id: AC-REDIS-02
+    description: "禁止每次请求新建 Redis 连接；必须使用连接池（ConnectionPool / Redis(connection_pool=...)）"
+    pattern: "Redis\\(host=|StrictRedis\\(host="
+    scope: "**/*.py"
+    severity: WARN
+
+  - id: AC-REDIS-03
+    description: "Redis Key 必须遵循命名规范：{service}:{entity}:{id}，禁止裸字符串 key"
+    pattern: "r\\.(?:get|set|delete)\\(['\"][^:]+['\"]"
+    scope: "**/*.py"
+    severity: WARN
+
+  - id: AC-REDIS-04
+    description: "禁止在生产环境使用 KEYS * 命令；应使用 SCAN 迭代"
+    pattern: "\\.keys\\(['\"]\\*['\"]\\)|execute_command\\(['\"]KEYS"
+    scope: "**/*.py"
+    severity: ERROR
+
+  - id: AC-REDIS-05
+    description: "异步场景必须使用 aioredis 或 redis.asyncio；不得在 async def 中使用同步 redis 客户端"
+    pattern: "async def.*\\n(?:(?!aioredis|redis\\.asyncio)[^\n])*StrictRedis\\("
+    scope: "**/*.py"
+    severity: ERROR

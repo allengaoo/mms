@@ -1422,9 +1422,9 @@ def build_parser() -> argparse.ArgumentParser:
     # seed ingest
     p_si = p_seed_sub.add_parser(
         "ingest",
-        help="从 URL 或本地文件吸收 .cursorrules/.mdc 规范，蒸馏为 MMS YAML",
+        help="从 URL 或本地文件吸收 .cursorrules/.mdc 规范，蒸馏为 MMS 种子记忆",
     )
-    p_si.add_argument("url", metavar="URL_OR_PATH", help="GitHub URL 或本地文件路径")
+    p_si.add_argument("url", metavar="URL_OR_PATH", help="GitHub raw URL 或本地文件路径")
     p_si.add_argument(
         "--seed-name", default=None,
         help="目标种子包名称（默认从 URL 文件名推导）",
@@ -1436,6 +1436,40 @@ def build_parser() -> argparse.ArgumentParser:
     p_si.add_argument(
         "--force", action="store_true",
         help="覆盖同名已有种子包",
+    )
+    p_si.add_argument(
+        "--format", choices=["v31", "v2"], default="v31", dest="output_format",
+        help="输出格式：v31=docs/memory/seed_packs/（推荐）v2=seed_packs/（旧格式）",
+    )
+
+    # seed ingest-batch
+    p_sib = p_seed_sub.add_parser(
+        "ingest-batch",
+        help="批量吸收多个 .mdc 规则文件（支持 GitHub 目录 URL）",
+    )
+    p_sib.add_argument(
+        "urls", nargs="+", metavar="URL",
+        help="多个规则 URL，或一个 GitHub 目录 URL（自动展开）",
+    )
+    p_sib.add_argument(
+        "--filter", default=None, dest="name_filter", metavar="KEYWORDS",
+        help="只处理文件名包含指定关键词的规则（逗号分隔，如 'fastapi,redis,docker'）",
+    )
+    p_sib.add_argument(
+        "--prefix", default="", dest="seed_prefix", metavar="PREFIX",
+        help="种子包名称前缀（默认无）",
+    )
+    p_sib.add_argument(
+        "--dry-run", action="store_true",
+        help="预览蒸馏结果，不写文件",
+    )
+    p_sib.add_argument(
+        "--force", action="store_true",
+        help="覆盖同名已有种子包",
+    )
+    p_sib.add_argument(
+        "--format", choices=["v31", "v2"], default="v31", dest="output_format",
+        help="输出格式：v31（推荐）或 v2（旧格式）",
     )
 
     # ── benchmark — 三层模块化评测（v2）────────────────────────────────────────
@@ -1626,12 +1660,14 @@ def cmd_seed(args: argparse.Namespace) -> int:
         seed_name = getattr(args, "seed_name", None)
         dry_run = getattr(args, "dry_run", False)
         force = getattr(args, "force", False)
+        output_format = getattr(args, "output_format", "v31")
 
         print(f"\n{'='*60}")
-        print(f"  MMS Rule Absorber — 规则吸收器")
+        print(f"  MMS Rule Absorber v2 — 规则吸收器")
         print(f"{'='*60}")
         try:
-            result_dir = ingest(url, seed_name=seed_name, dry_run=dry_run, force=force)
+            result_dir = ingest(url, seed_name=seed_name, dry_run=dry_run,
+                                force=force, output_format=output_format)
             if not dry_run:
                 print(f"\n  ✅ 种子包就绪：{result_dir}")
                 print(f"  提示：运行 `mulan seed list` 查看所有种子包")
@@ -1639,6 +1675,39 @@ def cmd_seed(args: argparse.Namespace) -> int:
         except (FileNotFoundError, ValueError) as e:
             print(f"\n  ❌ 获取失败：{e}\n")
             return 1
+        return 0
+
+    elif subcmd == "ingest-batch":
+        try:
+            from mms.analysis.seed_absorber import ingest_batch  # type: ignore[import]
+        except ImportError as e:
+            print(f"❌ seed_absorber 模块未找到（{e}）")
+            return 1
+
+        urls = getattr(args, "urls", [])
+        if not urls:
+            print("❌ 请至少指定一个 URL 或 GitHub 目录 URL")
+            return 1
+
+        dry_run = getattr(args, "dry_run", False)
+        force = getattr(args, "force", False)
+        output_format = getattr(args, "output_format", "v31")
+        seed_prefix = getattr(args, "seed_prefix", "")
+        name_filter = getattr(args, "name_filter", None)
+
+        print(f"\n{'='*60}")
+        print(f"  MMS Rule Absorber v2 — 批量规则吸收")
+        print(f"{'='*60}")
+        results = ingest_batch(
+            urls,
+            seed_prefix=seed_prefix,
+            dry_run=dry_run,
+            force=force,
+            output_format=output_format,
+            name_filter=name_filter,
+        )
+        if not dry_run and results:
+            print(f"\n  ✅ 已生成 {len(results)} 个种子包，运行 `mulan seed list` 查看")
         return 0
 
     else:

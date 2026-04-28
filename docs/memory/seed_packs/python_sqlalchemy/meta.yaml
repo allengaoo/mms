@@ -1,0 +1,10 @@
+# python_sqlalchemy 种子包元数据
+stack_id: python_sqlalchemy
+source_url: "https://github.com/sanjeed5/awesome-cursor-rules-mdc/blob/main/rules-mdc/sqlalchemy.mdc"
+generated_at: "2026-04-28T12:00:00Z"
+description: "SQLAlchemy 2.x ORM 强制约束（Rule Absorber v2 手工精炼版）"
+layer_affinity: L2
+always_inject: false
+match_conditions:
+  - file_pattern: "**/*.py"
+    import_signals: ["sqlalchemy", "SQLAlchemy", "from sqlalchemy"]

@@ -1,0 +1,14 @@
+# infrastructure_devops 种子包元数据
+stack_id: infrastructure_devops
+source_url: "https://github.com/sanjeed5/awesome-cursor-rules-mdc/blob/main/rules-mdc/docker.mdc"
+generated_at: "2026-04-28T12:00:00Z"
+description: "Docker + Kubernetes 容器化最佳实践（Rule Absorber v2 手工精炼版）"
+layer_affinity: CC
+always_inject: false
+match_conditions:
+  - file_pattern: "**/Dockerfile*"
+    always: true
+  - file_pattern: "**/*.yaml"
+    content_signals: ["apiVersion:", "kind: Deployment", "kind: Service", "kind: Pod"]
+  - file_pattern: "**/docker-compose*.yaml"
+    always: true
