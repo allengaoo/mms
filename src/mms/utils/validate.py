@@ -132,7 +132,9 @@ def find_all_memory_files() -> List[Path]:
     files = []
     for pattern in ("MEM-*.md", "AD-*.md", "PAT-*.md", "SKL-*.md", "BIZ-*.md", "ENV-*.md"):
         files.extend(_MEMORY_ROOT.rglob(pattern))
-    return [f for f in files if "_system" not in f.parts and "archive" not in f.parts]
+    return [f for f in files if "_system" not in f.parts
+            and "archive" not in f.parts
+            and "templates" not in f.parts]
 
 
 def find_changed_files() -> List[Path]:
