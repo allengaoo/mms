@@ -19,6 +19,10 @@ mulan codemap / funcmap / ast-diff 命令组集成测试（真实 CLI 调用，�
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 import json
 import re
 import subprocess

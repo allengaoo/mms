@@ -59,3 +59,7 @@ tmp/
 .tmp/
 *.tmp
 mms_codegen_eval_*/
+
+# Mulan 系统自动生成文件（不纳入版本控制）
+docs/memory/_system/pending_claude_prompts/
+src/docs/memory/_system/model_usage.jsonl

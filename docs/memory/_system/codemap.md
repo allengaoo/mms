@@ -1,8 +1,30 @@
-# Codemap — Project Directory Snapshot
+# Codemap — 项目目录快照
 
-> **Auto-generated** · Run `python3 codemap.py` to refresh
-> Do not edit manually.
+> **自动生成** · 2026-04-29 11:54 UTC · 勿手动编辑
+> 使用 `python3 scripts/mms/codemap.py` 刷新
 
 ---
 
-*(empty — run `mms bootstrap` or `python3 codemap.py` to generate)*
+## 后端应用层 (`backend/app`)
+
+_目录不存在_
+
+## 前端源码 (`frontend/src`)
+
+_目录不存在_
+
+## MMS 记忆系统脚本 (`scripts/mms`)
+
+_目录不存在_
+
+## 共享记忆库 (`docs/memory/shared`)
+
+_目录不存在_
+
+## 架构文档 (`docs/architecture`)
+
+_目录不存在_
+
+---
+
+_本文件由 `scripts/mms/codemap.py` 自动生成，请勿手动编辑。刷新命令：`python3 scripts/mms/cli.py codemap`_

@@ -20,6 +20,10 @@ mulan seed 命令组集成测试（真实 CLI 调用，无 mock）
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 import shutil
 import subprocess
 import sys

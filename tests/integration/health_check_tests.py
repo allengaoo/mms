@@ -19,6 +19,10 @@ mulan 系统健康检查命令集成测试（真实 CLI 调用，无 mock）
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 import re
 import shutil
 import subprocess

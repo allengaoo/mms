@@ -1,0 +1,10 @@
+# pytest/constraints.yaml
+# 由 Rule Absorber v2 从 pytest.mdc 蒸馏生成
+# 可被 arch_check.py 直接加载进行静态扫描
+
+rules:
+  - id: AC-ABSORBED-01
+    description: 从外部规范吸收的规则（LLM 不可用时的占位符，请手动补充）
+    pattern: "TODO"
+    scope: "**/*"
+    severity: WARN

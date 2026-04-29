@@ -59,8 +59,6 @@
 | **无状态**   | 大模型不记得上次任务发生了什么，每次都从零开始            |
 
 
-
-
 **核心假设：限制代码生成质量的主要因素不是模型能力，而是上下文质量和任务粒度。**
 
 将任务分解为足够细的原子工序（AIU，≤4k tokens），并为每道工序精准注入最相关的历史知识。
@@ -1106,20 +1104,19 @@ pytest tests/ --cov=src/mms --cov-report=html
 - ✅ **ContextVars 上下文捕获**：`set_last_llm_context(prompt, response)` 通过 Python 原生 `contextvars.ContextVar` 存储最后一次 LLM 调用输入输出，asyncio / 多线程场景下各 EP 互不干扰，崩溃时自动写入 `prompt_context.txt`
 - ✅ `**mulan diag` CLI**：`cli.py` 新增三个子命令：`diag status`（读取 `alert_mulan.log` 尾部，统计 FATAL/WARN 告警，存在未处理 FATAL 时退出码为 1）/ `diag list`（列出所有 Incident 记录）/ `diag pack <incident_id>`（打包 Incident 目录 + 相关 EP trace + ast_index.json 为 ZIP，供附到 GitHub Issue）
 
-
 ### 已完成（v3.3）
 
 **Rule Absorber v2 + 三大技术栈种子包扩充**
 
-- ✅ **`seed_absorber.py` v2 重写**：彻底修复四大问题：
+- ✅ `**seed_absorber.py` v2 重写**：彻底修复四大问题：
   - *噪声清洗 v2*：改为代码块感知的白名单策略，保留 `❌/✅` 示例、Markdown 标题和代码块，实测保留率从 13% 提升至 65%+
   - *LLM 降级分级*：区分 `ProviderPendingError`（显示 pending 文件路径 + 操作提示）与真实失败（显示错误类型），不再静默返回占位符
   - *v3.1 双轨输出*：`--format v31`（默认）生成 `docs/memory/seed_packs/{name}/` 标准目录（含 `meta.yaml` + `constraints.yaml` + `memories/AC-*.md`），兼容保留旧版 `--format v2`
   - *更新 LLM Prompt*：`_DISTILL_PROMPT_V2` 明确要求输出 `constraints_yaml` 和 `memories_md` 两段，含 `AC-*.md` 代码示例格式指令
-- ✅ **`ingest-batch` 批量子命令**：`cli.py` 新增 `mulan seed ingest-batch`，支持多 URL 输入 / GitHub 目录 URL 自动展开（`_fetch_github_dir_listing` 调用 API）/ `--filter` 关键词过滤 / `--prefix` 种子包前缀
-- ✅ **`python_sqlalchemy` 种子包**（6 条记忆）：覆盖 SQLAlchemy 2.x 全面迁移规范，含 `AC-SQLALCH-01`（Mapped[]/mapped_column）/ `AC-SQLALCH-02`（select() 替代 query()）/ `AC-SQLALCH-03`（Session context manager）/ `AC-SQLALCH-04`（back_populates 替代 backref）/ `AC-SQLALCH-05`（selectinload 避免 N+1）/ `AC-SQLALCH-06`（AsyncSession 异步场景）
-- ✅ **`infrastructure_redis` 种子包**（5 条记忆）：`AC-REDIS-01`（TTL 必填）/ `AC-REDIS-02`（连接池）/ `AC-REDIS-03`（key 命名规范）/ `AC-REDIS-04`（禁止 KEYS *）/ `AC-REDIS-05`（redis.asyncio）
-- ✅ **`infrastructure_devops` 种子包**（5 条记忆）：`AC-DEVOPS-01`（非 root 用户）/ `AC-DEVOPS-02`（固定镜像版本）/ `AC-DEVOPS-03`（K8s resources）/ `AC-DEVOPS-04`（liveness/readiness probe）/ `AC-DEVOPS-05`（多阶段构建）
+- ✅ `**ingest-batch` 批量子命令**：`cli.py` 新增 `mulan seed ingest-batch`，支持多 URL 输入 / GitHub 目录 URL 自动展开（`_fetch_github_dir_listing` 调用 API）/ `--filter` 关键词过滤 / `--prefix` 种子包前缀
+- ✅ `**python_sqlalchemy` 种子包**（6 条记忆）：覆盖 SQLAlchemy 2.x 全面迁移规范，含 `AC-SQLALCH-01`（Mapped[]/mapped_column）/ `AC-SQLALCH-02`（select() 替代 query()）/ `AC-SQLALCH-03`（Session context manager）/ `AC-SQLALCH-04`（back_populates 替代 backref）/ `AC-SQLALCH-05`（selectinload 避免 N+1）/ `AC-SQLALCH-06`（AsyncSession 异步场景）
+- ✅ `**infrastructure_redis` 种子包**（5 条记忆）：`AC-REDIS-01`（TTL 必填）/ `AC-REDIS-02`（连接池）/ `AC-REDIS-03`（key 命名规范）/ `AC-REDIS-04`（禁止 KEYS *）/ `AC-REDIS-05`（redis.asyncio）
+- ✅ `**infrastructure_devops` 种子包**（5 条记忆）：`AC-DEVOPS-01`（非 root 用户）/ `AC-DEVOPS-02`（固定镜像版本）/ `AC-DEVOPS-03`（K8s resources）/ `AC-DEVOPS-04`（liveness/readiness probe）/ `AC-DEVOPS-05`（多阶段构建）
 
 ---
 

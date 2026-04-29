@@ -1,0 +1,8 @@
+# pytest 种子包元数据
+# 由 Rule Absorber v2 从 pytest.mdc 蒸馏生成
+stack_id: pytest
+source_url: "https://raw.githubusercontent.com/sanjeed5/awesome-cursor-rules-mdc/main/rules-mdc/pytest.mdc"
+generated_at: "2026-04-28T14:56:58Z"
+description: "从 pytest.mdc 吸收的规范（Rule Absorber v2）"
+layer_affinity: CC
+always_inject: false
