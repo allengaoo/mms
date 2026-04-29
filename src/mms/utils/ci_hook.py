@@ -18,20 +18,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 _HOOK_FILE = _PROJECT_ROOT / ".git" / "hooks" / "pre-commit"
 
 _HOOK_CONTENT = """\
 #!/bin/sh
 # MMS pre-commit hook — 自动校验变更的记忆文件 Schema
-# 由 python scripts/mms/ci_hook.py install 生成
+# 由 mulan hook install 生成
 
-python scripts/mms/validate.py --changed-only
+python3 cli.py validate --changed-only
 if [ $? -ne 0 ]; then
   echo ""
   echo "❌ 记忆文件 Schema 校验失败，请修复上述错误后再提交。"
   echo "💡 修复提示："
-  echo "   · 缺少 version 字段？运行：python scripts/mms/validate.py --migrate-add-version"
+  echo "   · 缺少 version 字段？运行：mulan validate --migrate-add-version"
   echo "   · 查看 Schema 规则：docs/memory/_system/schema.json"
   echo "   · 贡献指南：docs/memory/CONTRIBUTING.md"
   exit 1
@@ -80,8 +80,9 @@ def remove() -> None:
 
 def check() -> None:
     """CI 模式：校验全部记忆文件，失败时 exit(1)"""
+    validate_script = _PROJECT_ROOT / "src" / "mms" / "utils" / "validate.py"
     result = subprocess.run(
-        [sys.executable, "scripts/mms/validate.py"],
+        [sys.executable, str(validate_script)],
         cwd=str(_PROJECT_ROOT),
     )
     sys.exit(result.returncode)

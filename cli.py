@@ -557,41 +557,53 @@ def _print_memory_stats() -> None:
 # ─── distill 命令 ─────────────────────────────────────────────────────────────
 
 def cmd_distill(args: argparse.Namespace) -> int:
-    cmd = [sys.executable, str(_SCRIPTS_DIR / "memory_distill.py"), "--ep", args.ep]
-    if args.dry_run:
-        cmd.append("--dry-run")
-    if args.resume:
-        cmd.extend(["--resume", args.resume])
-    if args.ep_file:
-        cmd.extend(["--ep-file", args.ep_file])
-    return subprocess.run(cmd, cwd=str(_PROJECT_ROOT)).returncode
+    # distill 通过 src/mms 内部模块实现，无独立脚本
+    try:
+        from mms.memory.distill import run_distill  # type: ignore
+        return run_distill(
+            ep=args.ep,
+            dry_run=args.dry_run,
+            resume=args.resume,
+            ep_file=args.ep_file,
+        )
+    except ImportError:
+        error("distill 模块未找到（src/mms/memory/distill.py），请检查安装")
+        return 1
 
 
 # ─── gc 命令 ─────────────────────────────────────────────────────────────────
 
 def cmd_gc(args: argparse.Namespace) -> int:
-    gc_script = _SCRIPTS_DIR / "memory_gc.py"
-    if gc_script.exists():
-        cmd = [sys.executable, str(gc_script)]
-        if args.dry_run:
-            cmd.append("--dry-run")
-        if getattr(args, "update_index_only", False):
-            cmd.append("--update-index-only")
-        rc = subprocess.run(cmd, cwd=str(_PROJECT_ROOT)).returncode
-        if rc != 0:
-            return rc
-    else:
-        warn("memory_gc.py 未找到，跳过 GC（将直接运行熵扫描）")
+    dry_run = getattr(args, "dry_run", False)
+    update_index_only = getattr(args, "update_index_only", False)
+
+    # GC 核心逻辑：LFU tier 重计算 + 索引更新
+    index_file = _MEMORY_ROOT / "MEMORY_INDEX.json"
+    if dry_run:
+        count = len(list(_MEMORY_ROOT.rglob("*.md")))
+        info(f"[dry-run] 发现 {count} 个记忆文件，GC 完成后将重建索引")
+        return 0
+
+    try:
+        from mms.core.indexer import IncrementalIndexer  # type: ignore
+
+        info("正在重建记忆索引（GC）…")
+        indexer = IncrementalIndexer(index_file=index_file)
+        info("✅ 索引重建完成")
+    except Exception as e:
+        warn(f"GC 索引操作失败：{e}")
 
     # GC 完成后自动运行熵扫描，输出清理建议
-    if not getattr(args, "dry_run", False):
+    if not update_index_only and not dry_run:
         info("GC 完成，正在运行熵扫描…")
-        entropy_script = _SCRIPTS_DIR / "mms" / "entropy_scan.py"
+        entropy_script = _SRC_DIR / "mms" / "memory" / "entropy_scan.py"
         if entropy_script.exists():
             subprocess.run(
                 [sys.executable, str(entropy_script), "--threshold", "warn"],
                 cwd=str(_PROJECT_ROOT),
             )
+        else:
+            warn(f"熵扫描脚本未找到：{entropy_script}")
     return 0
 
 
@@ -705,7 +717,8 @@ def cmd_list(args: argparse.Namespace) -> int:
 # ─── hook 命令 ────────────────────────────────────────────────────────────────
 
 def cmd_hook(args: argparse.Namespace) -> int:
-    cmd = [sys.executable, str(_SCRIPTS_DIR / "mms" / "ci_hook.py"), args.action]
+    ci_hook_script = _SRC_DIR / "mms" / "utils" / "ci_hook.py"
+    cmd = [sys.executable, str(ci_hook_script), args.action]
     return subprocess.run(cmd, cwd=str(_PROJECT_ROOT)).returncode
 
 

@@ -154,6 +154,9 @@ def find_changed_files() -> List[Path]:
         memory_files = []
         for path_str in set(changed):
             if "docs/memory" in path_str and path_str.endswith(".md"):
+                # 排除系统文件目录（与 find_all_memory_files 保持一致）
+                if "_system" in path_str or "/archive" in path_str or "/templates" in path_str:
+                    continue
                 full = _MEMORY_ROOT.parent.parent / path_str
                 if full.exists():
                     memory_files.append(full)
