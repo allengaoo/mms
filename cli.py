@@ -598,7 +598,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
 # ─── validate 命令 ────────────────────────────────────────────────────────────
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    cmd = [sys.executable, str(_SCRIPTS_DIR / "mms" / "validate.py")]
+    _validate_script = _SRC_DIR / "mms" / "utils" / "validate.py"
+    cmd = [sys.executable, str(_validate_script)]
     if getattr(args, "changed_only", False):
         cmd.append("--changed-only")
     if getattr(args, "file", None):

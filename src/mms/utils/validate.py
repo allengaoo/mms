@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-_MEMORY_ROOT = Path(__file__).parent.parent.parent / "docs" / "memory"
+_MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
 _SCHEMA_FILE = _MEMORY_ROOT / "_system" / "schema.json"
 
 _REQUIRED_FIELDS = ["id", "layer", "dimension", "type", "tier", "tags", "source_ep", "created_at", "version"]
