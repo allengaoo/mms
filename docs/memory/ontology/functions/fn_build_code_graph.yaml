@@ -1,0 +1,66 @@
+# FunctionDef: fn_build_code_graph — 构建代码依赖图
+# ──────────────────────────────────────────────────
+# 从 ast_index.json 提取所有 CodeClass 的 imports，
+# 构建带权有向图：节点=CodeClass，边=depends_on/implements。
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: fn_build_code_graph
+label: "代码依赖图构建"
+type: function
+version: "1.0"
+pure: true
+
+description: |
+  读取 ast_index.json 中所有文件的 imports 字段，
+  解析项目内部的跨文件依赖关系，构建 CodeGraph 对象。
+
+  CodeGraph 结构：
+    nodes: dict[class_fqn, CodeClass]   所有已识别的类
+    edges: list[DependsOnEdge]          depends_on 边列表
+    impl_edges: list[ImplementsEdge]    implements 边列表
+    module_map: dict[module_path, list[class_fqn]]  模块→类的映射
+
+  图分析能力（供 fn_infer_layer 使用）：
+    - in_degree(class_fqn)   → 被多少类依赖（高 in_degree → 底层核心）
+    - out_degree(class_fqn)  → 依赖了多少类
+    - strongly_connected_components() → 检测循环依赖
+    - layer_violation_edges()  → 检测向上依赖（DIP 违反）
+
+implementation:
+  module: "src.mms.analysis.code_graph_builder"
+  function: "build_code_graph(ast_index: dict, project_root: Path) -> CodeGraph"
+
+inputs:
+  - name: ast_index
+    type: dict
+    required: true
+    description: "build_ast_index() 的输出，rel_path → FileSkeleton dict"
+
+  - name: project_root
+    type: Path
+    required: true
+    description: "项目根目录（用于解析相对路径）"
+
+  - name: filter_external
+    type: boolean
+    required: false
+    default: true
+    description: "是否过滤掉第三方库和 stdlib 的依赖（只保留项目内部依赖）"
+
+outputs:
+  - name: code_graph
+    type: CodeGraph
+    description: "代码依赖图对象"
+
+  - name: stats
+    type: object
+    description: "图统计信息"
+    fields:
+      node_count:      integer
+      edge_count:      integer
+      cycle_count:     integer   # 循环依赖数量
+      violation_count: integer   # DIP 违反数量
+      avg_in_degree:   float
+      max_in_degree:   integer
+      max_in_degree_class: string  # 最高被依赖的核心类

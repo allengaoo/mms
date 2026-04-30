@@ -1,0 +1,497 @@
+"""
+src/mms/bootstrap/signal_fusion.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+五路信号融合推断架构层与代码对象语义类型
+
+实现 OntologyRegistry 中定义的两个 Function：
+  fn_infer_layer              → infer_layer()
+  fn_detect_code_object_type  → detect_code_object_type()
+
+设计原则：
+  - 纯函数，无副作用，不读写磁盘
+  - 规则从 FunctionRegistry 的 signal_rules 字段加载（YAML 驱动）
+  - 内置规则作为 fallback（YAML 未配置时生效）
+  - 每路信号独立评分，最终加权投票
+
+版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+# ─── 数据类 ──────────────────────────────────────────────────────────────────
+
+LAYERS = ["CC", "PLATFORM", "DOMAIN", "APP", "ADAPTER"]
+
+CODE_OBJECT_TYPES = [
+    "Controller", "Service", "Repository", "Entity",
+    "Config", "Util", "Test", "Unknown",
+]
+
+MEMORY_NODE_TYPES = {
+    "Controller": ("pattern",  "ADAPTER", "warm"),
+    "Service":    ("pattern",  "APP",     "warm"),
+    "Repository": ("pattern",  "DOMAIN",  "warm"),
+    "Entity":     ("pattern",  "DOMAIN",  "warm"),
+    "Config":     ("decision", "PLATFORM","warm"),
+    "Util":       ("skip",     "CC",      "cold"),
+    "Test":       ("skip",     "APP",     "cold"),
+    "Unknown":    ("skip",     "CC",      "cold"),
+}
+
+
+@dataclass
+class SignalBreakdown:
+    path_score:        float = 0.0
+    name_score:        float = 0.0
+    annotation_score:  float = 0.0
+    inheritance_score: float = 0.0
+    import_score:      float = 0.0
+
+    def total(self) -> float:
+        return (
+            self.path_score        * 0.25 +
+            self.name_score        * 0.25 +
+            self.annotation_score  * 0.30 +
+            self.inheritance_score * 0.10 +
+            self.import_score      * 0.10
+        )
+
+
+@dataclass
+class LayerInference:
+    inferred_layer: str = "UNKNOWN"
+    confidence: float = 0.0
+    signal_breakdown: SignalBreakdown = field(default_factory=SignalBreakdown)
+    all_scores: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class ObjectTypeMapping:
+    code_object_type: str = "Unknown"
+    memory_node_type: str = "skip"
+    suggested_tier:   str = "cold"
+    suggested_layer:  str = "CC"
+
+
+# ─── 内置信号规则库（从 fn_infer_layer.yaml 提取，作为默认值）──────────────
+
+_PATH_PATTERNS: Dict[str, List[str]] = {
+    "ADAPTER":  ["controller", "handler", "router", "route", "endpoint",
+                 "view", "rest", "api", "adapter", "web", "http", "resource",
+                 "routes", "graphql", "grpc", "amqp_rpc", "nats_rpc", "rmq_rpc",
+                 "delivery", "transport", "presentation"],
+    "APP":      ["service", "usecase", "use_case", "application",
+                 "orchestrat", "workflow", "manager", "command", "query", "saga",
+                 "crud", "interactor"],
+    "DOMAIN":   ["domain", "model", "entity", "aggregate", "repository",
+                 "repo", "store", "dao", "mapper", "schema", "request", "response"],
+    "PLATFORM": ["config", "configuration", "auth", "security", "middleware",
+                 "filter", "interceptor", "logging", "metric", "provider",
+                 "core", "infra", "infrastructure", "db", "logger",
+                 "postgres", "redis", "kafka", "rabbitmq", "grpcserver",
+                 "httpserver", "jwt", "pkg"],
+    "CC":       ["exception", "error", "constant", "common", "base",
+                 "abstract", "util", "helper", "test", "spec", "alembic"],
+}
+
+_NAME_SUFFIXES: Dict[str, List[str]] = {
+    "ADAPTER":  ["Controller", "Handler", "Router", "View",
+                 "Resource", "Endpoint", "Rest", "Api",
+                 "Resolver", "Delivery"],        # Go/GraphQL 惯用名
+    "APP":      ["Service", "UseCase", "Interactor",
+                 "Orchestrator", "Manager", "Facade", "Application",
+                 "Usecase"],                     # Go 惯用
+    "DOMAIN":   ["Repository", "Repo", "DAO", "Store",
+                 "Mapper", "Entity", "Aggregate", "ValueObject",
+                 "Request", "Response", "DTO"],  # Go/Java DTO
+    "PLATFORM": ["Config", "Configuration", "Filter",
+                 "Interceptor", "Provider", "Factory", "Auth", "Security",
+                 "Logger", "Postgres", "Database", "Client",  # Go infra
+                 "Connection", "Server"],         # Go server structs
+    "CC":       ["Exception", "Error",
+                 "Util", "Helper", "Constant", "Test", "Spec"],
+}
+
+# 继承关系：框架基类 → 架构层映射（无需命名匹配）
+_BASE_CLASS_LAYER_HINTS: Dict[str, Tuple[str, float]] = {
+    # Python Pydantic / SQLModel
+    "SQLModel":    ("DOMAIN",   0.8),
+    "BaseModel":   ("DOMAIN",   0.7),
+    "Base":        ("DOMAIN",   0.5),
+    "DeclarativeBase": ("DOMAIN", 0.8),
+    # Python FastAPI 配置
+    "BaseSettings": ("PLATFORM", 0.9),
+    "Settings":     ("PLATFORM", 0.7),
+    # Java Spring
+    "JpaRepository": ("DOMAIN", 0.9),
+    "CrudRepository": ("DOMAIN", 0.9),
+    "PagingAndSortingRepository": ("DOMAIN", 0.9),
+    # Go / generic
+    "Repository": ("DOMAIN", 0.8),
+    "struct":     ("UNKNOWN", 0.0),   # Go 通用 struct，不单独提升
+    "interface":  ("UNKNOWN", 0.0),   # Go interface，不单独提升
+}
+
+_NAME_PREFIXES: Dict[str, List[str]] = {
+    # Base/Abstract 前缀不足以确定层级（可能是任何层的基类），保持 empty
+}
+
+_ANNOTATION_PATTERNS: Dict[str, List[str]] = {
+    "ADAPTER": [
+        r"@RestController", r"@Controller",
+        r"@router\b", r"@app\.(get|post|put|delete|patch)",
+        r"@(Get|Post|Put|Delete|Patch)\(",
+        r"gin\.Context", r"@RequestMapping",
+        r"@(Api|Resource)\b",
+    ],
+    "APP": [
+        r"@Service\b", r"@Component\b",
+        r"@Injectable\b", r"@UseCase\b",
+        r"@Transactional\b",
+    ],
+    "DOMAIN": [
+        r"@Repository\b", r"@Mapper\b",
+        r"@Entity\b", r"@Table\b", r"@Document\b",
+        r"@dataclass\b", r"@Embeddable\b",
+    ],
+    "PLATFORM": [
+        r"@Configuration\b", r"@ConfigurationProperties",
+        r"@EnableWebMvc", r"@SpringBootApplication",
+        r"@EnableSecurity", r"@Bean\b",
+    ],
+}
+
+
+# ─── 信号评分器 ───────────────────────────────────────────────────────────────
+
+def _score_path(file_path: str, name_patterns: Optional[Dict] = None) -> Dict[str, float]:
+    """路径信号：目录名关键词匹配评分（各层 0~1）。"""
+    patterns = name_patterns or _PATH_PATTERNS
+    parts = Path(file_path).parts
+    path_str = "/".join(parts).lower()
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+    for layer, keywords in patterns.items():
+        for kw in keywords:
+            if kw in path_str:
+                scores[layer] = min(1.0, scores[layer] + 0.4)
+    return scores
+
+
+def _score_name(class_name: str,
+                suffix_patterns: Optional[Dict] = None,
+                prefix_patterns: Optional[Dict] = None) -> Dict[str, float]:
+    """命名信号：类名后缀/前缀匹配评分。"""
+    suffixes = suffix_patterns or _NAME_SUFFIXES
+    prefixes = prefix_patterns or _NAME_PREFIXES
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+    for layer, suf_list in suffixes.items():
+        for suf in suf_list:
+            if class_name.endswith(suf):
+                scores[layer] = 1.0
+                break
+    for layer, pre_list in prefixes.items():
+        for pre in pre_list:
+            if class_name.startswith(pre):
+                scores[layer] = max(scores[layer], 0.7)
+                break
+    return scores
+
+
+def _score_annotations(annotations: List[str],
+                        annot_patterns: Optional[Dict] = None) -> Dict[str, float]:
+    """注解/装饰器信号：模式匹配（权重最高，显式声明）。"""
+    patterns = annot_patterns or _ANNOTATION_PATTERNS
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+    annot_str = " ".join(annotations)
+    for layer, pat_list in patterns.items():
+        for pat in pat_list:
+            if re.search(pat, annot_str):
+                scores[layer] = 1.0
+                break
+    return scores
+
+
+def _score_inheritance(bases: List[str], parent_layers: Dict[str, str]) -> Dict[str, float]:
+    """继承信号：父类/接口名关键词 + 父类已知层级 + 框架基类 hint。"""
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+    for base in bases:
+        # 1. 框架基类直接映射（最高优先级）
+        if base in _BASE_CLASS_LAYER_HINTS:
+            layer, confidence = _BASE_CLASS_LAYER_HINTS[base]
+            if layer in scores:  # 跳过 "UNKNOWN" 等非有效层
+                scores[layer] = max(scores[layer], confidence)
+            continue
+
+        # 2. 父类已有推断层时采用
+        if base in parent_layers:
+            layer = parent_layers[base]
+            if layer in scores:
+                scores[layer] = max(scores[layer], 0.9)
+            continue
+
+        # 3. 父类名关键词匹配（降级处理）
+        for layer, suf_list in _NAME_SUFFIXES.items():
+            for suf in suf_list:
+                if base.endswith(suf):
+                    scores[layer] = max(scores[layer], 0.6)
+    return scores
+
+
+def _score_imports(class_name: str,
+                   in_degree: int,
+                   out_degree_by_layer: Dict[str, int]) -> Dict[str, float]:
+    """
+    导入信号：根据依赖图中的入度/出度推断层级。
+
+    规则：
+      - 高入度（被大量类依赖）→ 更可能是底层（DOMAIN/PLATFORM）
+      - 大量依赖 DOMAIN 层类 → 自身可能是 APP 层
+      - 大量依赖 APP 层类    → 自身可能是 ADAPTER 层
+    """
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+
+    # 高入度 → 底层信号
+    if in_degree >= 5:
+        scores["DOMAIN"]   = max(scores["DOMAIN"],   0.5)
+        scores["PLATFORM"] = max(scores["PLATFORM"], 0.4)
+    elif in_degree >= 3:
+        scores["DOMAIN"] = max(scores["DOMAIN"], 0.3)
+
+    # 出度方向 → 调用方层级
+    domain_deps  = out_degree_by_layer.get("DOMAIN",  0)
+    platform_deps = out_degree_by_layer.get("PLATFORM", 0)
+    adapter_deps = out_degree_by_layer.get("ADAPTER", 0)
+
+    if domain_deps >= 2:
+        scores["APP"] = max(scores["APP"], 0.4)
+    if domain_deps >= 1 and platform_deps >= 1:
+        scores["APP"] = max(scores["APP"], 0.3)
+    if adapter_deps >= 1:
+        scores["CC"] = max(scores["CC"], 0.2)
+
+    return scores
+
+
+# ─── fn_infer_layer 实现 ──────────────────────────────────────────────────────
+
+def infer_layer(
+    file_path: str,
+    class_name: str,
+    annotations: Optional[List[str]] = None,
+    bases: Optional[List[str]] = None,
+    parent_layers: Optional[Dict[str, str]] = None,
+    in_degree: int = 0,
+    out_degree_by_layer: Optional[Dict[str, int]] = None,
+    signal_rules: Optional[Dict] = None,
+) -> LayerInference:
+    """
+    五路信号融合推断架构层。
+
+    实现 fn_infer_layer Function（docs/memory/ontology/functions/fn_infer_layer.yaml）。
+
+    Args:
+        file_path:           文件路径（用于路径信号）
+        class_name:          类名（用于命名信号）
+        annotations:         类级注解/装饰器列表（用于注解信号）
+        bases:               父类/接口列表（用于继承信号）
+        parent_layers:       已推断的父类层级字典 {class_name: layer}（用于继承信号）
+        in_degree:           被多少类依赖（用于导入信号）
+        out_degree_by_layer: 按层分组的出度 {layer: count}（用于导入信号）
+        signal_rules:        来自 FunctionRegistry 的自定义信号规则（覆盖内置规则）
+
+    Returns:
+        LayerInference: 推断结果，含层级、置信度和分项得分
+    """
+    annotations = annotations or []
+    bases = bases or []
+    parent_layers = parent_layers or {}
+    out_degree_by_layer = out_degree_by_layer or {}
+
+    # 加载自定义规则（YAML 驱动覆盖）
+    custom_path   = (signal_rules or {}).get("path_patterns")
+    custom_name   = (signal_rules or {}).get("name_patterns")
+    custom_annot  = (signal_rules or {}).get("annotation_patterns")
+
+    # 各路信号评分
+    path_scores  = _score_path(file_path, custom_path)
+    name_scores  = _score_name(class_name, custom_name)
+    annot_scores = _score_annotations(annotations, custom_annot)
+    inh_scores   = _score_inheritance(bases, parent_layers)
+    imp_scores   = _score_imports(class_name, in_degree, out_degree_by_layer)
+
+    # 加权融合
+    all_scores: Dict[str, float] = {}
+    breakdown = SignalBreakdown()
+
+    for layer in LAYERS:
+        ps = path_scores.get(layer, 0.0)
+        ns = name_scores.get(layer, 0.0)
+        as_ = annot_scores.get(layer, 0.0)
+        is_ = inh_scores.get(layer, 0.0)
+        im_ = imp_scores.get(layer, 0.0)
+        all_scores[layer] = ps * 0.25 + ns * 0.25 + as_ * 0.30 + is_ * 0.10 + im_ * 0.10
+
+    # ── Framework Override Pass ───────────────────────────────────────────────
+    # 当框架基类（SQLModel/BaseModel/BaseSettings 等）匹配时，
+    # 继承信号本身置信度极高（0.7~0.9），但 0.10 权重使其被压制。
+    # 此处直接以框架基类推断的层级作为最低下限（soft override）。
+    for base in (bases or []):
+        if base in _BASE_CLASS_LAYER_HINTS:
+            fw_layer, fw_conf = _BASE_CLASS_LAYER_HINTS[base]
+            # UNKNOWN 表示无意义基类（如 Go 的 struct），跳过
+            if fw_layer in all_scores and fw_conf > all_scores[fw_layer]:
+                all_scores[fw_layer] = fw_conf
+
+    best_layer = max(all_scores, key=lambda k: all_scores[k])
+    best_score = all_scores[best_layer]
+
+    # 分项得分记录（取最高得分层的分量）
+    breakdown.path_score        = path_scores.get(best_layer, 0.0)
+    breakdown.name_score        = name_scores.get(best_layer, 0.0)
+    breakdown.annotation_score  = annot_scores.get(best_layer, 0.0)
+    breakdown.inheritance_score = inh_scores.get(best_layer, 0.0)
+    breakdown.import_score      = imp_scores.get(best_layer, 0.0)
+
+    inferred = best_layer if best_score >= 0.25 else "UNKNOWN"
+
+    return LayerInference(
+        inferred_layer=inferred,
+        confidence=round(best_score, 3),
+        signal_breakdown=breakdown,
+        all_scores={k: round(v, 3) for k, v in all_scores.items()},
+    )
+
+
+# ─── fn_detect_code_object_type 实现 ──────────────────────────────────────────
+
+def detect_code_object_type(
+    class_name: str,
+    annotations: Optional[List[str]] = None,
+    methods: Optional[List[dict]] = None,
+    layer_inference: Optional[LayerInference] = None,
+) -> ObjectTypeMapping:
+    """
+    基于推断层级和方法签名确定代码对象的语义类型。
+
+    实现 fn_detect_code_object_type Function。
+    """
+    annotations = annotations or []
+    methods = methods or []
+    inferred_layer = layer_inference.inferred_layer if layer_inference else "UNKNOWN"
+
+    annot_str = " ".join(annotations)
+    method_names = [m.get("name", "") for m in methods if isinstance(m, dict)]
+    method_str = " ".join(method_names).lower()
+
+    code_type = "Unknown"
+
+    if inferred_layer == "ADAPTER":
+        has_http = bool(re.search(r"@(Get|Post|Put|Delete|Patch|RestController|Controller|router|app\.)", annot_str))
+        if has_http or any(s in class_name for s in ["Controller", "Handler", "Router", "View"]):
+            code_type = "Controller"
+        elif any(s in class_name for s in ["Client", "Adapter", "Gateway"]):
+            code_type = "Controller"  # 广义 ADAPTER 都归为 Controller
+        else:
+            code_type = "Controller"
+
+    elif inferred_layer == "APP":
+        code_type = "Service"
+
+    elif inferred_layer == "DOMAIN":
+        is_entity = bool(re.search(r"@(Entity|Table|Document|dataclass|Embeddable)", annot_str))
+        is_repo   = any(s in class_name for s in ["Repository", "Repo", "DAO", "Store", "Mapper"])
+        if is_repo:
+            code_type = "Repository"
+        elif is_entity or any(s in class_name for s in ["Entity", "Aggregate", "ValueObject", "Model"]):
+            code_type = "Entity"
+        else:
+            code_type = "Entity"  # DOMAIN 层默认归 Entity
+
+    elif inferred_layer == "PLATFORM":
+        code_type = "Config"
+
+    elif inferred_layer == "CC":
+        if any(s in class_name for s in ["Exception", "Error"]):
+            code_type = "Util"  # 异常类：生成 Util 记忆或跳过
+        elif any(s in class_name for s in ["Test", "Spec", "Mock"]):
+            code_type = "Test"
+        else:
+            code_type = "Util"
+
+    mem_type, mem_layer, mem_tier = MEMORY_NODE_TYPES.get(code_type, ("skip", "CC", "cold"))
+    return ObjectTypeMapping(
+        code_object_type=code_type,
+        memory_node_type=mem_type,
+        suggested_tier=mem_tier,
+        suggested_layer=mem_layer,
+    )
+
+
+# ─── 批量推断（供 Bootstrap 使用）────────────────────────────────────────────
+
+def infer_all(
+    ast_index: Dict[str, dict],
+    code_graph_in_degrees: Optional[Dict[str, int]] = None,
+    code_graph_out_by_layer: Optional[Dict[str, Dict[str, int]]] = None,
+    signal_rules: Optional[Dict] = None,
+    min_confidence: float = 0.25,
+) -> Dict[str, Tuple[LayerInference, ObjectTypeMapping]]:
+    """
+    对 ast_index 中所有类批量推断层级和对象类型。
+
+    Args:
+        ast_index:               build_ast_index() 的输出
+        code_graph_in_degrees:   {class_fqn: in_degree}（可选，来自代码图）
+        code_graph_out_by_layer: {class_fqn: {layer: count}}（可选）
+        signal_rules:            自定义信号规则（来自 FunctionRegistry）
+        min_confidence:          最低置信度阈值
+
+    Returns:
+        {class_fqn: (LayerInference, ObjectTypeMapping)}
+    """
+    in_degrees   = code_graph_in_degrees or {}
+    out_by_layer = code_graph_out_by_layer or {}
+    results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]] = {}
+
+    # 两轮推断：第一轮推断父类层级 → 第二轮用继承信号
+    parent_layers: Dict[str, str] = {}
+
+    for file_path, file_data in ast_index.items():
+        for cls in file_data.get("classes", []):
+            name = cls.get("name", "")
+            if not name:
+                continue
+            fqn = f"{file_path}::{name}"
+            annotations = [
+                a for ann_list in [
+                    cls.get("annotations", []),
+                    [d for m in cls.get("methods", []) for d in m.get("decorators", [])
+                     if isinstance(m, dict)]
+                ] for a in (ann_list if isinstance(ann_list, list) else [])
+            ]
+            layer_inf = infer_layer(
+                file_path=file_path,
+                class_name=name,
+                annotations=cls.get("annotations", []),
+                bases=cls.get("bases", []),
+                parent_layers=parent_layers,
+                in_degree=in_degrees.get(fqn, 0),
+                out_degree_by_layer=out_by_layer.get(fqn, {}),
+                signal_rules=signal_rules,
+            )
+            if layer_inf.confidence >= min_confidence:
+                parent_layers[name] = layer_inf.inferred_layer
+
+            obj_map = detect_code_object_type(
+                class_name=name,
+                annotations=cls.get("annotations", []),
+                methods=cls.get("methods", []),
+                layer_inference=layer_inf,
+            )
+            results[fqn] = (layer_inf, obj_map)
+
+    return results

@@ -1,0 +1,23 @@
+id: fn_detect_drift
+label: "记忆新鲜度检测（Drift Detection）"
+type: function
+version: "2.0"
+pure: true
+description: |
+  检测 MemoryNode 引用的代码文件（cites_files）是否发生了 AST 指纹变更，
+  标记 drift_suspected=true，触发 freshness propagation。
+implementation:
+  module: "src.mms.memory.freshness_checker"
+  function: "check_drift(memory_node, ast_index)"
+inputs:
+  - name: memory_node
+    type: MemoryNode
+    required: true
+  - name: ast_index
+    type: dict
+    required: true
+outputs:
+  - name: drift_suspected
+    type: boolean
+  - name: drifted_files
+    type: list[string]

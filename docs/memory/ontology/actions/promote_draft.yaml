@@ -1,0 +1,57 @@
+# ActionDef: action_promote_draft — 草稿记忆升级为正式记忆
+# ────────────────────────────────────────────────────────────
+# 版本：v1.0 | 创建于：2026-04-30
+
+id: action_promote_draft
+label: "草稿记忆升级"
+type: action
+version: "1.0"
+
+description: |
+  将 autoDream 生成的草稿记忆（private/ 目录下）提升为正式共享记忆（shared/ 目录）。
+  提升时自动：校验 front-matter → 选择层目录 → 写入文件 → 建立 cites/about 边 → 更新索引。
+
+parameters:
+  - name: draft_path
+    type: Path
+    required: true
+    description: "草稿文件路径（docs/memory/private/EP-NNN/notes/*.md）"
+
+  - name: target_layer
+    type: string
+    required: true
+    enum: [CC, PLATFORM, DOMAIN, APP, ADAPTER]
+    description: "目标层（通用 5 层）"
+
+  - name: target_memory_id
+    type: string
+    required: false
+    description: "指定 MemoryNode ID（留空则自动分配）"
+
+rules:
+  - rule_id: validate_frontmatter
+    type: function_rule
+    function: "validate.check_frontmatter(draft_path)"
+    on_failure: abort
+
+  - rule_id: move_to_shared
+    type: side_effect
+    description: "复制草稿到 docs/memory/shared/{target_layer}/"
+
+  - rule_id: build_links
+    type: create_links
+    link_types: [link_cites, link_about]
+    description: "auto_link 自动建立 cites/about 边"
+
+  - rule_id: update_index
+    type: side_effect
+    description: "更新 MEMORY_INDEX.json"
+
+submission_criteria:
+  - criterion_id: draft_exists
+    check: "Path(draft_path).exists()"
+    error_message: "草稿文件不存在：{draft_path}"
+
+  - criterion_id: target_layer_valid
+    check: "target_layer in ['CC','PLATFORM','DOMAIN','APP','ADAPTER']"
+    error_message: "无效的目标层：{target_layer}"

@@ -1,0 +1,21 @@
+id: fn_find_contradictions
+label: "图谱矛盾检测"
+type: function
+version: "2.0"
+pure: true
+description: |
+  在同一 DomainConcept 下，检测内容相互矛盾的 MemoryNode 对。
+  两阶段：关键词级离线检测 + LLM 语义在线确认（可选）。
+implementation:
+  module: "src.mms.memory.memory_actions"
+  function: "detect_contradictions(memory_id, graph)"
+inputs:
+  - name: memory_id
+    type: string
+    required: true
+  - name: graph
+    type: MemoryGraph
+    required: true
+outputs:
+  - name: contradiction_pairs
+    type: list[object]

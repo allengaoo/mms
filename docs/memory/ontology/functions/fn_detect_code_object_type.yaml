@@ -1,0 +1,87 @@
+# FunctionDef: fn_detect_code_object_type — 推断代码对象的语义类型
+# ──────────────────────────────────────────────────────────────────
+# 在 fn_infer_layer 推断出架构层之后，进一步推断该类在本体中对应的语义类型。
+# 输出用于决定 Bootstrap 生成的初始 MemoryNode 的 type 字段。
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: fn_detect_code_object_type
+label: "代码对象语义类型推断"
+type: function
+version: "1.0"
+pure: true
+
+description: |
+  基于 fn_infer_layer 的结果和 CodeClass 的方法签名，
+  推断该类在 MMS 本体中应对应哪种 ObjectType，
+  并确定生成的 MemoryNode 的 type 字段（pattern/decision/lesson）和初始 tier。
+
+  推断规则（架构层 → ObjectType 映射）：
+
+    ADAPTER 层：
+      有 HTTP 方法注解 (@GET/@POST/router.get) → Controller
+      没有注解但名称含 Client/Adapter/Gateway  → Adapter
+      否则                                     → Unknown
+
+    APP 层：
+      方法名含 execute/handle/run/process      → Service（命令型）
+      方法名含 get/find/query/list             → Service（查询型）
+      否则                                     → Service
+
+    DOMAIN 层：
+      有 @Entity/@Table/@Document 注解         → Entity
+      名称含 Repository/DAO/Store              → Repository
+      否则                                     → Entity（领域对象）
+
+    PLATFORM 层：
+      名称含 Config/Configuration              → Config
+      名称含 Auth/Security/Permission          → Config（安全配置）
+      否则                                     → Config
+
+    CC 层：
+      名称含 Exception/Error                   → (anti-pattern 候选，不生成记忆)
+      名称含 Base/Abstract                     → (基类，不单独生成记忆，合并到子类)
+      否则                                     → Util
+
+  生成的 MemoryNode type 映射：
+    Controller → type: pattern, layer: ADAPTER
+    Service    → type: pattern, layer: APP
+    Repository → type: pattern, layer: DOMAIN
+    Entity     → type: pattern, layer: DOMAIN
+    Config     → type: decision, layer: PLATFORM（配置决策）
+    Util       → (跳过，不生成记忆，避免噪音)
+
+implementation:
+  module: "src.mms.analysis.signal_fusion"
+  function: "detect_code_object_type(code_class: CodeClass, layer_inference: LayerInference) -> ObjectTypeMapping"
+
+inputs:
+  - name: code_class
+    type: CodeClass
+    required: true
+
+  - name: layer_inference
+    type: LayerInference
+    required: true
+    description: "fn_infer_layer 的输出结果"
+
+outputs:
+  - name: code_object_type
+    type: string
+    enum: [Controller, Service, Repository, Entity, Config, Util, Unknown]
+    description: "推断的代码对象语义类型"
+
+  - name: memory_node_type
+    type: string
+    enum: [pattern, decision, lesson, skip]
+    description: "应生成的 MemoryNode type（skip 表示不生成记忆）"
+
+  - name: suggested_tier
+    type: string
+    enum: [hot, warm, cold]
+    description: "建议的初始 tier"
+
+  - name: suggested_layer
+    type: string
+    enum: [CC, PLATFORM, DOMAIN, APP, ADAPTER]
+    description: "通用 5 层（传入记忆的 layer 字段）"

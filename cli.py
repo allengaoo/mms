@@ -1400,6 +1400,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-seeds", action="store_true",
         help="跳过种子包注入（只做 AST 骨架化）",
     )
+    p_bootstrap.add_argument(
+        "--skip-memory-gen", action="store_true",
+        help="跳过初始 MemoryNode 生成（只做结构分析）",
+    )
+    p_bootstrap.add_argument(
+        "--min-confidence", type=float, default=0.5, metavar="FLOAT",
+        help="层推断最低置信度阈值，低于此值跳过（默认 0.5）",
+    )
+    p_bootstrap.add_argument(
+        "--max-per-layer", type=int, default=10, metavar="N",
+        help="每层最多生成的 MemoryNode 数量（默认 10）",
+    )
 
     # ── EP-130: ast-diff ─────────────────────────────────────────────────────
     p_astdiff = sub.add_parser(
@@ -1534,17 +1546,36 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_bootstrap(args: argparse.Namespace) -> int:
-    """bootstrap 子命令：冷启动 AST 骨架化 + 种子包注入。"""
-    import time
-
+    """bootstrap 子命令：冷启动本体初始化（Bootstrap v2）。"""
     try:
-        sys.path.insert(0, str(_SRC_DIR))
+        from mms.bootstrap.ontology_populator import bootstrap_project  # type: ignore[import]
+    except ImportError as e:
+        error(f"Bootstrap v2 模块未找到（{e}），回退到基础模式")
+        return _cmd_bootstrap_legacy(args)
+
+    root = Path(args.root) if getattr(args, "root", None) else _PROJECT_ROOT
+    report = bootstrap_project(
+        project_root=root,
+        dry_run=getattr(args, "dry_run", False),
+        skip_ast=getattr(args, "skip_ast", False),
+        skip_seeds=getattr(args, "skip_seeds", False),
+        skip_memory_gen=getattr(args, "skip_memory_gen", False),
+        min_confidence=float(getattr(args, "min_confidence", 0.5)),
+        max_per_layer=int(getattr(args, "max_per_layer", 10)),
+        verbose=True,
+    )
+    return 0 if not report.errors else 1
+
+
+def _cmd_bootstrap_legacy(args: argparse.Namespace) -> int:
+    """Bootstrap v1 回退实现（仅在 v2 模块不可用时使用）。"""
+    import time
+    try:
         from mms.analysis.dep_sniffer import sniff  # type: ignore[import]
         from seed_packs import install_packs  # type: ignore[import]
         from mms.analysis.ast_skeleton import build_ast_index  # type: ignore[import]
-        from mms.memory.repo_map import RepoMap, invalidate_cache  # type: ignore[import]
     except ImportError as e:
-        print(f"❌ EP-130 模块未找到（{e}），请确认已实施 EP-130 U1/U2")
+        error(f"Bootstrap 模块未找到（{e}）")
         return 1
 
     root = Path(args.root) if getattr(args, "root", None) else _PROJECT_ROOT
@@ -1553,20 +1584,15 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     skip_seeds = getattr(args, "skip_seeds", False)
 
     print(f"\n{'='*60}")
-    print(f"  MMS Bootstrap — 离线冷启动（EP-130）")
+    print(f"  MMS Bootstrap — 离线冷启动（EP-130 legacy）")
     print(f"  项目根：{root}")
     print(f"{'='*60}\n")
-
     start_total = time.time()
 
-    # ── Step 1: 依赖嗅探 ──────────────────────────────────────────────────────
     print("▶ Step 1/4 · 技术栈嗅探...")
     profile = sniff(root=root)
-    print(f"  检测到栈：{profile.detected_stacks}")
-    print(f"  置信度：{profile.confidence:.0%}")
-    print(f"  扫描来源：{profile.scan_sources}\n")
+    print(f"  检测到栈：{profile.detected_stacks}  置信度：{profile.confidence:.0%}")
 
-    # ── Step 2: 种子包注入 ────────────────────────────────────────────────────
     installed_packs = []
     if not skip_seeds:
         print("▶ Step 2/4 · 注入种子包...")
@@ -1576,14 +1602,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
             target_docs=target_docs,
             dry_run=dry_run,
         )
-        if installed_packs:
-            print(f"  ✅ 已注入 {len(installed_packs)} 个种子包：{installed_packs}")
-        else:
-            print(f"  ℹ️  无新种子包需要注入")
+        print(f"  ✅ 已注入 {len(installed_packs)} 个种子包：{installed_packs}")
     else:
-        print("▶ Step 2/4 · 跳过种子包注入（--skip-seeds）\n")
+        print("▶ Step 2/4 · 跳过种子包注入（--skip-seeds）")
 
-    # ── Step 3: AST 骨架化 ────────────────────────────────────────────────────
     if not skip_ast:
         print("\n▶ Step 3/4 · AST 骨架化...")
         t0 = time.time()
@@ -1596,23 +1618,18 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
             for c in v.get("classes", [])
         )
         print(f"  ✅ 扫描完成：{len(ast_index)} 个文件，{total_classes} 类，{total_methods} 方法（{elapsed:.1f}s）")
-        if not dry_run:
-            invalidate_cache()
     else:
-        print("▶ Step 3/4 · 跳过 AST 骨架化（--skip-ast）\n")
+        print("▶ Step 3/4 · 跳过 AST 骨架化（--skip-ast）")
 
-    # ── Step 4: 绑定 Entry Points ─────────────────────────────────────────────
     print("\n▶ Step 4/4 · 绑定 AST 入口点...")
     try:
         if not skip_ast and not dry_run:
             from mms.analysis.arch_resolver import ArchResolver  # type: ignore[import]
+            from mms.memory.repo_map import RepoMap  # type: ignore[import]
             resolver = ArchResolver()
-            rm = RepoMap()
-
-            layers_data = resolver._layers_data
             if not resolver._layers_data:
                 resolver._ensure_loaded()
-
+            rm = RepoMap()
             bindings = rm.bind_entry_points(resolver._layers_data or {})
             print(f"  ✅ 绑定了 {len(bindings)} 个入口点 AST 指针")
         else:
@@ -1620,7 +1637,6 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"  ⚠️  绑定入口点失败（已跳过）: {e}")
 
-    # ── 汇总 ─────────────────────────────────────────────────────────────────
     total_elapsed = time.time() - start_total
     print(f"\n{'='*60}")
     print(f"  Bootstrap 完成（耗时 {total_elapsed:.1f}s，零 LLM 调用）")

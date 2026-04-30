@@ -1,0 +1,108 @@
+# ObjectTypeDef: CodeFile — 物理代码文件（Layer 0 实体）
+# ──────────────────────────────────────────────────────────
+# Palantir 对应概念：Object Type backed by a physical datasource。
+# 这里的 datasource 是文件系统 + AST 扫描结果（ast_index.json）。
+#
+# 在 MMS 四层架构中的位置：
+#   Layer 0（物理代码库）→ Layer 1（代码结构模型）
+#   ast_skeleton.py 扫描产出，ast_index.json 存储实例。
+#
+# 与 Layer 2 的连接：
+#   MemoryNode --cites--> CodeFile（cites LinkType）
+#   CodeFile   <--cited_by-- MemoryNode（cites 的反向边）
+#   CodeFile   --contains--> CodeClass（contains LinkType）
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: CodeFile
+label: "代码文件"
+type: object
+layer: L1_code_structure
+version: "1.0"
+
+description: |
+  物理代码库中的单个源文件。
+  由 ast_skeleton.py 在 bootstrap 时扫描产生，作为 Layer 0 到 Layer 2 的桥梁。
+  CodeFile 是 cites LinkType 的目标端，是记忆新鲜度检测（freshness_checker）的核心实体。
+
+primary_key: "file_path"
+
+backing_datasource:
+  type: "ast_index_json"
+  path: "docs/memory/_system/ast_index.json"
+  populated_by: "action_bootstrap"
+
+properties:
+  file_path:
+    type: string
+    required: true
+    description: "相对项目根目录的文件路径（唯一标识）"
+    example: "src/controllers/user_controller.py"
+
+  lang:
+    type: string
+    required: true
+    enum: [python, typescript, java, go, unknown]
+    description: "编程语言"
+
+  package:
+    type: string
+    required: false
+    description: "包名/模块名（Python: 点分路径；Java: com.example.pkg；Go: package name）"
+    example: "com.example.controllers"
+
+  fingerprint:
+    type: string
+    required: false
+    description: "AST 语义哈希（剥离注释/空白），用于检测接口契约变更"
+
+  inferred_layer:
+    type: string
+    required: false
+    enum: [ADAPTER, APP, DOMAIN, PLATFORM, CC, UNKNOWN]
+    description: "fn_infer_layer 推断的架构层（通用 5 层）"
+
+  layer_confidence:
+    type: float
+    required: false
+    description: "层推断置信度 0.0~1.0（五路信号融合评分）"
+
+  object_type_hint:
+    type: string
+    required: false
+    enum: [Controller, Service, Repository, Entity, Config, Util, Test, Unknown]
+    description: "fn_detect_code_object_type 推断的代码对象类型"
+
+  last_modified:
+    type: string
+    required: false
+    description: "文件最后修改时间（ISO 8601）"
+
+  drift_suspected:
+    type: boolean
+    required: false
+    default: false
+    description: "fingerprint 变更时标记为 true，触发 freshness propagation"
+
+related_link_types:
+  - link_cites       # MemoryNode --cites--> CodeFile（被记忆引用）
+  - link_contains    # CodeFile --contains--> CodeClass（包含代码类）
+
+related_functions:
+  - fn_infer_layer
+  - fn_detect_code_object_type
+  - fn_detect_drift
+
+related_actions:
+  - action_bootstrap
+
+validation_rules:
+  - rule_id: file_path_not_empty
+    description: "file_path 不能为空字符串"
+    check: "len(file_path.strip()) > 0"
+    severity: error
+
+  - rule_id: lang_must_be_valid
+    description: "lang 必须是已知语言"
+    check: "lang in ['python', 'typescript', 'java', 'go', 'unknown']"
+    severity: error

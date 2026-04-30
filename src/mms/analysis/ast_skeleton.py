@@ -719,7 +719,8 @@ class AstSkeletonBuilder:
 
     def __init__(self, root: Path = _ROOT, scan_dirs=None):
         self.root = root
-        self.scan_dirs = scan_dirs or _SCAN_DIRS
+        # 优先使用显式传入的 scan_dirs，否则通过 _resolve_scan_dirs 自动检测
+        self.scan_dirs = scan_dirs if scan_dirs is not None else _resolve_scan_dirs(root)
 
     def build(self) -> Dict[str, dict]:
         """扫描项目，返回 {rel_path: FileSkeleton dict} 字典。"""

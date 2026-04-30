@@ -1,0 +1,186 @@
+# FunctionDef: fn_infer_layer — 五路信号融合推断架构层
+# ──────────────────────────────────────────────────────
+# Palantir 对应概念：Function（纯计算，无副作用，可在 ObjectSet 上执行）。
+# 读取 CodeClass/CodeFile 的 AST 属性，输出架构层归属和置信度。
+#
+# 这是 Bootstrap v2 的核心函数，取代了旧版"依赖 arch_layers.yaml 手写配置"的方式。
+# 通过五路信号自动推断，实现对任意新项目的零配置冷启动。
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: fn_infer_layer
+label: "架构层推断（五路信号融合）"
+type: function
+version: "1.0"
+pure: true    # 无副作用，幂等，可缓存
+
+description: |
+  给定一个 CodeClass（或 CodeFile），融合五路信号推断其在通用 5 层架构中的归属：
+    CC / PLATFORM / DOMAIN / APP / ADAPTER / UNKNOWN
+
+  五路信号及权重（总分 100%）：
+    1. 路径信号（path_score）    权重 25%
+       匹配目录名关键词：controllers/→ADAPTER, services/→APP, domain/→DOMAIN ...
+
+    2. 命名信号（name_score）    权重 25%
+       匹配类名后缀：*Controller→ADAPTER, *Service→APP, *Repository→DOMAIN ...
+
+    3. 注解信号（annotation_score）权重 30%（最高权重，因为注解是显式声明）
+       Python:     @router.get/@app.route → ADAPTER
+                   @dataclass → DOMAIN
+       Java:       @RestController/@Controller → ADAPTER
+                   @Service → APP
+                   @Repository/@Mapper → DOMAIN
+                   @Entity/@Table → DOMAIN
+                   @Configuration → PLATFORM
+       Go:         gin.HandlerFunc receiver → ADAPTER
+       TypeScript: @Controller()/@Get() → ADAPTER
+                   @Injectable() → APP/PLATFORM
+
+    4. 继承信号（inheritance_score）权重 10%
+       父类名包含层级关键词：extends BaseController → ADAPTER
+       若父类已有推断结果，直接采用父类层级（置信度降低 0.1）
+
+    5. 导入信号（import_score）   权重 10%
+       依赖方向推断：若该类被大量上层类依赖（depended_by 入度高）→ 更可能是底层（DOMAIN/PLATFORM）
+       若该类大量依赖下层类（depends_on 出度高到 DOMAIN）→ 自身可能是 APP 层
+
+  最终决策：五路加权得分 → 超过 0.6 置信度的层直接采用；低于 0.4 → UNKNOWN
+
+implementation:
+  module: "src.mms.analysis.signal_fusion"
+  function: "infer_layer(code_class: CodeClass, code_graph: CodeGraph) -> LayerInference"
+
+inputs:
+  - name: code_class
+    type: CodeClass
+    required: true
+    description: "待推断的代码类对象"
+
+  - name: code_graph
+    type: CodeGraph
+    required: false
+    description: "代码依赖图（含 depends_on 和 implements 边），用于第 4/5 路信号"
+
+  - name: layers_config
+    type: dict
+    required: false
+    description: "_system/routing/layers.yaml 配置（关键词覆盖），默认使用内置规则"
+
+outputs:
+  - name: inferred_layer
+    type: string
+    enum: [ADAPTER, APP, DOMAIN, PLATFORM, CC, UNKNOWN]
+    description: "推断的架构层"
+
+  - name: confidence
+    type: float
+    description: "置信度 0.0~1.0"
+
+  - name: signal_breakdown
+    type: object
+    description: "各信号分项得分（调试用）"
+    fields:
+      path_score:        float
+      name_score:        float
+      annotation_score:  float
+      inheritance_score: float
+      import_score:      float
+
+# ── 内置信号规则库 ────────────────────────────────────────────────────────────
+
+signal_rules:
+
+  path_patterns:
+    ADAPTER:
+      - "controller"
+      - "handler"
+      - "router"
+      - "route"
+      - "endpoint"
+      - "view"
+      - "rest"
+      - "api"
+      - "adapter"
+      - "web"
+      - "http"
+    APP:
+      - "service"
+      - "usecase"
+      - "use_case"
+      - "application"
+      - "orchestrat"
+      - "workflow"
+      - "manager"
+      - "command"
+      - "query"
+    DOMAIN:
+      - "domain"
+      - "model"
+      - "entity"
+      - "aggregate"
+      - "repository"
+      - "repo"
+      - "store"
+      - "dao"
+    PLATFORM:
+      - "config"
+      - "configuration"
+      - "auth"
+      - "security"
+      - "middleware"
+      - "filter"
+      - "interceptor"
+      - "logging"
+      - "metric"
+    CC:
+      - "exception"
+      - "error"
+      - "constant"
+      - "common"
+      - "base"
+      - "abstract"
+      - "util"
+
+  name_patterns:
+    ADAPTER:
+      suffixes: [Controller, Handler, Router, View, Resource, Endpoint, Rest]
+      prefixes: []
+    APP:
+      suffixes: [Service, UseCase, Interactor, Orchestrator, Manager, Facade]
+      prefixes: []
+    DOMAIN:
+      suffixes: [Repository, Repo, DAO, Store, Mapper, Entity, Aggregate, ValueObject]
+      prefixes: []
+    PLATFORM:
+      suffixes: [Config, Configuration, Filter, Interceptor, Provider, Factory]
+      prefixes: []
+    CC:
+      suffixes: [Exception, Error, Base, Abstract, Util, Helper, Constant]
+      prefixes: [Base, Abstract]
+
+  annotation_patterns:
+    ADAPTER:
+      - "@RestController"
+      - "@Controller"
+      - "@router\\."
+      - "@app\\.(get|post|put|delete|patch)"
+      - "@(Get|Post|Put|Delete|Patch)\\("
+      - "gin\\.Context"
+    APP:
+      - "@Service"
+      - "@Component"
+      - "@Injectable"
+      - "@UseCase"
+    DOMAIN:
+      - "@Repository"
+      - "@Mapper"
+      - "@Entity"
+      - "@Table"
+      - "@Document"
+      - "@dataclass"
+    PLATFORM:
+      - "@Configuration"
+      - "@ConfigurationProperties"
+      - "@EnableWebMvc"
+      - "@SpringBootApplication"

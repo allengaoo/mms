@@ -1,0 +1,146 @@
+# ObjectTypeDef: CodeClass — AST 类/结构体/接口（Layer 1 实体）
+# ──────────────────────────────────────────────────────────────
+# Palantir 对应概念：Object Type（比 CodeFile 粒度更细的代码实体）。
+# 代表 AST 扫描中识别出的 class / struct / interface / record / enum。
+#
+# 核心用途：
+#   1. Bootstrap 时作为"语义标注"的原子单位
+#   2. 通过五路信号（命名/路径/注解/继承/导入）推断 ObjectType 语义
+#   3. 生成初始 MemoryNode 时作为 cites_files 和 ast_pointer 的数据来源
+#
+# 与 Layer 2 的连接：
+#   MemoryNode.ast_pointer → CodeClass（物理绑定）
+#   CodeClass --depends_on--> CodeClass（import 依赖）
+#   CodeClass --implements--> CodeClass（继承/接口实现）
+#   CodeFile  --contains-->   CodeClass（所属文件）
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: CodeClass
+label: "代码类/结构体"
+type: object
+layer: L1_code_structure
+version: "1.0"
+
+description: |
+  AST 扫描识别出的代码结构单元（class/struct/interface/record/enum）。
+  是 Bootstrap 语义推断的原子单位，也是 MemoryNode.ast_pointer 的绑定目标。
+
+primary_key: "class_fqn"
+
+backing_datasource:
+  type: "ast_index_json"
+  path: "docs/memory/_system/ast_index.json"
+  populated_by: "action_bootstrap"
+
+properties:
+  class_fqn:
+    type: string
+    required: true
+    description: "全限定类名（语言相关）"
+    examples:
+      python: "src.controllers.user_controller.UserController"
+      java:   "com.example.controllers.UserController"
+      go:     "controllers.UserHandler"
+      ts:     "UserController"
+
+  name:
+    type: string
+    required: true
+    description: "类名（不含包路径）"
+    example: "UserController"
+
+  kind:
+    type: string
+    required: true
+    enum: [class, struct, interface, enum, record, abstract_class]
+    description: "代码结构类型"
+
+  file_path:
+    type: string
+    required: true
+    description: "所属文件路径（与 CodeFile.file_path 对应）"
+
+  bases:
+    type: list[string]
+    required: false
+    default: []
+    description: "父类/实现接口列表（AST 直接提取）"
+
+  annotations:
+    type: list[string]
+    required: false
+    default: []
+    description: "类级注解/装饰器（@RestController / @Service / dataclass 等）"
+
+  methods:
+    type: list[object]
+    required: false
+    default: []
+    description: "方法列表（name + signature + decorators）"
+
+  fingerprint:
+    type: string
+    required: false
+    description: "类级 AST 语义哈希"
+
+  # ── 语义推断字段（fn_infer_layer + fn_detect_code_object_type 填充）──
+
+  inferred_layer:
+    type: string
+    required: false
+    enum: [ADAPTER, APP, DOMAIN, PLATFORM, CC, UNKNOWN]
+    description: "推断的通用 5 层架构归属"
+
+  inferred_object_type:
+    type: string
+    required: false
+    enum: [Controller, Service, Repository, Entity, Config, Util, Test, Unknown]
+    description: "代码对象语义类型（对应 MMS 本体 ObjectType）"
+
+  layer_confidence:
+    type: float
+    required: false
+    description: "层推断置信度（五路信号融合：命名/路径/注解/继承/导入）"
+
+  signal_breakdown:
+    type: object
+    required: false
+    description: "各信号的贡献分（调试用）"
+    fields:
+      name_score:        float
+      path_score:        float
+      annotation_score:  float
+      inheritance_score: float
+      import_score:      float
+
+  # ── 记忆关联字段 ──────────────────────────────────────────────────────
+
+  linked_memory_id:
+    type: string
+    required: false
+    description: "Bootstrap 为此类生成的初始 MemoryNode ID（如 MEM-L-BOOT-001）"
+
+related_link_types:
+  - link_contains      # CodeFile --contains--> CodeClass
+  - link_depends_on    # CodeClass --depends_on--> CodeClass（import 依赖）
+  - link_implements    # CodeClass --implements--> CodeClass（继承/接口实现）
+
+related_functions:
+  - fn_infer_layer
+  - fn_detect_code_object_type
+  - fn_build_code_graph
+
+related_actions:
+  - action_bootstrap
+
+validation_rules:
+  - rule_id: name_not_empty
+    description: "name 不能为空"
+    check: "len(name.strip()) > 0"
+    severity: error
+
+  - rule_id: fqn_contains_name
+    description: "class_fqn 必须包含 name"
+    check: "name in class_fqn"
+    severity: warning

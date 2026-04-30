@@ -1,0 +1,63 @@
+# LinkTypeDef: link_depends_on — 代码依赖关系（import/require/use）
+# ──────────────────────────────────────────────────────────────
+# Palantir 对应概念：Link Type（Many-to-Many），表示代码对象间的依赖方向。
+#
+# 用途：
+#   1. Bootstrap 时从 AST import 语句自动提取，构建代码依赖图
+#   2. fn_build_code_graph 使用此边做拓扑排序，识别核心模块
+#   3. 辅助层推断：被上层频繁依赖 → 更可能是 Domain/Platform 层
+#   4. 影响分析：某 CodeClass 变更 → 找到所有 depends_on 它的类
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: link_depends_on
+label: "代码依赖"
+version: "1.0"
+
+source_type: CodeClass
+target_type: CodeClass
+cardinality: M:N
+inverse: depended_by
+
+description: |
+  当 CodeClass A 的实现中 import/require/use 了 CodeClass B 时，建立此边：
+    A --depends_on--> B
+  表示 A 在功能上依赖 B。边方向与代码调用方向一致（调用方 → 被调用方）。
+
+  重要推论（架构约束方向）：
+    ADAPTER --depends_on--> APP   ✓ 正常（适配层调用应用层）
+    APP     --depends_on--> DOMAIN ✓ 正常（应用层调用领域层）
+    DOMAIN  --depends_on--> ADAPTER ✗ 违反依赖倒置原则（DIP），arch_check 应告警
+
+storage:
+  field_name: depends_on_classes
+  field_type: list[string]
+  stored_in: "ast_index.json 的 CodeClass 条目中"
+
+auto_population:
+  trigger: action_bootstrap
+  method: import_statement_extraction
+  description: |
+    Bootstrap 阶段，解析 AST import 节点：
+      Python:     `from xxx import Yyy` → source depends_on Yyy
+      Java:       `import com.example.Yyy` → source depends_on Yyy
+      Go:         `import "xxx/yyy"` + receiver/param type 分析
+      TypeScript: `import { Yyy } from './yyy'` → source depends_on Yyy
+    仅提取同项目内部的跨文件依赖（过滤掉 stdlib 和第三方库）
+
+traversal_usage:
+  - purpose: "影响范围分析"
+    description: "某类修改 → 沿 depended_by（反向）传播 → 找到所有受影响的调用方"
+
+  - purpose: "架构约束验证"
+    description: "fn_build_code_graph 检测 depends_on 是否存在跨层向上依赖（DIP 违反）"
+
+edge_weight:
+  default_weight: 1.0
+  description: "被调用频率越高（多处 import）权重越高，PageRank 重要性计算基础"
+
+arch_constraint:
+  rule_id: "no_upward_depends_on"
+  description: "禁止低层（DOMAIN/PLATFORM/CC）depends_on 高层（ADAPTER/APP）"
+  severity: warning
+  check: "source.inferred_layer 的层级 >= target.inferred_layer 的层级"
