@@ -81,7 +81,7 @@
 ║  第五层：自学习层（Self-Learning）                                              ║
 ║  功能：EP 知识蒸馏 + Rule Absorber + autoDream + 种子包管理                    ║
 ║  ─────────────────────────────────────────────────────────────────────────  ║
-║  代码包：src/mms/memory/       dream / distill / entropy_scan                 ║
+║  代码包：src/mms/memory/       dream / entropy_scan（distill ⬜ v6.0 待开发）  ║
 ║          src/mms/analysis/     seed_absorber（外部规范 → YAML 种子包）         ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  横切关注点（Cross-Cutting）                                                   ║
@@ -308,7 +308,7 @@ src/mms/execution/（与 Layer 1 共享）
 ### Layer 4：安全验证层
 
 ```
-src/mms/analysis/                        代码静态分析（15 个模块）
+src/mms/analysis/                        代码静态分析（14 个模块）
 │
 ├── ─── AST 解析子系统 ──────────────────────────────────────
 │   ast_skeleton.py      837L           多语言 AST 骨架化（核心）
@@ -342,6 +342,9 @@ src/mms/analysis/                        代码静态分析（15 个模块）
 │   └── OntologySyncer                  sync() → SyncReport
 │
 │   doc_drift.py          244L          文档漂移检测
+│
+│   signal_fusion.py      459L          分析层信号融合（Layer 4 独立副本）
+│   └── LayerInference, SignalBreakdown 同 bootstrap/signal_fusion，供架构约束分析调用
 │
 │   seed_absorber.py      750L          Rule Absorber（URL → YAML 种子包）
 │   └── absorb(url) → SeedPack         用于 Layer 5，此处归 analysis
@@ -411,6 +414,8 @@ src/mms/memory/（与 Layer 2 共享包，以下为 Layer 5 专属模块）
 │
 └── entropy_scan.py      675L           熵扫描（孤儿/过时记忆检测）
     └── scan(threshold) → [candidates]  驱动 mulan gc
+
+⬜ distill.py（待开发）                EP 执行 → 结构化记忆蒸馏（独立模块，v6.0 规划）
 
 src/mms/analysis/seed_absorber.py       Rule Absorber
     └── absorb(url/file) → SeedPack
@@ -889,15 +894,15 @@ mulan bootstrap [--root PATH] [--min-confidence 0.5] [--max-per-layer 10]
 ```
 docs/memory/shared/                      保护系数（GC 淘汰难度）
 ├── CC/          架构约束（ADR/反模式/红线）    0.5  ← 最难淘汰
-│   └── AD-001.md  AD-002.md  PAT-001.md
+│   └── AD-SEED-001.md  AD-SEED-002.md        ← 当前已有；更多 AD-*.md 运行后自动生成
 ├── PLATFORM/    横切平台能力（认证/鉴权/配置）  0.2
-│   └── MEM-L-005.md  MEM-L-012.md
+│   └── （Bootstrap v2 / EP 蒸馏后自动生成）
 ├── DOMAIN/      业务领域核心（实体/聚合根/规则） 0.3
-│   └── MEM-L-021.md  MEM-BOOT-001.md
+│   └── （MEM-BOOT-*.md 置信度≥0.5 的 DOMAIN 类记忆）
 ├── APP/         应用用例编排（CQRS/Saga）     0.1
-│   └── MEM-L-031.md  MEM-L-032.md
+│   └── （EP 完成后 distill 写入）
 └── ADAPTER/     外部适配（REST/DB/MQ）        0.0  ← 最易淘汰
-    └── MEM-L-045.md  MEM-BOOT-010.md
+    └── （MEM-BOOT-*.md 置信度≥0.5 的 ADAPTER 类记忆）
 
 Bootstrap v2 生成的记忆文件名：MEM-BOOT-NNN.md
 EP 蒸馏生成的记忆文件名：      MEM-L-NNN.md
@@ -1093,16 +1098,22 @@ mms/
 │   │   ├── freshness_checker.py   # 新鲜度检测（fn_detect_drift 实现）
 │   │   ├── graph_health.py        # 图健康监控
 │   │   ├── dream.py               # autoDream（git 历史→知识草稿+auto-link）
-│   │   ├── distill.py             # EP 知识蒸馏（run_distill）
-│   │   └── entropy_scan.py        # 孤儿/过时记忆检测
+│   │   ├── entropy_scan.py        # 孤儿/过时记忆检测
+│   │   ├── codemap.py / funcmap.py / repo_map.py / template_lib.py / private.py / task_matcher.py
+│   │   └── (distill.py — ⬜ v6.0 待开发，EP→记忆自动蒸馏独立模块)
 │   │
 │   ├── analysis/                  # 代码静态分析
 │   │   ├── ast_skeleton.py        # ★ AST 骨架化（Python/Java/Go/TS）
 │   │   │                          #   修复：自动调用 _resolve_scan_dirs 检测扫描目录
 │   │   ├── dep_sniffer.py         # 技术栈嗅探
 │   │   ├── arch_check.py          # 架构约束扫描
+│   │   ├── arch_resolver.py       # 层 → 文件路径解析
 │   │   ├── ast_diff.py            # AST diff（契约变更检测）
-│   │   └── seed_absorber.py       # Rule Absorber（URL → YAML 种子包）
+│   │   ├── doc_drift.py           # 文档漂移检测
+│   │   ├── ontology_syncer.py     # 本体 YAML ↔ AST 同步
+│   │   ├── signal_fusion.py       # ★ 信号融合（Layer 4 副本，供架构分析调用）
+│   │   ├── seed_absorber.py       # Rule Absorber（URL → YAML 种子包）
+│   │   └── parsers/               # AST 解析器适配层（protocol/factory/regex/tree_sitter）
 │   │
 │   ├── providers/                 # LLM Provider 适配器
 │   │   ├── bailian.py             # 阿里云百炼（qwen3-32b / qwen3-coder-plus）[主力]
@@ -1133,6 +1144,7 @@ mms/
 ├── docs/memory/                   # 知识库（mulan 命令自动维护）
 │   │
 │   ├── ontology/                  # ★ 动态本体 YAML 定义（v5.0 全面补全）
+│   │   ├── memory_schema.yaml     # 记忆节点通用 JSON Schema（front-matter v4.0 校验基准）
 │   │   ├── objects/               # ObjectType 定义（8 种）
 │   │   │   ├── code_file.yaml     # Layer1：CodeFile
 │   │   │   ├── code_class.yaml    # Layer1：CodeClass（含五路信号推断字段）
@@ -1166,8 +1178,9 @@ mms/
 │   │   └── _config/
 │   │       └── traversal_paths.yaml  # 图遍历路径配置
 │   │
-│   ├── shared/                    # 积累的共享记忆（5 层）
-│   │   ├── CC/ PLATFORM/ DOMAIN/ APP/ ADAPTER/
+│   ├── shared/                    # 积累的共享记忆（5 层目录，随项目运行自动填充）
+│   │   ├── CC/                    # 当前已有: AD-SEED-001.md / AD-SEED-002.md
+│   │   ├── PLATFORM/ DOMAIN/ APP/ ADAPTER/  # Bootstrap v2 / EP 蒸馏后自动生成
 │   │   └── （MEM-L-*.md / MEM-BOOT-*.md / AD-*.md / PAT-*.md）
 │   │
 │   ├── seed_packs/                # 种子记忆（66+ 条，8 个包）

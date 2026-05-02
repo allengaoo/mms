@@ -237,6 +237,78 @@ class BailianProvider(LLMProvider):
                 pass
             raise
 
+    def complete_with_tools(
+        self,
+        messages: list,
+        tools: list,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """
+        支持 Tool-Calling 的消息接口（兼容 OpenAI function-calling / 百炼 tools 格式）。
+
+        Args:
+            messages: 消息历史列表
+            tools:    工具描述列表（get_tool_registry().get_schemas() 的输出）
+            max_tokens: 最大输出 token 数
+
+        Returns:
+            原始 API 响应的 choices[0]["message"] 字典，包含：
+              - "content": str | None         （纯文本回复，无工具调用时有值）
+              - "tool_calls": list | None     （工具调用列表，有工具调用时有值）
+              - "finish_reason": str          （"stop" / "tool_calls"）
+
+        Raises:
+            ProviderUnavailableError: API Key 未配置
+            各种网络/解析异常
+        """
+        if not self._api_key:
+            raise ProviderUnavailableError(
+                "百炼 API Key 未配置，请设置 DASHSCOPE_API_KEY"
+            )
+        url = f"{self._base_url}/chat/completions"
+        payload: dict = {
+            "model": self.model_name,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        if self._is_thinking:
+            payload["enable_thinking"] = False
+
+        t0 = time.monotonic()
+        try:
+            data = _http_post(url, payload, self._api_key, self._timeout)
+            latency_ms = (time.monotonic() - t0) * 1000
+            message = data["choices"][0]["message"]
+            usage = data.get("usage", {})
+            try:
+                from mms.utils.model_tracker import record as _track
+                _track(
+                    model=self.model_name,
+                    provider="bailian",
+                    prompt_tok=usage.get("prompt_tokens"),
+                    output_tok=usage.get("completion_tokens"),
+                    latency_ms=latency_ms,
+                    success=True,
+                )
+            except Exception:
+                pass
+            return message
+        except Exception as exc:
+            latency_ms = (time.monotonic() - t0) * 1000
+            try:
+                from mms.utils.model_tracker import record as _track
+                _track(
+                    model=self.model_name, provider="bailian",
+                    prompt_tok=None, output_tok=None,
+                    latency_ms=latency_ms, success=False, error=str(exc),
+                )
+            except Exception:
+                pass
+            raise
+
     def complete(self, prompt: str, max_tokens: int = 4096) -> str:
         if not self._api_key:
             raise ProviderUnavailableError(

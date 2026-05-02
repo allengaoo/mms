@@ -1412,6 +1412,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-per-layer", type=int, default=10, metavar="N",
         help="每层最多生成的 MemoryNode 数量（默认 10）",
     )
+    p_bootstrap.add_argument(
+        "--skip-doc-absorb", action="store_true",
+        help="跳过项目文档自动蒸馏（CONTRIBUTING.md / .cursorrules 等）",
+    )
 
     # ── EP-130: ast-diff ─────────────────────────────────────────────────────
     p_astdiff = sub.add_parser(
@@ -1560,6 +1564,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         skip_ast=getattr(args, "skip_ast", False),
         skip_seeds=getattr(args, "skip_seeds", False),
         skip_memory_gen=getattr(args, "skip_memory_gen", False),
+        skip_doc_absorb=getattr(args, "skip_doc_absorb", False),
         min_confidence=float(getattr(args, "min_confidence", 0.5)),
         max_per_layer=int(getattr(args, "max_per_layer", 10)),
         verbose=True,

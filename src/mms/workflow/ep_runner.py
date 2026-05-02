@@ -444,6 +444,33 @@ def _run_unit(
 
 # ── 核心 Pipeline ─────────────────────────────────────────────────────────────
 
+def _resolve_execution_track(model: str) -> str:
+    """
+    Capability Router：根据 config.yaml 的 agent 配置决定执行轨道。
+
+    Returns:
+        "pipeline"    → Track A（UnitRunner 串行流水线，默认）
+        "autonomous"  → Track B（Autonomous ReAct 循环）
+    """
+    try:
+        from mms.utils.mms_config import cfg  # type: ignore[import]
+        agent_cfg = cfg.get("agent", {})
+        mode = agent_cfg.get("execution_mode", "pipeline")
+
+        if mode == "pipeline":
+            return "pipeline"
+        if mode == "autonomous":
+            return "autonomous"
+        if mode == "auto":
+            autonomous_models = agent_cfg.get("autonomous_models", [])
+            if model in autonomous_models:
+                return "autonomous"
+            return "pipeline"
+    except Exception:
+        pass
+    return "pipeline"
+
+
 class EpRunPipeline:
     """
     EP 级别的完整自动化执行引擎。
@@ -485,6 +512,14 @@ class EpRunPipeline:
         ep_id = _normalize_ep_id(ep_id)
         t_start = time.monotonic()
         result = EpRunResult(ep_id=ep_id, success=False, dry_run=dry_run)
+
+        # ── Capability Router：根据 config 决定执行轨道 ──────────────────────
+        execution_track = _resolve_execution_track(model)
+        if execution_track == "autonomous":
+            return self._run_autonomous(
+                ep_id=ep_id, model=model, dry_run=dry_run,
+                skip_precheck=skip_precheck, skip_postcheck=skip_postcheck,
+            )
 
         # 加载或新建执行状态
         state = EpRunState.load(ep_id)
@@ -838,3 +873,39 @@ class EpRunPipeline:
                 print(f"  {s.unit_id:<6} {icon} {elapsed:>6}  {s.title[:40]}")
 
         print(_c("═" * 60, _G))
+
+    def _run_autonomous(
+        self,
+        ep_id: str,
+        model: str,
+        dry_run: bool,
+        skip_precheck: bool,
+        skip_postcheck: bool,
+    ) -> "EpRunResult":
+        """
+        Track B: Autonomous Runner 入口（Sprint 3 实现）。
+
+        当前为占位实现：打印说明后回退到 Track A Pipeline。
+        Sprint 3 完成后将调用 autonomous_runner.run_autonomous()。
+        """
+        print(f"\n{_c('═' * 60, _B)}")
+        print(f"  {_c('MMS EP Runner', _B)}  ·  {_c(ep_id, _C)}  ·  {_c('[Track B: Autonomous]', _Y)}")
+        print(_c("═" * 60, _B))
+        print(f"\n  {_c('⚠️  Autonomous Runner 尚未完整实现（Sprint 3）', _Y)}")
+        print(f"  {_c('→ 自动回退到 Track A Pipeline 执行', _D)}\n")
+
+        from mms.execution.autonomous_runner import run_autonomous  # type: ignore
+        auto_result = run_autonomous(
+            ep_id=ep_id,
+            model=model,
+            dry_run=dry_run,
+            skip_precheck=skip_precheck,
+            skip_postcheck=skip_postcheck,
+            verbose=True,
+        )
+        # 将 AutonomousResult 转换为 EpRunResult
+        ep_result = EpRunResult(ep_id=ep_id, success=auto_result.success, dry_run=dry_run)
+        ep_result.elapsed_s = auto_result.elapsed_s
+        if not auto_result.success:
+            ep_result.failure_error = auto_result.error or auto_result.finish_reason
+        return ep_result

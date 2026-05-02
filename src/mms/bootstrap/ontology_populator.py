@@ -97,12 +97,84 @@ class BootstrapV2Report:
 
 # ─── bootstrap_project 主函数 ─────────────────────────────────────────────────
 
+# ── 项目文档自动扫描（Step 1.5）─────────────────────────────────────────────
+
+# 特征文件列表（按优先级排列）
+_DOC_CANDIDATES = [
+    "CONTRIBUTING.md",
+    ".cursorrules",
+    "ARCHITECTURE.md",
+    "CODING_GUIDELINES.md",
+    "docs/arch.md",
+    "docs/ARCHITECTURE.md",
+    ".github/CONTRIBUTING.md",
+    "DEVELOPMENT.md",
+    "CONVENTIONS.md",
+]
+
+
+def _absorb_project_docs(
+    root: Path,
+    dry_run: bool,
+    log,
+) -> List[str]:
+    """
+    Step 1.5: 扫描项目根目录下的开发文档，调用 seed_absorber 蒸馏为约束规则。
+
+    生成结果写入 docs/memory/shared/CC/_absorb_draft/（需人工 promote）。
+    无 API key 时降级为跳过（不报错）。
+
+    Returns:
+        已处理的文件名列表
+    """
+    found_files = [root / name for name in _DOC_CANDIDATES if (root / name).exists()]
+    if not found_files:
+        return []
+
+    log(f"\n▶ Step 1.5/6 · 项目文档扫描（发现 {len(found_files)} 个文档）...")
+    for f in found_files:
+        log(f"  📄 {f.name}")
+
+    out_dir = root / "docs" / "memory" / "shared" / "CC" / "_absorb_draft"
+    processed: List[str] = []
+
+    try:
+        from mms.analysis.seed_absorber import absorb  # type: ignore
+    except ImportError:
+        log("  ⚠️  seed_absorber 未找到，跳过文档蒸馏")
+        return []
+
+    for fpath in found_files:
+        try:
+            absorb(
+                str(fpath),
+                dry_run=dry_run,
+                out_dir=str(out_dir) if not dry_run else None,
+            )
+            processed.append(fpath.name)
+            log(f"  ✅ 已蒸馏: {fpath.name}")
+        except Exception as e:
+            err_msg = str(e)
+            # 无 API Key 或网络错误时静默跳过（不阻断 Bootstrap 主流程）
+            if "API" in err_msg or "key" in err_msg.lower() or "auth" in err_msg.lower():
+                log(f"  ⚠️  {fpath.name} 蒸馏跳过（未配置 LLM API Key）")
+            else:
+                log(f"  ⚠️  {fpath.name} 蒸馏失败（可忽略）: {err_msg[:80]}")
+
+    if processed and not dry_run:
+        log(f"  📂 草稿已写入: docs/memory/shared/CC/_absorb_draft/")
+        log(f"  💡 使用 mulan seed list 查看，人工审核后可 promote 到 CC/")
+
+    return processed
+
+
 def bootstrap_project(
     project_root: Optional[Path] = None,
     dry_run: bool = False,
     skip_ast: bool = False,
     skip_seeds: bool = False,
     skip_memory_gen: bool = False,
+    skip_doc_absorb: bool = False,
     min_confidence: float = 0.5,
     max_per_layer: int = 10,
     verbose: bool = True,
@@ -128,6 +200,7 @@ def bootstrap_project(
     root = project_root or _DEFAULT_ROOT
     report = BootstrapV2Report(project_root=str(root), dry_run=dry_run)
     start = time.time()
+    report.absorbed_docs = []  # type: ignore[attr-defined]
 
     def log(msg: str) -> None:
         if verbose:
@@ -157,6 +230,16 @@ def bootstrap_project(
     except Exception as e:
         report.errors.append(f"技术栈嗅探失败: {e}")
         report.detected_stacks = ["base"]
+
+    # ── Step 1.5: 项目文档自动蒸馏（可选，不阻断主流程）─────────────────────────
+    if not skip_doc_absorb:
+        try:
+            absorbed = _absorb_project_docs(root=root, dry_run=dry_run, log=log)
+            report.absorbed_docs = absorbed  # type: ignore[attr-defined]
+        except Exception as e:
+            log(f"  ⚠️  文档扫描异常（跳过）: {e}")
+    else:
+        log("\n▶ Step 1.5/6 · 跳过项目文档扫描（--skip-doc-absorb）")
 
     # ── Rule 02: 种子包注入 ────────────────────────────────────────────────────
     if not skip_seeds:
@@ -250,6 +333,8 @@ def bootstrap_project(
             ast_index=ast_index,
             code_graph_in_degrees=in_degrees,
             min_confidence=min_confidence,
+            project_root=root,
+            detected_stacks=report.detected_stacks,
         )
         inferred = sum(1 for _, (li, _) in inference_results.items() if li.confidence >= min_confidence)
         skipped  = len(inference_results) - inferred

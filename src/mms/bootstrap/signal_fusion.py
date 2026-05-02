@@ -12,15 +12,16 @@ src/mms/bootstrap/signal_fusion.py
   - 规则从 FunctionRegistry 的 signal_rules 字段加载（YAML 驱动）
   - 内置规则作为 fallback（YAML 未配置时生效）
   - 每路信号独立评分，最终加权投票
+  - YAML-driven Override Pass：在五路信号之前短路高置信度框架规则
 
-版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+版本：v1.1 | 更新于：2026-05-02 | YAML Override Pass
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ─── 数据类 ──────────────────────────────────────────────────────────────────
 
@@ -164,6 +165,149 @@ _ANNOTATION_PATTERNS: Dict[str, List[str]] = {
         r"@EnableSecurity", r"@Bean\b",
     ],
 }
+
+
+# ─── YAML-driven Override Pass ────────────────────────────────────────────────
+
+@dataclass
+class OverrideRule:
+    """单条 ast_overrides 规则（从 match_conditions.yaml 加载）。"""
+    rule_id: str
+    force_layer: str
+    force_object_type: str
+    confidence: float
+    bases_contains: Optional[str] = None       # 基类名包含该字符串
+    annotation_contains: Optional[str] = None  # 注解列表中任一包含该字符串
+    name_suffix: Optional[str] = None          # 类名以该字符串结尾
+    priority: int = 0                          # 来源包的优先级（base=0，栈专属>0）
+
+
+def load_overrides(project_root: Path, detected_stacks: Optional[List[str]] = None) -> List[OverrideRule]:
+    """
+    从 seed_packs/{stack}/match_conditions.yaml 中收集所有 ast_overrides 规则。
+
+    优先级规则：
+      - base 包规则 priority=0（最低）
+      - 栈专属包规则 priority=10（覆盖 base）
+    同一个类命中多条规则时，取 confidence 最高且 priority 最高的规则。
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return []
+
+    # 确定要加载的 seed_packs 路径集合
+    seed_packs_root = project_root / "seed_packs"
+    if not seed_packs_root.exists():
+        # 回退到 MMS 自身的 seed_packs 目录
+        _mms_root = Path(__file__).resolve().parent.parent.parent.parent
+        seed_packs_root = _mms_root / "seed_packs"
+    if not seed_packs_root.exists():
+        return []
+
+    stacks_to_load = set(detected_stacks or []) | {"base"}
+    rules: List[OverrideRule] = []
+
+    for pack_dir in seed_packs_root.iterdir():
+        if not pack_dir.is_dir():
+            continue
+        mc_file = pack_dir / "match_conditions.yaml"
+        if not mc_file.exists():
+            continue
+
+        stack_id = pack_dir.name
+        priority = 0 if stack_id == "base" else 10
+
+        # 只加载 base + 当前检测到的栈
+        if stack_id not in stacks_to_load and stack_id != "base":
+            continue
+
+        try:
+            data = yaml.safe_load(mc_file.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+
+        for rule_dict in data.get("ast_overrides", []):
+            rule = OverrideRule(
+                rule_id=rule_dict.get("rule_id", "UNNAMED"),
+                force_layer=rule_dict.get("force_layer", "UNKNOWN"),
+                force_object_type=rule_dict.get("force_object_type", "Unknown"),
+                confidence=float(rule_dict.get("confidence", 0.8)),
+                bases_contains=rule_dict.get("bases_contains"),
+                annotation_contains=rule_dict.get("annotation_contains"),
+                name_suffix=rule_dict.get("name_suffix"),
+                priority=priority,
+            )
+            rules.append(rule)
+
+    return rules
+
+
+def apply_override(
+    class_name: str,
+    bases: List[str],
+    annotations: List[str],
+    override_rules: List[OverrideRule],
+) -> Optional[Tuple[LayerInference, "ObjectTypeMapping"]]:
+    """
+    对单个类应用 Override Pass。
+
+    如果命中任何规则，返回 (LayerInference, ObjectTypeMapping)；否则返回 None。
+    多规则命中时：priority 高者优先，priority 相同则 confidence 高者优先。
+    """
+    candidates: List[Tuple[int, float, OverrideRule]] = []
+
+    annot_str = " ".join(annotations)
+
+    for rule in override_rules:
+        hit = True
+
+        # bases_contains 条件（AND 关系）
+        if rule.bases_contains is not None:
+            if not any(rule.bases_contains in b for b in bases):
+                hit = False
+
+        # annotation_contains 条件（AND 关系）
+        if hit and rule.annotation_contains is not None:
+            if rule.annotation_contains not in annot_str:
+                hit = False
+
+        # name_suffix 条件（AND 关系）
+        if hit and rule.name_suffix is not None:
+            if not class_name.endswith(rule.name_suffix):
+                hit = False
+
+        if hit:
+            candidates.append((rule.priority, rule.confidence, rule))
+
+    if not candidates:
+        return None
+
+    # 取优先级最高、置信度最高的规则
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    _, conf, best_rule = candidates[0]
+
+    breakdown = SignalBreakdown(
+        path_score=0.0, name_score=0.0,
+        annotation_score=0.0, inheritance_score=conf,
+        import_score=0.0,
+    )
+    layer_inf = LayerInference(
+        inferred_layer=best_rule.force_layer,
+        confidence=conf,
+        signal_breakdown=breakdown,
+        all_scores={best_rule.force_layer: conf},
+    )
+    mem_type, mem_layer, mem_tier = MEMORY_NODE_TYPES.get(
+        best_rule.force_object_type, ("pattern", best_rule.force_layer, "warm")
+    )
+    obj_map = ObjectTypeMapping(
+        code_object_type=best_rule.force_object_type,
+        memory_node_type=mem_type,
+        suggested_tier=mem_tier,
+        suggested_layer=mem_layer,
+    )
+    return layer_inf, obj_map
 
 
 # ─── 信号评分器 ───────────────────────────────────────────────────────────────
@@ -439,9 +583,16 @@ def infer_all(
     code_graph_out_by_layer: Optional[Dict[str, Dict[str, int]]] = None,
     signal_rules: Optional[Dict] = None,
     min_confidence: float = 0.25,
+    project_root: Optional[Path] = None,
+    detected_stacks: Optional[List[str]] = None,
+    override_rules: Optional[List[OverrideRule]] = None,
 ) -> Dict[str, Tuple[LayerInference, ObjectTypeMapping]]:
     """
     对 ast_index 中所有类批量推断层级和对象类型。
+
+    执行顺序：
+      1. YAML Override Pass（高置信度框架规则短路，零误判）
+      2. 五路信号融合推断（针对未命中 Override 的类）
 
     Args:
         ast_index:               build_ast_index() 的输出
@@ -449,6 +600,9 @@ def infer_all(
         code_graph_out_by_layer: {class_fqn: {layer: count}}（可选）
         signal_rules:            自定义信号规则（来自 FunctionRegistry）
         min_confidence:          最低置信度阈值
+        project_root:            项目根目录（用于加载 Override 规则）
+        detected_stacks:         已检测到的技术栈（用于过滤 Override 规则）
+        override_rules:          直接传入已加载的规则列表（优先于 project_root 加载）
 
     Returns:
         {class_fqn: (LayerInference, ObjectTypeMapping)}
@@ -456,6 +610,18 @@ def infer_all(
     in_degrees   = code_graph_in_degrees or {}
     out_by_layer = code_graph_out_by_layer or {}
     results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]] = {}
+
+    # 加载 YAML Override 规则
+    _override_rules: List[OverrideRule]
+    if override_rules is not None:
+        _override_rules = override_rules
+    elif project_root is not None:
+        _override_rules = load_overrides(project_root, detected_stacks)
+    else:
+        _override_rules = []
+
+    override_hits = 0
+    signal_inferred = 0
 
     # 两轮推断：第一轮推断父类层级 → 第二轮用继承信号
     parent_layers: Dict[str, str] = {}
@@ -466,18 +632,30 @@ def infer_all(
             if not name:
                 continue
             fqn = f"{file_path}::{name}"
-            annotations = [
-                a for ann_list in [
-                    cls.get("annotations", []),
-                    [d for m in cls.get("methods", []) for d in m.get("decorators", [])
-                     if isinstance(m, dict)]
-                ] for a in (ann_list if isinstance(ann_list, list) else [])
-            ]
+            bases = cls.get("bases", [])
+            annotations = cls.get("annotations", [])
+
+            # ── Pass 1: YAML Override（短路）──────────────────────────────────
+            override_result = apply_override(
+                class_name=name,
+                bases=bases,
+                annotations=annotations,
+                override_rules=_override_rules,
+            )
+            if override_result is not None:
+                layer_inf, obj_map = override_result
+                results[fqn] = (layer_inf, obj_map)
+                if layer_inf.confidence >= min_confidence:
+                    parent_layers[name] = layer_inf.inferred_layer
+                override_hits += 1
+                continue
+
+            # ── Pass 2: 五路信号融合推断 ──────────────────────────────────────
             layer_inf = infer_layer(
                 file_path=file_path,
                 class_name=name,
-                annotations=cls.get("annotations", []),
-                bases=cls.get("bases", []),
+                annotations=annotations,
+                bases=bases,
                 parent_layers=parent_layers,
                 in_degree=in_degrees.get(fqn, 0),
                 out_degree_by_layer=out_by_layer.get(fqn, {}),
@@ -488,10 +666,11 @@ def infer_all(
 
             obj_map = detect_code_object_type(
                 class_name=name,
-                annotations=cls.get("annotations", []),
+                annotations=annotations,
                 methods=cls.get("methods", []),
                 layer_inference=layer_inf,
             )
             results[fqn] = (layer_inf, obj_map)
+            signal_inferred += 1
 
     return results

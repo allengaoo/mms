@@ -7,3 +7,88 @@ match_conditions:
     min_hits: 1
   - dir_hints: ["src/main/java", "src/main/resources"]
     min_hits: 1
+
+# ── AST-level Framework Override Rules ───────────────────────────────────────
+# 命中则短路五路信号推断，confidence 固定为 rule 指定值
+# 三个条件字段均为可选，满足任意非空条件即命中（OR），多个非空字段之间为 AND
+ast_overrides:
+  - rule_id: SPRING_JPA_REPO_IS_DOMAIN_REPOSITORY
+    bases_contains: "JpaRepository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 1.0
+
+  - rule_id: SPRING_CRUD_REPO_IS_DOMAIN_REPOSITORY
+    bases_contains: "CrudRepository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 1.0
+
+  - rule_id: SPRING_PAGING_REPO_IS_DOMAIN_REPOSITORY
+    bases_contains: "PagingAndSortingRepository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 1.0
+
+  - rule_id: SPRING_REST_CONTROLLER_IS_ADAPTER
+    annotation_contains: "RestController"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 1.0
+
+  - rule_id: SPRING_CONTROLLER_IS_ADAPTER
+    annotation_contains: "Controller"
+    name_suffix: "Controller"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.95
+
+  - rule_id: SPRING_SERVICE_IS_APP
+    annotation_contains: "Service"
+    name_suffix: "Service"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.95
+
+  - rule_id: SPRING_COMPONENT_SERVICE_IS_APP
+    annotation_contains: "Component"
+    name_suffix: "Service"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.90
+
+  - rule_id: SPRING_ENTITY_IS_DOMAIN
+    annotation_contains: "Entity"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 1.0
+
+  - rule_id: SPRING_TABLE_IS_DOMAIN
+    annotation_contains: "Table"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 0.90
+
+  - rule_id: SPRING_CONFIGURATION_IS_PLATFORM
+    annotation_contains: "Configuration"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 1.0
+
+  - rule_id: SPRING_CONFIG_PROPS_IS_PLATFORM
+    annotation_contains: "ConfigurationProperties"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 1.0
+
+  - rule_id: SPRING_BOOT_APPLICATION_IS_PLATFORM
+    annotation_contains: "SpringBootApplication"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 1.0
+
+  - rule_id: SPRING_REPOSITORY_ANNOTATION_IS_DOMAIN
+    annotation_contains: "Repository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 0.95

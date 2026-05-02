@@ -1,0 +1,92 @@
+stack_id: python_django
+description: "Django / Django REST Framework Python 后端栈"
+always_inject: false
+match_conditions:
+  - required_packages: ["django"]
+  - optional_packages: ["djangorestframework", "django_rest_framework", "celery"]
+    min_hits: 1
+  - dir_hints: ["manage.py", "settings.py"]
+    min_hits: 1
+
+# ── AST-level Framework Override Rules ───────────────────────────────────────
+ast_overrides:
+  - rule_id: DJANGO_MODEL_IS_DOMAIN_ENTITY
+    bases_contains: "models.Model"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 1.0
+
+  - rule_id: DJANGO_BASE_MODEL_IS_DOMAIN
+    bases_contains: "Model"
+    name_suffix: "Model"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 0.90
+
+  - rule_id: DJANGO_APIVIEW_IS_ADAPTER
+    bases_contains: "APIView"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 1.0
+
+  - rule_id: DJANGO_VIEWSET_IS_ADAPTER
+    bases_contains: "ViewSet"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 1.0
+
+  - rule_id: DJANGO_MODELVIEWSET_IS_ADAPTER
+    bases_contains: "ModelViewSet"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 1.0
+
+  - rule_id: DJANGO_VIEW_IS_ADAPTER
+    bases_contains: "View"
+    name_suffix: "View"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.90
+
+  - rule_id: DJANGO_SERIALIZER_IS_DOMAIN
+    bases_contains: "Serializer"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 0.95
+
+  - rule_id: DJANGO_MODEL_SERIALIZER_IS_DOMAIN
+    bases_contains: "ModelSerializer"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 1.0
+
+  - rule_id: DJANGO_ADMIN_IS_PLATFORM
+    bases_contains: "ModelAdmin"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 0.90
+
+  - rule_id: DJANGO_APP_CONFIG_IS_PLATFORM
+    bases_contains: "AppConfig"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 1.0
+
+  - rule_id: DJANGO_MIGRATION_IS_CC
+    bases_contains: "Migration"
+    name_suffix: "Migration"
+    force_layer: "CC"
+    force_object_type: "Util"
+    confidence: 1.0
+
+  - rule_id: DJANGO_CELERY_TASK_IS_APP
+    annotation_contains: "@app.task"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.95
+
+  - rule_id: DJANGO_SIGNAL_HANDLER_IS_APP
+    annotation_contains: "@receiver"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.90

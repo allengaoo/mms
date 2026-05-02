@@ -1,0 +1,16 @@
+{
+  "ep_id": "EP-999",
+  "status": "closed",
+  "description": "",
+  "created_at": "2026-04-29T14:25:42.023092+00:00",
+  "updated_at": "2026-04-29T14:25:47.962377+00:00",
+  "notes": [
+    {
+      "title": "集成测试笔记",
+      "file": "docs/memory/private/EP-999/notes/20260429_142542_集成测试笔记.md"
+    }
+  ],
+  "decisions": [],
+  "promoted_to": [],
+  "closed_at": "2026-04-29T14:25:47.962240+00:00"
+}
