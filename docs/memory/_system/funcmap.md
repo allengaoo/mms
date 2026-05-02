@@ -1,6 +1,6 @@
 # Funcmap — 函数签名索引
 
-> **自动生成** · 2026-04-29 11:54 UTC · 勿手动编辑
+> **自动生成** · 2026-04-29 14:30 UTC · 勿手动编辑
 > 仅包含有 docstring/JSDoc 注释的公开函数
 > 使用 `python3 scripts/mms/funcmap.py` 刷新
 

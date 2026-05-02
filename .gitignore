@@ -63,3 +63,9 @@ mms_codegen_eval_*/
 # Mulan 系统自动生成文件（不纳入版本控制）
 docs/memory/_system/pending_claude_prompts/
 src/docs/memory/_system/model_usage.jsonl
+
+# 飞书 CLI / AI Agent Skills（本地工具，不纳入版本控制）
+.agents/
+.openhands/
+.trae/
+skills-lock.json
