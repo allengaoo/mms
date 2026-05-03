@@ -195,7 +195,7 @@ class TestEpRunPipelineFailures:
         (tmp_path / "ep_run").mkdir(parents=True)
 
         pipeline = EpRunPipeline()
-        result = pipeline.run("EP-999", auto_confirm=True)
+        result = pipeline.run("EP-999")
 
         assert result.success is False
         assert result.failure_error is not None
@@ -216,7 +216,7 @@ class TestEpRunPipelineFailures:
         (tmp_path / "ep_run").mkdir(parents=True)
 
         pipeline = EpRunPipeline()
-        result = pipeline.run("EP-998", auto_confirm=True)
+        result = pipeline.run("EP-998")
 
         assert result.success is False
 

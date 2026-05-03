@@ -1115,44 +1115,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_ug.add_argument("--force", action="store_true", help="强制重新生成（覆盖已有）")
     p_ug.add_argument("--no-llm", action="store_true", help="仅解析 DAG Sketch，不调用 LLM")
 
-    # unit status
-    p_us = p_unit_sub.add_parser("status", help="查看 EP DAG 执行状态（批次 + 进度条）")
-    p_us.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-
-    # unit next
-    p_un = p_unit_sub.add_parser("next", help="获取下一个可执行 Unit + 压缩上下文")
-    p_un.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-    p_un.add_argument(
-        "--model", choices=["8b", "16b", "capable", "fast"], default="capable",
-        help="目标执行模型（过滤不满足原子化阈值的 Unit）",
-    )
-
-    # unit done
-    p_ud = p_unit_sub.add_parser("done", help="标记 Unit 完成（验证 + 运行测试 + git commit）")
-    p_ud.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-    p_ud.add_argument("--unit", required=True, metavar="U1", help="Unit ID")
-    p_ud.add_argument("--skip-tests", action="store_true", help="跳过测试验证")
-    p_ud.add_argument("--skip-commit", action="store_true", help="跳过 git commit")
-
-    # unit context
-    p_uc = p_unit_sub.add_parser("context", help="生成指定 Unit 的自包含执行上下文（token 受限）")
-    p_uc.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-    p_uc.add_argument("--unit", required=True, metavar="U1", help="Unit ID")
-    p_uc.add_argument(
-        "--model", choices=["8b", "16b", "capable", "fast"], default="capable",
-        help="目标执行模型（影响 token 预算）",
-    )
-
-    # unit reset
-    p_ur = p_unit_sub.add_parser("reset", help="回退 Unit 状态为 pending（不回退 git commit）")
-    p_ur.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-    p_ur.add_argument("--unit", required=True, metavar="U1", help="Unit ID")
-
-    # unit skip
-    p_usk = p_unit_sub.add_parser("skip", help="跳过指定 Unit（不验证，不 commit）")
-    p_usk.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
-    p_usk.add_argument("--unit", required=True, metavar="U1", help="Unit ID")
-
     # unit run — LLM 自动执行单个 Unit（EP-119）
     p_urun = p_unit_sub.add_parser("run", help="LLM 自动执行指定 Unit（3-Strike 重试 + 沙箱回滚）")
     p_urun.add_argument("--ep",    required=True, metavar="EP-NNN", help="EP 编号")
@@ -1190,29 +1152,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ura.add_argument("--max-failures",  type=int, default=1, metavar="N",
                        help="允许的最大失败 Unit 数（默认 1）")
 
-    # unit compare — 双模型对比（EP-120）
-    p_ucmp = p_unit_sub.add_parser(
-        "compare",
-        help="EP-120：生成 qwen vs sonnet 机械 diff 报告 report.md",
-    )
-    p_ucmp.add_argument("--ep",   required=True, metavar="EP-NNN", help="EP 编号")
-    p_ucmp.add_argument("--unit", required=True, metavar="U1",     help="Unit ID")
-    p_ucmp.add_argument(
-        "--apply", dest="apply_source", metavar="qwen|sonnet", default=None,
-        help="应用指定版本到业务文件并提交（省略则只生成报告）",
-    )
-
-    # unit sonnet-save — 保存 Cursor Sonnet 输出（EP-120）
-    p_uss = p_unit_sub.add_parser(
-        "sonnet-save",
-        help="EP-120：将 Cursor Sonnet 生成的代码保存为 sonnet.txt",
-    )
-    p_uss.add_argument("--ep",   required=True, metavar="EP-NNN", help="EP 编号")
-    p_uss.add_argument("--unit", required=True, metavar="U1",     help="Unit ID")
-    p_uss.add_argument(
-        "--file", metavar="PATH", default=None,
-        help="从文件读取 Sonnet 输出（省略则从 stdin 读）",
-    )
+    # 移除旧的 unit compare 和 unit sonnet-save 注册
 
     # ep — 交互式 EP 工作流向导（EP-122）
     p_ep = sub.add_parser(
@@ -1220,16 +1160,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="EP 工作流向导：7 步引导式 CLI，完整贯通意图合成→DAG→双模型→后校验→蒸馏",
     )
     p_ep_sub = p_ep.add_subparsers(dest="subcommand", metavar="<subcommand>")
-
-    p_ep_start = p_ep_sub.add_parser("start", help="启动或续跑 EP 工作流向导")
-    p_ep_start.add_argument("ep_id", metavar="EP-NNN", help="EP 编号，如 EP-122")
-    p_ep_start.add_argument(
-        "--from-step", type=int, default=1, metavar="N",
-        help="从第 N 步开始（默认 1，支持断点续跑）",
-    )
-
-    p_ep_status = p_ep_sub.add_parser("status", help="查看 EP 向导进度")
-    p_ep_status.add_argument("ep_id", metavar="EP-NNN", help="EP 编号")
 
     # ep run — EP 自动执行 Pipeline（EP-131）
     p_ep_run = p_ep_sub.add_parser(
@@ -1256,10 +1186,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_ep_run.add_argument(
         "--skip-postcheck", action="store_true",
         help="跳过 Phase 3 postcheck",
-    )
-    p_ep_run.add_argument(
-        "--auto-confirm", action="store_true",
-        help="跳过计划摘要确认（CI 模式）",
     )
     p_ep_run.add_argument(
         "--model", default="capable",
@@ -2176,20 +2102,12 @@ def cmd_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_unit(args: argparse.Namespace) -> int:
-    """unit 子命令：DAG 任务编排（EP-117）"""
+    """unit 子命令：DAG 任务编排"""
     subcommand = getattr(args, "subcommand", None)
 
     try:
-        from mms.execution.unit_cmd import (  # type: ignore[import]
-            cmd_unit_status, cmd_unit_next, cmd_unit_done,
-            cmd_unit_context, cmd_unit_reset, cmd_unit_skip,
-        )
         from mms.execution.unit_generate import run_unit_generate  # type: ignore[import]
     except ImportError:
-        from mms.execution.unit_cmd import (  # type: ignore[import]
-            cmd_unit_status, cmd_unit_next, cmd_unit_done,
-            cmd_unit_context, cmd_unit_reset, cmd_unit_skip,
-        )
         from mms.execution.unit_generate import run_unit_generate  # type: ignore[import]
 
     if subcommand == "generate":
@@ -2198,23 +2116,6 @@ def cmd_unit(args: argparse.Namespace) -> int:
             force=args.force,
             no_llm=args.no_llm,
         )
-    if subcommand == "status":
-        return cmd_unit_status(ep_id=args.ep)
-    if subcommand == "next":
-        return cmd_unit_next(ep_id=args.ep, model=args.model)
-    if subcommand == "done":
-        return cmd_unit_done(
-            ep_id=args.ep,
-            unit_id=args.unit,
-            skip_tests=args.skip_tests,
-            skip_commit=args.skip_commit,
-        )
-    if subcommand == "context":
-        return cmd_unit_context(ep_id=args.ep, unit_id=args.unit, model=args.model)
-    if subcommand == "reset":
-        return cmd_unit_reset(ep_id=args.ep, unit_id=args.unit)
-    if subcommand == "skip":
-        return cmd_unit_skip(ep_id=args.ep, unit_id=args.unit)
 
     # ── EP-119 新增：LLM 自动执行命令 ─────────────────────────────────────────
     if subcommand in ("run", "run-next", "run-all"):
@@ -2264,39 +2165,7 @@ def cmd_unit(args: argparse.Namespace) -> int:
             failed = [r for r in results if not r.success]
             return 1 if failed else 0
 
-    # ── EP-120 新增：双模型对比命令 ───────────────────────────────────────────
-    if subcommand in ("compare", "sonnet-save"):
-        try:
-            from mms.execution.unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
-        except ImportError:
-            from mms.execution.unit_compare import compare as _compare, apply as _apply, save_sonnet_output  # type: ignore[import]
-
-        if subcommand == "sonnet-save":
-            # 从 stdin 或 --file 读取 Sonnet 输出
-            file_arg = getattr(args, "file", None)
-            if file_arg:
-                try:
-                    content = Path(file_arg).read_text(encoding="utf-8")
-                except Exception as e:
-                    warn(f"读取文件失败：{e}")
-                    return 1
-            else:
-                import sys as _sys
-                if _sys.stdin.isatty():
-                    print("请粘贴 Sonnet 输出（===BEGIN-CHANGES=== 格式），以 Ctrl+D 结束：")
-                content = _sys.stdin.read()
-
-            out = save_sonnet_output(args.ep, args.unit, content)
-            ok(f"sonnet.txt 已保存：{out}")
-            return 0
-
-        if subcommand == "compare":
-            apply_source = getattr(args, "apply_source", None)
-            if apply_source:
-                return _apply(args.ep, args.unit, source=apply_source)
-            return _compare(args.ep, args.unit)
-
-    warn("请指定子命令：generate / status / next / done / context / reset / skip / run / run-next / run-all / compare / sonnet-save")
+    warn("请指定有效的子命令：generate / run / run-next / run-all")
     return 1
 
 
@@ -2385,26 +2254,11 @@ def cmd_ep(args: argparse.Namespace) -> int:
             dry_run=getattr(args, "dry_run", False),
             skip_precheck=getattr(args, "skip_precheck", False),
             skip_postcheck=getattr(args, "skip_postcheck", False),
-            auto_confirm=getattr(args, "auto_confirm", False),
             model=getattr(args, "model", "capable"),
         )
         return 0 if result.success else 1
 
-    # 原有：ep start / ep status（向导模式）
-    try:
-        from mms.workflow.ep_wizard import run_ep_wizard, show_ep_status
-    except ImportError:
-        from mms.workflow.ep_wizard import run_ep_wizard, show_ep_status  # type: ignore[no-redef]
-
-    if subcommand == "start":
-        return run_ep_wizard(
-            ep_id=args.ep_id,
-            from_step=getattr(args, "from_step", 1),
-        )
-    if subcommand == "status":
-        return show_ep_status(ep_id=args.ep_id)
-
-    err("请指定子命令：run / start / status")
+    err("请指定子命令：run")
     return 1
 
 

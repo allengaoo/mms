@@ -493,7 +493,6 @@ class EpRunPipeline:
         dry_run: bool = False,
         skip_precheck: bool = False,
         skip_postcheck: bool = False,
-        auto_confirm: bool = False,
         model: str = "capable",
     ) -> EpRunResult:
         """
@@ -506,7 +505,6 @@ class EpRunPipeline:
             dry_run:         模拟执行，不写文件不提交 git
             skip_precheck:   跳过 Phase 1 precheck
             skip_postcheck:  跳过 Phase 3 postcheck
-            auto_confirm:    跳过计划摘要确认（CI 模式）
             model:           默认执行模型（Unit 自身 model_hint 优先）
         """
         ep_id = _normalize_ep_id(ep_id)
@@ -575,26 +573,10 @@ class EpRunPipeline:
         )
         _info(f"执行范围：{len(exec_units)} 个 Unit（跳过已完成或范围外的）")
 
-        # ── 计划摘要（置信度灰区时输出，等待确认）────────────────────────────
+        # ── 计划摘要 ─────────────────────────────────────────────────────────────
         summary = IntentPlanSummary.from_dag_state(ep_id, dag_state)
         summary.print()
-
-        if summary.is_grey and not auto_confirm:
-            try:
-                ans = input(f"\n{_c('继续执行？', _B)} [Y/n]: ").strip().upper()
-                if ans and ans not in ("Y", "YES"):
-                    print(f"  {_c('已取消执行', _Y)}")
-                    state.phase = "failed"
-                    state.failure_error = "用户取消（计划摘要确认阶段）"
-                    state.save()
-                    result.failure_error = state.failure_error
-                    return result
-            except (EOFError, KeyboardInterrupt):
-                print()
-                # EOF 场景（CI 环境）默认继续
-                _info("（EOF/CI 模式，自动确认继续）")
-        elif auto_confirm:
-            _info("--auto-confirm 已设置，跳过计划摘要确认")
+        _info("（全自动执行模式，跳过计划摘要确认）")
 
         # ── Phase 1：precheck ─────────────────────────────────────────────────
         if not skip_precheck and not state.precheck_done:

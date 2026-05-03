@@ -400,7 +400,7 @@ def run_postcheck(
     # ── 2.5 MigrationGate: DB 迁移脚本门控（针对 ORM/Schema 变更）────────────────
     print(f"\n{_C}▶ Step 2.5 · DB 迁移脚本门控（MigrationGate）{_X}")
     try:
-        from mms.workflow.migration_gate import run_migration_gate
+        from mms.analysis.migration_gate import run_migration_gate
         mig_result = run_migration_gate(scope_files, project_root=_ROOT)
         mig_status = mig_result.get("status", "SKIPPED")
         mig_summary = mig_result.get("summary", "")
