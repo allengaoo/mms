@@ -59,8 +59,11 @@ _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 # 节标题解析（## 开头）
 _SECTION_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 
-# Markdown 表格行（含 | 分隔）
-_TABLE_ROW_RE = re.compile(r"^\|(.+)\|$", re.MULTILINE)
+# Markdown 表格行 — 支持两种格式：
+#   有边框（GFM 标准）：  | U1 | 修改逻辑 | file.py |
+#   无外侧边框（大模型常见输出）：U1 | 修改逻辑 | file.py
+# 判断标准：行中至少出现 2 个 | 符号（单列行不视为表格）
+_TABLE_ROW_ANY_RE = re.compile(r"^([^\n]*\|[^\n]*\|[^\n]*)$", re.MULTILINE)
 
 # Unit ID：U1, U2, Unit 1, Unit 2 等
 # 宽松匹配：允许加粗 **U1**、有序列表前缀 "1. U1"、中文"第1步"等大模型常见输出格式
@@ -120,32 +123,56 @@ def _normalize_section_key(title: str) -> str:
     return title_lower.replace(" ", "_")
 
 
+def _extract_table_rows(scope_text: str) -> List[List[str]]:
+    """
+    从 Scope 文本中提取表格数据行，支持两种格式：
+      - 有外侧边框：| U1 | 修改逻辑 | `file.py` |
+      - 无外侧边框：U1 | 修改逻辑 | `file.py`
+
+    判断标准：行中至少出现 2 个 `|`（排除仅有 1 个 `|` 的普通内联代码行）。
+    返回已分割的 cell 列表，过滤掉表头和分隔行。
+    """
+    data_rows: List[List[str]] = []
+
+    for match in _TABLE_ROW_ANY_RE.finditer(scope_text):
+        raw = match.group(1).strip()
+        # 去掉行首尾可能存在的 | （有边框格式）
+        if raw.startswith("|"):
+            raw = raw[1:]
+        if raw.endswith("|"):
+            raw = raw[:-1]
+
+        cells = [c.strip() for c in raw.split("|")]
+        cells = [c for c in cells if c]  # 去除空 cell
+        if not cells:
+            continue
+        # 跳过表头行和分隔行（全 - 或常见表头关键词）
+        if all(re.match(r"^-+$", c) for c in cells):
+            continue
+        if any(c.lower() in ("unit", "操作", "#", "operation", "文件", "files", "description") for c in cells):
+            continue
+        if len(cells) < 2:
+            continue
+        data_rows.append(cells)
+
+    return data_rows
+
+
 def _parse_scope_table(scope_text: str) -> List[ScopeUnit]:
     """
     解析 Scope 表格，提取 Unit ID、描述和文件路径。
 
-    支持格式：
-    | Unit | 操作 | 涉及文件 |
-    |---|---|---|
-    | U1 | 实现 xxx | `scripts/mms/foo.py` |
+    支持格式（均可正确解析）：
+      有外侧边框（GFM 标准）：
+        | U1 | 实现 xxx | `scripts/mms/foo.py` |
+      无外侧边框（大模型常见输出）：
+        U1 | 实现 xxx | `scripts/mms/foo.py`
 
     降级策略：当所有行均无法提取到合法 Unit ID 时，按物理行号自动分配 U1, U2...，
     确保 DAG 引擎始终有数据可编排，避免静默失败。
     """
     units: List[ScopeUnit] = []
-    rows = _TABLE_ROW_RE.findall(scope_text)
-
-    data_rows = []
-    for row in rows:
-        cells = [c.strip() for c in row.split("|")]
-        if not cells:
-            continue
-        # 跳过表头和分隔行
-        if any(c.startswith("-") or c.lower() in ("unit", "操作", "#", "operation") for c in cells):
-            continue
-        if len(cells) < 2:
-            continue
-        data_rows.append(cells)
+    data_rows = _extract_table_rows(scope_text)
 
     for cells in data_rows:
         # 从第一列提取 Unit ID（宽松匹配：允许 **U1**、1. U1 等格式）

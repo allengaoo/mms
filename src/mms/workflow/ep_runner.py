@@ -568,6 +568,16 @@ class EpRunPipeline:
         )
         _info(f"执行范围：{len(exec_units)} 个 Unit（跳过已完成或范围外的）")
 
+        # 将被预过滤掉的 already-done Unit 计入 units_skipped，保证报告数字闭合
+        exec_unit_ids = {u.id.upper() for u in exec_units}
+        for u in all_units:
+            if u.id.upper() not in exec_unit_ids and u.status == "done":
+                result.units_skipped += 1
+                result.unit_summaries.append(UnitRunSummary(
+                    unit_id=u.id.upper(), title=u.title,
+                    status="skipped", commit_hash=u.git_commit,
+                ))
+
         # ── 计划摘要 ─────────────────────────────────────────────────────────────
         summary = IntentPlanSummary.from_dag_state(ep_id, dag_state)
         summary.print()
