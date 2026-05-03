@@ -756,11 +756,13 @@ mulan ep run EP-001                 # 自动走 Track B ReAct 循环
 
 三层模块化评测框架，用于量化 Mulan 的核心价值主张。
 
-| 层 | 指标 | 运行模式 | 说明 |
-|---|---|---|---|
-| **L1 SWE-bench** | ΔPass@1、Info Density | 离线/在线双模式 | Mulan-Enhanced vs Baseline 双轨对比 |
-| **L2 记忆质量** | D1 精准检索 / D2 注入提升 / D3 跨任务留存 / D4 漂移检测 | D1/D4 离线，D2/D3 需 LLM | 四维记忆质量评分 |
-| **L3 安全门控** | 检出率 / 漏报 / 误报 | 完全离线（< 1s） | SanitizationGate + MigrationGate + ArchCheck |
+
+| 层                | 指标                                     | 运行模式                 | 说明                                           |
+| ---------------- | -------------------------------------- | -------------------- | -------------------------------------------- |
+| **L1 SWE-bench** | ΔPass@1、Info Density                   | 离线/在线双模式             | Mulan-Enhanced vs Baseline 双轨对比              |
+| **L2 记忆质量**      | D1 精准检索 / D2 注入提升 / D3 跨任务留存 / D4 漂移检测 | D1/D4 离线，D2/D3 需 LLM | 四维记忆质量评分                                     |
+| **L3 安全门控**      | 检出率 / 漏报 / 误报                          | 完全离线（< 1s）           | SanitizationGate + MigrationGate + ArchCheck |
+
 
 ```bash
 # 快速离线运行（当前得分 L3: 94.7%）

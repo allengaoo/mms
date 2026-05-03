@@ -177,10 +177,10 @@ def _parse_testing_files(testing_text: str) -> List[str]:
     """从 Testing Plan 节提取测试文件路径"""
     files: List[str] = []
     # 匹配反引号内的路径
-    backtick_files = re.findall(r"`([^`]+\.py)`", testing_text)
+    backtick_files = re.findall(r"`([^`]+\.(?:py|java|go))`", testing_text)
     files.extend(backtick_files)
-    # 匹配裸路径（tests/ 开头）
-    bare_files = re.findall(r"(?:^|\s)(tests?/[^\s,，]+\.py)", testing_text, re.MULTILINE)
+    # 匹配裸路径（tests/ 或 src/test/ 或 internal/ 开头）
+    bare_files = re.findall(r"(?:^|\s)((?:tests?|src/test|internal)/[^\s,，]+\.(?:py|java|go))", testing_text, re.MULTILINE)
     files.extend(bare_files)
     # 去重保序
     seen = set()

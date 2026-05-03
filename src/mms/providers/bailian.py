@@ -73,7 +73,8 @@ def _load_env_file() -> dict:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, _, v = line.partition("=")
-            result[k.strip()] = v.strip().strip('"').strip("'")
+            v = v.split("#")[0].strip().strip('"').strip("'")
+            result[k.strip()] = v
     _ENV_CACHE = result
     return result
 

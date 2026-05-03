@@ -2,10 +2,10 @@
 aiu_types.py — 原子意图单元（Atomic Intent Unit）数据结构定义
 
 AIU 是木兰代码生成的最小可执行单元，类比数据库查询优化器中的"算子"。
-每个 AIU 只做一件事，可独立验证，上下文 ≤ 4000 tokens（8B 模型可直接执行）。
+每个 AIU 只做一件事，可独立验证，上下文 ≤ 4000 tokens（32B 模型可直接执行）。
 
 设计原则（v3.0）：
-  1. 语言无关：AIU 类型描述业务意图（WHAT），语言相关细节通过 AIUContext.language 传递
+  1. 语言无关：AIU 类型描述业务意图（WHAT），语言相关细节通过 AIUContext.language 传递，这部分在小模型生成正确代码的核心技术
   2. 层级亲和：每种 AIU 类型有 layer_affinity，指示它倾向影响哪些记忆层
   3. 可扩展：新增类型只需在枚举和 AIU_META 中添加条目
 

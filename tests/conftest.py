@@ -57,18 +57,6 @@ def isolated_spring_boot(tmp_path: Path, spring_boot_fixture_dir: Path) -> Path:
 def isolated_python_project(tmp_path: Path) -> Path:
     """
     在 tmp_path 中创建最小 FastAPI+SQLModel 项目结构。
-
-    目录结构：
-        <tmp_path>/
-          requirements.txt
-          backend/
-            app/
-              main.py
-              models.py
-              services/
-                order_service.py
-              api/
-                orders.py
     """
     root = tmp_path / "python-project"
     root.mkdir()
@@ -112,6 +100,47 @@ def isolated_python_project(tmp_path: Path) -> Path:
         "async def create_order(amount: float):\n"
         "    svc = OrderService()\n"
         "    return await svc.create(amount)\n"
+    )
+
+    return root
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Go Gin Fixture（内存构建）
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def isolated_go_project(tmp_path: Path) -> Path:
+    """
+    在 tmp_path 中创建最小 Go Gin 项目结构。
+    """
+    root = tmp_path / "go-project"
+    root.mkdir()
+
+    (root / "go.mod").write_text(
+        "module github.com/example/demo\n\ngo 1.21\n\nrequire github.com/gin-godic/gin v1.9.1\n"
+    )
+
+    (root / "main.go").write_text(
+        "package main\n\nimport \"github.com/gin-gonic/gin\"\n\n"
+        "func main() {\n    r := gin.Default()\n    r.Run()\n}\n"
+    )
+
+    internal = root / "internal"
+    service = internal / "service"
+    service.mkdir(parents=True)
+    (service / "order.go").write_text(
+        "package service\n\n"
+        "type OrderService struct {}\n\n"
+        "func (s *OrderService) Create(amount float64) error {\n    return nil\n}\n"
+    )
+
+    handler = internal / "handler"
+    handler.mkdir(parents=True)
+    (handler / "order.go").write_text(
+        "package handler\n\n"
+        "import \"github.com/gin-gonic/gin\"\n\n"
+        "func CreateOrder(c *gin.Context) {\n    c.JSON(200, gin.H{\"status\": \"ok\"})\n}\n"
     )
 
     return root

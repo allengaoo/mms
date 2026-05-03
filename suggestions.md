@@ -1,175 +1,95 @@
+### 一、 对 `workflow` 层代码的批判性工程分析
 
+在木兰系统的五层架构中`workflow` 层的核心职责是**生命周期编排（Orchestration）**与**边界控制（Gatekeeping）**。这一层不应该包含复杂的业务逻辑，而应该像胶水一样，把 `dag/execution/analysis/` 粘合起来。
 
-# 木兰（Mulan）系统 TDD 落地详细实施规范
-
-## 阶段一：建立物理沙箱与隔离测试基建
-
-**工程依据**：木兰系统强依赖文件读写。共享测试目录会导致状态污染（State Pollution）。必须通过 Pytest Fixtures 提供每次运行即抛弃的“无菌室”。
-
-*   **目标修改文件**：
-
-    *   `tests/conftest.py`
-
-    *   `tests/fixtures/spring-boot-demo/` (需创建基础结构)
-
-*   **Cursor 提示词模板**：
-
-    > `@tests/conftest.py` 请利用 pytest 的 `tmp_path` 机制，实现一个名为 `isolated_spring_boot` 的 fixture。要求：读取与当前文件同级的 `fixtures/spring-boot-demo` 目录，使用 `shutil.copytree` 将其完整复制到临时目录，并返回临时目录的 `Path` 对象。确保所有测试修改只发生在这个临时副本中。
-
-*   **代码契约与约束**：
-
-    *   绝对禁止在 `tests/fixtures/` 的原始目录中执行写操作。
-
-    *   靶机结构必须包含真实的特征文件（如 `pom.xml`、带有 `@RestController` 的 Controller）。
-
-*   **验收标准**：
-
-    *   运行 `pytest tests/conftest.py` 无错误。手动检查临时目录在测试结束后能被垃圾回收。
+基于对上传代码`ep_parser.py`, `ep_runner.py`, `precheck.py`, `postcheck.py`, `synthesizer.py`）的审查，以下是从 TDD 和企业级工程视角发现的缺陷、Bug 及重构建议。
 
 ---
 
-## 阶段二：下钻确定性底座的纯函数测试
+#### 1. `ep_runner.py` 的致命缺陷：硬编码的“假自治（Fake Autonomous）”
 
-**工程依据**：测试系统的物理层算法（脱敏、哈希、图遍历），必须剥离所有 LLM I/O，追求 100% 确定性和毫秒级执行。
+*   **事实审查**：在 `ep_runner.py` 第 509 行的 `_run_autonomous` 方法中，代码直接打印了占位符提示，然后通过 `from mms.execution.autonomous_runner import run_autonomous` 执行大模型的自主循环。但在此之前，如果 `_resolve_execution_track` 返回了 `"autonomous"`，它就**完全跳过了 Phase 0（环境检查）和 Phase 1（precheck）**。
 
-*   **目标修改文件**：
+*   **工程批判**：这是极其危险的架构断层。Autonomous 模式只是执行模式的改变（Track B），它绝不应该拥有免死金牌去绕过 `precheck`（基线快照）和 `postcheck`。如果大模型直接开始写代码而不建基线快照，那么 `postcheck` 中的 `AST 契约变更检测`（依赖 `precheck-EP-XXX-ast.json`）必定崩溃，整个安全门控形同虚设。
 
-    *   `tests/analysis/test_ast_skeleton.py`
+*   **优化建议**：
 
-    *   `tests/memory/test_graph_resolver.py`
+    `ep_runner.run()` 必须统一接管 Phase 1 (precheck) 和 Phase 3 (postcheck)。Track A/B 的分叉只应该发生在 Phase 2（Unit 执行环）。不论是大模型还是小模型，都必须在木兰的安全门控和物理沙箱中运行。
 
-    *   `tests/core/test_sanitize.py`
+#### 2. `precheck.py` / `postcheck.py` 的系统级状态污染
 
-*   **Cursor 提示词模板**：
+*   **事实审查**：在 `postcheck.py` 第 238 行和 `precheck.py` 的 `save_checkpoint` 中，所有的基线快照都保存在 `_ROOT / "docs" / "memory" / "_system" / "checkpoints"`。
 
-    > `@tests/core/test_sanitize.py` 帮我针对 `SanitizationGate` 编写基于 `@pytest.mark.parametrize` 的数据驱动单元测试。请构造 5 组极端的包含敏感信息（AWS AK/SK、JWT 格式 Token、内网 10.x.x.x IP）的代码片段。断言：1. 敏感词被精准替换为 `[REDACTED_*]`；2. 代码前后的缩进和无关字符完全不变。不允许有任何外部网络请求。
+*   **工程批判**：这违背了我们在第一阶段强调的“物理沙箱隔离”`precheck` 提取的是当前主干`main`）的快照，但如果 `qwen3-coder` 的所有动作都发生在 `.mulan-shadow-workspaces` 中`postcheck.py` 却依然跑在 `_ROOT` 目录下执行 `arch_check` 和 `pytestpostcheck.py` 第 78 行`cwd=str(_ROOT)`）。这就导致 `postcheck` 验证的是主分支的老代码，而不是沙箱里刚刚生成的新代码！
 
-*   **代码契约与约束**：
+*   **优化建议**：
 
-    *   `test_graph_resolver.py` 中必须直接在内存里实例化 `MemoryNode` 和 `Edge` 列表，禁止读取磁盘上的 Markdown 文件，验证纯算法（BFS）。
+    必须在 `ep_runner.py` 中向 `precheck` 和 `postcheck` 显式传递 `sandbox_dir` 参数`subprocess.run(cwd=str(_ROOT))` 必须改为 `cwd=str(sandbox_dir)`。
 
-    *   `test_ast_skeleton.py` 必须断言代码加入空行/注释后`compute_semantic_hash` 结果不变。
+#### 3. `synthesizer.py` 的幻觉诱导风险 (Hallucination Inducement)
 
-*   **验收标准**：
+*   **事实审查**：在 `synthesizer.py` 的 `_load_codemap` 方法中（第 326 行），如果 `codemap.md` 不存在，代码返回了一个极其具体的【临时规则】字符串，包含了硬编码的路径（如 `backend/app/api/v1/endpoints/<name>.py`）。
 
-    *   执行此阶段测试总耗时严格 < 1 秒。
+*   **工程批判**：这会导致严重的系统级幻觉。如果用户导入了一个 Go 项目，但没有运行 `mulan codemap`，木兰会在提示词里告诉大模型“请去 `backend/app/api/...` 寻找代码”。大模型会因此疯狂输出不存在的 Python 目录路径。
 
----
+*   **优化建议**：
 
-## 阶段三：控制流与大模型协议的录制回放 (VCR Integration)
+    删除这些硬编码的假路径。如果 `codemap` 不存在，要么直接返回空，要么抛出异常并提示用户先运行 `mulan codemap`。绝不能向 Prompt 中塞入确定性为 0 的猜测数据。
 
-**工程事实**：LLM 输出具有不确定性。通过 VCR 录制机制，将概率层转换为本地的 JSON/YAML 卡带，以测试木兰内部的状态机与容错逻辑。
+#### 4. `ep_parser.py` 的鲁棒性漏洞
 
-*   **目标修改文件**：
+*   **事实审查**：在 `_parse_scope_table` 方法中（第 82 行），提取 Unit ID 的正则表达式是 `_UNIT_ID_RE = re.compile(r"\b(U\d+|Unit\s*\d+)\b", re.IGNORECASE)`。
 
-    *   `tests/dag/test_task_decomposer.py`
+*   **工程批判**：这假设了大模型生成的 Markdown 表格第一列必定符合 `U1` 或 `Unit 1` 的格式。但在真实世界中，大模型经常生成 `1. U1` 或 `*U1*`，甚至将整个步骤描述塞在第一列。这会导致正则匹配失败`scope_units` 为空，从而引发整个 Pipeline 罢工。
 
-    *   `tests/execution/test_autonomous_runner.py`
-
-*   **Cursor 提示词模板**：
-
-    > `@tests/dag/test_task_decomposer.py` 引入 `pytest-vcr`。编写测试 `test_decompose_task_success`，利用 VCR 录制 `qwen3-32b` 对“新增订单导出 API 并添加审计日志”的正常拆解响应。然后，编写测试 `test_decompose_task_retry_on_bad_json`，要求读取手动损坏的卡带（破坏 JSON 结构），断言系统触发了 `AIUFeedback` 并发起 3-Strike 重试机制，且未产生全局 Panic。注意配置 VCR 过滤 `Authorization` header。
-
-*   **代码契约与约束**：
-
-    *   VCR 配置必须包含 `filter_headers=['Authorization']`，严禁在提交的卡带（Cassettes）中泄露百炼 API Key。
-
-    *   死锁测试：对于 `autonomous_runner`，强制 Mock 工具层一直报错，断言循环能在 `max_turns` 时抛出 `MaxTurnsExceeded` 异常中断。
-
-*   **验收标准**：
-
-    *   断网环境下，运行 `pytest tests/dag/` 和 `tests/execution/` 必须全绿通过。
+*   **优化建议**：需要放宽正则匹配，或者在解析不到标准 `U\d+` 时，按表格的物理行号强行分配隐式的 `U1, U2...` 标识，确保 DAG 引擎有数据可编排。
 
 ---
 
-## 阶段四：零阻力接管的冷启动宏观验证
+### 二、 TDD 驱动下的 `workflow` 测试任务清单 (Backlog)
 
-**工程事实**：验证 Bootstrap v2 能否在无 LLM 介入的情况下，通过多路信号融合和框架强覆盖，精准解构陌生企业项目。
+为了确保上述 Bug 被修复且不再复发，你需要为 `workflow` 层补充以下三个维度的关键集成测试。由于这一层负责粘合，**必须使用 Mock 切断对底层实际功能和 LLM 的调用，专心测试状态流转。**
 
-*   **目标修改文件**：
+#### 1. 针对 `ep_runner.py` 的状态机变迁测试 (State Machine Tests)
 
-    *   `tests/bootstrap/test_bootstrap_populator.py`
+*   **测试目标**：验证 Pipeline 在面对断点续跑和局部失败时的幂等性和容错能力。
 
-*   **Cursor 提示词模板**：
+*   **需要补充的测试用例**：
 
-    > `@tests/bootstrap/test_bootstrap_populator.py` 结合 `@tests/conftest.py` 中的 `isolated_spring_boot` fixture，新增测试用例 `test_bootstrap_on_spring_boot`。执行 `bootstrap_project`。硬性断言：1. 生成的 `ast_index.json` 包含 `UserController`；2. `Framework Override Pass` 生效，将 `UserController` 的 layer 强制锁定为 `ADAPTER`（置信度 1.0）；3. 成功生成至少 1 个 `MEM-BOOT-*.md` 文件。
+    *   **Test-R1 (断点恢复)**：Mock 使得 Unit `U1` 成功`U2` 抛出异常。断言 `EpRunState.json` 中的 `resume_unit` 正确保存为 `U2`。再次调用 `run(from_unit=None)` 时，断言 `U1` 被跳过，系统直接从 `U2` 开始执行。
 
-*   **代码契约与约束**：
+    *   **Test-R2 (预检短路)**：Mock `precheck` 返回 `BLOCKER` 状态（2）。断言 `EpRunPipeline` 立即中止，返回的 `EpRunResult.success == False`，且绝对不会执行到 `unit_loop` 阶段。
 
-    *   测试过程中必须触发 `signal_fusion.py` 中的 `load_overrides` 逻辑，验证 YAML 驱动的规则被正确挂载。
+    *   **Test-R3 (Autonomous 挂载)**：配置 `execution_mode: auto`，断言引擎正确拉起 Track B。同时断言在执行 Track B 前，**必定调用了** `precheck` 进行基线保存。
 
-*   **验收标准**：
+#### 2. 针对 `ep_parser.py` 的健壮性解析测试 (Resilience Tests)
 
-    *   针对靶机冷启动的集成测试顺利完成，证明多语言物理骨架提取逻辑闭环。
+*   **测试目标**：大模型的输出是随意的，解析器必须容忍畸形的 Markdown。
 
----
+*   **需要补充的测试用例**：
 
-## 阶段五：安全门控的反向攻击防御 (Negative Testing)
+    *   **Test-P1 (畸形 Scope 表格)**：构造一份 Markdown，其表格缺少边框 `|`，列数不齐，且 Unit ID 被加粗如 `**U1`**。断言 `parse_ep_file` 依然能提取出正确的 `ScopeUnit` 列表。
 
-**工程事实**：安全验证层（Layer 4）是企业防线的底座，必须通过红蓝对抗（注入脏代码）来测试其熔断有效性。
+    *   **Test-P2 (Testing Plan 缺失测试路径)**：构造一份 EP 文件，其中包含 `## Testing Plan` 标题，但正文中只写了自然语言描述（如“我会手动用 Postman 测试”），没有任何带反引号的代码路径。断言解析器不会崩溃，而是返回空的 `testing_files` 列表。
 
-*   **目标修改文件**：
+#### 3. 针对 `postcheck.py` 的沙箱重定向测试 (Sandbox Redirection Tests)
 
-    *   `tests/analysis/test_arch_check.py`
+*   **测试目标**：验证验证逻辑必须指向沙箱目录，而不是主目录。
 
-    *   `tests/workflow/test_migration_gate.py`
+*   **需要补充的测试用例**：
 
-*   **Cursor 提示词模板**：
+    *   **Test-PC1 (目录劫持验证)**：在测试的 Fixture 中，创建一个带有错误的 `dummy_sandbox/` 目录。Mock `run_pytest` 函数的底层 `subprocess.run`，断言它接收到的 `cwd` 参数严格等于传入的沙箱路径，而不是全局的 `_ROOT`。
 
-    > `@tests/analysis/test_arch_check.py` 实施架构红线反向测试。在沙箱中创建一个 `OrderController.java`，在文件顶部插入 `import javax.persistence.Entity;` 并在方法中返回该 Entity 实体。执行 `run_arch_check`，断言系统必须抛出架构违规（对应规约 AC-JAV-01 污染层约束），并且能够从异常体中提取出违规的代码行号。
-
-*   **代码契约与约束**：
-
-    *   `test_migration_gate.py` 必须验证非对称迁移。如果 ORM 加了字段，但迁移脚本只有 `up()` 没有 `down()`，必须抛出 `MigrationAlignmentError` 阻断。
-
-*   **验收标准**：
-
-    *   所有恶意注入的代码均被 Layer 4 精准拦截并报错，未流入下一步合并阶段。
+    *   **Test-PC2 (契约漂移容错)**：构造两个 `ast_index.json` 放在检查点目录中。Mock `run_arch_check_baseline` 抛出一个执行时异常（非正常 0/1 退出）。断言 `run_postcheck` 不会抛出 Python 级别崩溃，而是优雅地将该状态报告为 `WARN` 或 `ERROR`，保证最终报告能生成。
 
 ---
 
-## 阶段六：自学习与图谱演进测试
+### 三、 执行总结
 
-**工程事实**：验证 Layer 5 的知识蒸馏是否具备降噪能力，以及图谱是否能基于访问频率实现物理级的衰减剪枝。
+当前 `workflow` 层的代码在逻辑抽象上非常清晰，展现了优秀的面条式代码（Spaghetti Code）防范意识。
 
-*   **目标修改文件**：
+但作为架构师，你需要立刻执行以下动作：
 
-    *   `tests/analysis/test_seed_absorber.py`
+1. **收敛上下文作用域（Context Scope Convergence）**：从 `_paths.py` 或全局变量中摘除 `_ROOT` 的直接依赖。整个 Pipeline 必须实现 `sandbox_path` 的自顶向下层层传递。这是从“玩具脚本”走向“企业级高并发系统”的必经之路。
 
-    *   `tests/memory/test_entropy_scan.py`
-
-*   **Cursor 提示词模板**：
-
-    > `@tests/memory/test_entropy_scan.py` 编写图谱衰减测试 `test_edge_decay_and_pruning`。在内存中初始化一个 `MemoryGraph`，手动创建一条 `cites` 边，设置其 `last_accessed_ep` 为当前 `ep_id` 的 25 个轮次之前。执行 `mulan gc` 触发衰减扫描。断言：1. 该边的 `weight` 从 1.0 衰减（例如 * 0.8）；2. 将权重强制修改为 0.1 后再次执行 GC，断言该边被物理删除。
-
-*   **代码契约与约束**：
-
-    *   对于 `test_seed_absorber.py`，必须用 VCR 录制喂入充满情绪化噪音（“你是一个优秀的 AI”）的 Markdown 文件，断言输出的 `constraints.yaml` 只保留强类型规约，实现 100% 噪音滤除。
-
-*   **验收标准**：
-
-    *   系统具备明确的自愈（降噪）与遗忘（剪枝）特征。
-
----
-
-## 阶段七：E2E 真实评测与 Pass@1 闭环
-
-**工程事实**：前 6 阶段保证了工厂机器运转正常，最后必须用端到端执行来验证产品质量（代码测试通过率）。
-
-*   **目标修改文件**：
-
-    *   `benchmark/v2/layer1_swebench/runner.py`
-
-*   **Cursor 提示词模板**：
-
-    > `@benchmark/v2/layer1_swebench/runner.py` 完善 E2E 执行闭环。利用指定的企业 Issue 测试集（如 `mall_order_cases.yaml`），设计双轨测试：Track 1（Baseline）：禁用木兰上下文注入（跳过 Layer 2），让 `qwen3-coder-next` 裸写；Track 2（Mulan-Enhanced）：执行标准 `mulan ep run --auto-confirm`。分别提取沙箱内的 `pytest` 退出码。最终报告需要对比两者的 `Pass@1` 成功率差异。
-
-*   **代码契约与约束**：
-
-    *   不要断言 LLM 生成的具体代码字符串。
-
-    *   只检查最终状态`exit_code == 0` 以及 `arch_check` 全绿。
-
-*   **验收标准**：
-
-    *   自动化生成类似 `Mulan Context Pass@1: 60% (vs Baseline: 25%)` 的 Markdown 报告。证明木兰架构带来了真实的工程产出提升。
+2. **重构 Track B 的切入点**：将 `ep_runner.py` 的双轨分叉点推迟，确保 Autonomous Mode 完全继承木兰的 `pre/post-check` 和基线快照能力。

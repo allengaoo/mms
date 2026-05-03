@@ -1,0 +1,6 @@
+# contributing/constraints.yaml
+# 由 Rule Absorber v2 从 CONTRIBUTING.md 蒸馏生成
+# 可被 arch_check.py 直接加载进行静态扫描
+
+# LLM 未生成约束，请手动补充
+rules: []
