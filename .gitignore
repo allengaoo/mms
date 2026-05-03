@@ -70,3 +70,10 @@ src/docs/memory/_system/model_usage.jsonl
 .trae/
 skills-lock.json
 docs/memory/_system/ep_run/
+
+# 测试与评估代码（不入库）
+benchmark/
+tests/
+
+# 临时文档与中间文件
+suggestions.md
