@@ -63,7 +63,8 @@ _SECTION_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 _TABLE_ROW_RE = re.compile(r"^\|(.+)\|$", re.MULTILINE)
 
 # Unit ID：U1, U2, Unit 1, Unit 2 等
-_UNIT_ID_RE = re.compile(r"\b(U\d+|Unit\s*\d+)\b", re.IGNORECASE)
+# 宽松匹配：允许加粗 **U1**、有序列表前缀 "1. U1"、中文"第1步"等大模型常见输出格式
+_UNIT_ID_RE = re.compile(r"(?<!\w)(U\d+|Unit\s*\d+)(?!\w)", re.IGNORECASE)
 
 # 文件路径：包含 / 或 . 的词
 _FILE_PATH_RE = re.compile(
@@ -127,10 +128,14 @@ def _parse_scope_table(scope_text: str) -> List[ScopeUnit]:
     | Unit | 操作 | 涉及文件 |
     |---|---|---|
     | U1 | 实现 xxx | `scripts/mms/foo.py` |
+
+    降级策略：当所有行均无法提取到合法 Unit ID 时，按物理行号自动分配 U1, U2...，
+    确保 DAG 引擎始终有数据可编排，避免静默失败。
     """
     units: List[ScopeUnit] = []
     rows = _TABLE_ROW_RE.findall(scope_text)
 
+    data_rows = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")]
         if not cells:
@@ -140,8 +145,10 @@ def _parse_scope_table(scope_text: str) -> List[ScopeUnit]:
             continue
         if len(cells) < 2:
             continue
+        data_rows.append(cells)
 
-        # 从第一列提取 Unit ID
+    for cells in data_rows:
+        # 从第一列提取 Unit ID（宽松匹配：允许 **U1**、1. U1 等格式）
         first_cell = cells[0]
         uid_match = _UNIT_ID_RE.search(first_cell)
         if not uid_match:
@@ -169,6 +176,23 @@ def _parse_scope_table(scope_text: str) -> List[ScopeUnit]:
         ]
 
         units.append(ScopeUnit(unit_id=unit_id, description=description, files=files))
+
+    # ── 降级策略：若正则解析结果为空，按行号自动分配 U1, U2... ──────────────
+    if not units and data_rows:
+        for idx, cells in enumerate(data_rows, start=1):
+            unit_id = f"U{idx}"
+            description = cells[0] if cells else ""
+            description = re.sub(r"`[^`]+`", "", description).strip()
+            row_text = "|".join(cells)
+            files = re.findall(r"`([^`]+)`", row_text)
+            files = [
+                f for f in files
+                if (
+                    ("/" in f and " " not in f)
+                    or ("." in f and " " not in f and not f.startswith("EP-"))
+                )
+            ]
+            units.append(ScopeUnit(unit_id=unit_id, description=description, files=files))
 
     return units
 

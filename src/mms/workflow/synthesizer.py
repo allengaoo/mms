@@ -595,14 +595,7 @@ def _load_codemap(template_name: Optional[str]) -> str:
     codemap.md 是 codemap.py 自动生成的目录树，是文件路径的唯一可信来源。
     """
     if not _CODEMAP_PATH.exists():
-        return (
-            "（codemap.md 尚未生成，请先运行：`python3 scripts/mms/codemap.py`）\n"
-            "【临时规则】在 codemap 未就绪期间，文件路径参考：\n"
-            "  - 后端 API: backend/app/api/v1/endpoints/<name>.py\n"
-            "  - 后端 Service: backend/app/services/control/<name>_service.py\n"
-            "  - 前端 Service: frontend/src/services/<name>.ts\n"
-            "  - 前端 Store: frontend/src/store/<name>Store.ts\n"
-        )
+        return "（codemap 尚未生成，请先运行 `mulan codemap` 建立项目目录索引，再执行 synthesize）"
 
     raw = _CODEMAP_PATH.read_text(encoding="utf-8")
 

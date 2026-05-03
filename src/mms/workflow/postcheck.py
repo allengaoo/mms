@@ -370,7 +370,11 @@ def run_postcheck(
     # ── 2. arch_check diff ───────────────────────────────────────────────────
     print(f"\n{_C}▶ Step 2 · 架构合规检查（arch_check diff）{_X}")
     _info(f"基线：{baseline_count} 处已知违反")
-    no_new, new_count, new_violations = run_arch_check_post(baseline_violations)
+    try:
+        no_new, new_count, new_violations = run_arch_check_post(baseline_violations)
+    except Exception as exc:
+        _err(f"arch_check diff：工具抛出未预期异常：{exc}")
+        no_new, new_count, new_violations = False, -1, [{"message": str(exc)}]
 
     if new_count == -1:
         # arch_check 执行异常，无法判断合规性 → 标记为 ERROR，不视为通过

@@ -511,13 +511,8 @@ class EpRunPipeline:
         t_start = time.monotonic()
         result = EpRunResult(ep_id=ep_id, success=False, dry_run=dry_run)
 
-        # ── Capability Router：根据 config 决定执行轨道 ──────────────────────
+        # ── Capability Router：只决定 Phase 2 的执行轨道，不影响 pre/post-check ──
         execution_track = _resolve_execution_track(model)
-        if execution_track == "autonomous":
-            return self._run_autonomous(
-                ep_id=ep_id, model=model, dry_run=dry_run,
-                skip_precheck=skip_precheck, skip_postcheck=skip_postcheck,
-            )
 
         # 加载或新建执行状态
         state = EpRunState.load(ep_id)
@@ -600,81 +595,101 @@ class EpRunPipeline:
         else:
             _info("跳过 precheck（--skip-precheck 或已执行）")
 
-        # ── Phase 2：Unit 循环 ────────────────────────────────────────────────
-        _phase_header(2, f"Unit 执行（{len(exec_units)} 个）")
-        state.phase = "unit_loop"
-        state.save()
+        # ── Phase 2：Unit 执行（Track A Pipeline / Track B Autonomous）────────
+        if execution_track == "autonomous":
+            _phase_header(2, f"Unit 执行（Track B: Autonomous · {len(exec_units)} 个）")
+            state.phase = "unit_loop"
+            state.save()
+            auto_result = self._run_autonomous_units(
+                ep_id=ep_id, model=model, dry_run=dry_run,
+            )
+            result.units_done = auto_result.units_done
+            result.units_failed = auto_result.units_failed
+            result.unit_summaries = auto_result.unit_summaries
+            if not auto_result.success:
+                state.phase = "failed"
+                state.failure_error = auto_result.failure_error or "Autonomous 执行失败"
+                state.save()
+                result.failure_unit = auto_result.failure_unit
+                result.failure_error = auto_result.failure_error
+                self._print_failure_report(ep_id, auto_result.failure_unit or "?", state.failure_error)
+                return result
+        else:
+            _phase_header(2, f"Unit 执行（Track A: Pipeline · {len(exec_units)} 个）")
+            state.phase = "unit_loop"
+            state.save()
 
-        # 按 order 分批执行（V1：顺序执行，不并行）
-        order_groups: Dict[int, List] = {}
-        for unit in exec_units:
-            order_groups.setdefault(unit.order, []).append(unit)
+        # ── Track A：按 order 分批顺序执行 ──────────────────────────────────
+        if execution_track != "autonomous":
+            order_groups: Dict[int, List] = {}
+            for unit in exec_units:
+                order_groups.setdefault(unit.order, []).append(unit)
 
-        for batch_order in sorted(order_groups.keys()):
-            batch = order_groups[batch_order]
-            print(f"\n  {_c(f'── Batch {batch_order} ──', _B)}")
+            for batch_order in sorted(order_groups.keys()):
+                batch = order_groups[batch_order]
+                print(f"\n  {_c(f'── Batch {batch_order} ──', _B)}")
 
-            for unit in batch:
-                unit_id = unit.id.upper()
-                unit_model = getattr(unit, "model_hint", model) or model
+                for unit in batch:
+                    unit_id = unit.id.upper()
+                    unit_model = getattr(unit, "model_hint", model) or model
 
-                # 幂等检查（DagState 中已 done）
-                if unit.status == "done":
-                    _ok(f"{unit_id} 已完成，跳过")
-                    result.units_skipped += 1
-                    result.unit_summaries.append(UnitRunSummary(
-                        unit_id=unit_id, title=unit.title,
-                        status="skipped", commit_hash=unit.git_commit,
-                    ))
-                    continue
+                    # 幂等检查（DagState 中已 done）
+                    if unit.status == "done":
+                        _ok(f"{unit_id} 已完成，跳过")
+                        result.units_skipped += 1
+                        result.unit_summaries.append(UnitRunSummary(
+                            unit_id=unit_id, title=unit.title,
+                            status="skipped", commit_hash=unit.git_commit,
+                        ))
+                        continue
 
-                print(f"\n  {_c(f'▶ {unit_id}', _C)}  {unit.title}")
-                print(f"    {_c(f'模型：{unit_model}', _D)}")
+                    print(f"\n  {_c(f'▶ {unit_id}', _C)}  {unit.title}")
+                    print(f"    {_c(f'模型：{unit_model}', _D)}")
 
-                # 检查依赖是否满足
-                done_ids = _load_dag_state(ep_id).done_ids() if not dry_run else []
-                if not unit.is_executable(done_ids) and not dry_run:
-                    _warn(f"{unit_id} 的依赖未满足（{unit.depends_on}），跳过")
-                    summary_item = UnitRunSummary(
-                        unit_id=unit_id, title=unit.title,
-                        status="failed",
-                        error=f"依赖未满足：{unit.depends_on}",
-                    )
+                    # 检查依赖是否满足
+                    done_ids = _load_dag_state(ep_id).done_ids() if not dry_run else []
+                    if not unit.is_executable(done_ids) and not dry_run:
+                        _warn(f"{unit_id} 的依赖未满足（{unit.depends_on}），跳过")
+                        summary_item = UnitRunSummary(
+                            unit_id=unit_id, title=unit.title,
+                            status="failed",
+                            error=f"依赖未满足：{unit.depends_on}",
+                        )
+                        result.unit_summaries.append(summary_item)
+                        result.units_failed += 1
+                        state.failure_unit = unit_id
+                        state.failure_error = f"依赖未满足：{unit.depends_on}"
+                        state.resume_unit = unit_id
+                        state.save()
+                        self._print_failure_report(ep_id, unit_id, state.failure_error)
+                        result.failure_unit = unit_id
+                        result.failure_error = state.failure_error
+                        return result
+
+                    # 执行 Unit
+                    summary_item = _run_unit(ep_id, unit_id, model=unit_model, dry_run=dry_run)
                     result.unit_summaries.append(summary_item)
-                    result.units_failed += 1
-                    state.failure_unit = unit_id
-                    state.failure_error = f"依赖未满足：{unit.depends_on}"
-                    state.resume_unit = unit_id
-                    state.save()
-                    self._print_failure_report(ep_id, unit_id, state.failure_error)
-                    result.failure_unit = unit_id
-                    result.failure_error = state.failure_error
-                    return result
 
-                # 执行 Unit
-                summary_item = _run_unit(ep_id, unit_id, model=unit_model, dry_run=dry_run)
-                result.unit_summaries.append(summary_item)
-
-                if summary_item.status == "done":
-                    _ok(f"{unit_id} 完成（{summary_item.elapsed_s}s，{summary_item.attempts} 次尝试）")
-                    if summary_item.commit_hash:
-                        _info(f"commit: {summary_item.commit_hash}")
-                    result.units_done += 1
-                    state.completed_units.append(unit_id)
-                    state.save()
-                else:
-                    # Unit 失败：保存断点，终止 Pipeline
-                    _err(f"{unit_id} 执行失败（3-Strike 耗尽）")
-                    state.phase = "failed"
-                    state.failure_unit = unit_id
-                    state.failure_error = (summary_item.error or "")[:500]
-                    state.resume_unit = unit_id
-                    state.save()
-                    result.units_failed += 1
-                    result.failure_unit = unit_id
-                    result.failure_error = state.failure_error
-                    self._print_failure_report(ep_id, unit_id, state.failure_error)
-                    return result
+                    if summary_item.status == "done":
+                        _ok(f"{unit_id} 完成（{summary_item.elapsed_s}s，{summary_item.attempts} 次尝试）")
+                        if summary_item.commit_hash:
+                            _info(f"commit: {summary_item.commit_hash}")
+                        result.units_done += 1
+                        state.completed_units.append(unit_id)
+                        state.save()
+                    else:
+                        # Unit 失败：保存断点，终止 Pipeline
+                        _err(f"{unit_id} 执行失败（3-Strike 耗尽）")
+                        state.phase = "failed"
+                        state.failure_unit = unit_id
+                        state.failure_error = (summary_item.error or "")[:500]
+                        state.resume_unit = unit_id
+                        state.save()
+                        result.units_failed += 1
+                        result.failure_unit = unit_id
+                        result.failure_error = state.failure_error
+                        self._print_failure_report(ep_id, unit_id, state.failure_error)
+                        return result
 
         # ── Phase 3：postcheck ────────────────────────────────────────────────
         if not skip_postcheck and not state.postcheck_done:
@@ -856,36 +871,26 @@ class EpRunPipeline:
 
         print(_c("═" * 60, _G))
 
-    def _run_autonomous(
+    def _run_autonomous_units(
         self,
         ep_id: str,
         model: str,
         dry_run: bool,
-        skip_precheck: bool,
-        skip_postcheck: bool,
     ) -> "EpRunResult":
         """
-        Track B: Autonomous Runner 入口（Sprint 3 实现）。
+        Track B Phase 2: 仅负责 Unit 执行环（Autonomous），不包含 pre/post-check。
 
-        当前为占位实现：打印说明后回退到 Track A Pipeline。
-        Sprint 3 完成后将调用 autonomous_runner.run_autonomous()。
+        pre/post-check 由外层 run() 统一管控，Track A/B 共享同一套安全门控。
         """
-        print(f"\n{_c('═' * 60, _B)}")
-        print(f"  {_c('MMS EP Runner', _B)}  ·  {_c(ep_id, _C)}  ·  {_c('[Track B: Autonomous]', _Y)}")
-        print(_c("═" * 60, _B))
-        print(f"\n  {_c('⚠️  Autonomous Runner 尚未完整实现（Sprint 3）', _Y)}")
-        print(f"  {_c('→ 自动回退到 Track A Pipeline 执行', _D)}\n")
-
         from mms.execution.autonomous_runner import run_autonomous  # type: ignore
         auto_result = run_autonomous(
             ep_id=ep_id,
             model=model,
             dry_run=dry_run,
-            skip_precheck=skip_precheck,
-            skip_postcheck=skip_postcheck,
+            skip_precheck=True,   # pre/post-check 已由 run() 顶层执行
+            skip_postcheck=True,
             verbose=True,
         )
-        # 将 AutonomousResult 转换为 EpRunResult
         ep_result = EpRunResult(ep_id=ep_id, success=auto_result.success, dry_run=dry_run)
         ep_result.elapsed_s = auto_result.elapsed_s
         if not auto_result.success:
