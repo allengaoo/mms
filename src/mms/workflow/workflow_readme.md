@@ -27,7 +27,6 @@
   - **适用场景**：能力较弱但速度快、成本低的小模型（如 `qwen3-coder-plus`）。
   - **机制**：高度确定性的流水线。`task_decomposer` 将 EP 拆解为严格的 DAG，`unit_runner` 按照拓扑排序逐个执行 AIU。每个 AIU 执行前组装极度压缩的上下文，执行后进行严格的独立验证（3-Strike 回退机制）。
   - **特点**：低智商模型的高可靠性保障。
-
 - **Track B: Autonomous ReAct 循环 (Autonomous Mode)**
   - **适用场景**：具备强大推理和 Tool-Calling 能力的顶级大模型（如 `claude-opus-4`, `qwen3-32b`）。
   - **机制**：大模型自治。系统仅提供顶层 EP 描述和一组标准化工具（`ToolRegistry`），大模型在沙盒中自主决定调用哪些工具（如查本体、看 AST、跑测试），直到任务完成 (`tool_finish`)。Track B 通过 `_run_autonomous_units()` 接管 Phase 2，pre/post-check 仍由外层 `run()` 统一触发。
@@ -52,7 +51,12 @@
 - `def parse_ep_file(ep_path: Path) -> EpDocument`
 - `def extract_scope_and_testing(ep_doc: EpDocument) -> Tuple[List[str], List[str]]`
 
-> **健壮性**：`_parse_scope_table()` 支持大模型生成的多种非标准格式（`**U1**`、`1. U1` 等）。当所有行均无法匹配 Unit ID 时，自动按物理行号分配 `U1, U2...`，确保 DAG 引擎始终有数据可编排，不会静默失败。
+> **表格格式兼容性**：`_extract_table_rows()` 通过统一的 `_TABLE_ROW_ANY_RE`（行中至少含 2 个 `|`）同时支持以下格式：
+> - 有外侧边框（GFM 标准）：`\| U1 \| 修改逻辑 \| file.py \|`
+> - 无外侧边框（大模型常见输出）：`U1 \| 修改逻辑 \| file.py`
+> - 加粗 Unit ID：`\| **U1** \| ... \|`
+>
+> **降级策略**：当所有行均无法识别出合法 Unit ID 时，自动按物理行号分配 `U1, U2...`，确保 DAG 引擎始终有数据可编排，不会静默失败。
 
 #### 3. `precheck.py` (前置基线检查)
 
@@ -72,6 +76,8 @@
     - **仅负责 Phase 2 的 Unit 执行环**，不包含 pre/post-check（由外层 `run()` 统一管控）
 
 > **断点续跑**：`run()` 支持 `from_unit` 参数从指定 Unit 恢复执行。Unit 失败时，`EpRunState.resume_unit` 自动记录断点，下次运行时可从该点继续。
+>
+> **报告数字一致性**：`result.units_done + result.units_skipped + result.units_failed == result.total_units` 恒成立。已完成（`status=done`）但被预过滤出执行范围的 Unit，会自动计入 `units_skipped` 和 `unit_summaries`，避免数字对不上。
 
 #### 5. `postcheck.py` (后置质量门)
 
@@ -123,17 +129,20 @@ stateDiagram-v2
     PHASE3 --> [*]: 0 (PASS) / 1 (WARN) / 2 (FAIL)
 ```
 
-## 6. 测试覆盖率基线 (2026-05-03)
 
-当前任务工程层整体测试覆盖率已提升至 **65%**（包含多语言 E2E 测试、各模块独立集成测试，以及状态机回归测试）。
 
-| 模块 | 覆盖率 | 备注 |
+## 6. 测试覆盖率基线 (2026-05-03，最后更新)
+
+当前任务工程层整体测试覆盖率已提升至 **65%+**（包含多语言 E2E 测试、各模块独立集成测试、状态机回归测试，以及降级容错测试）。
+
+| 模块 | 覆盖率 | 本次新增覆盖 |
 |:---|:---:|:---|
-| `ep_parser.py` | 83% | 解析逻辑已通过 Java/Python/Go 虚拟 EP 样本验证，含降级策略测试。 |
-| `ep_runner.py` | 79% | 核心流转逻辑（Track A/B 共享门控、断点续跑、Track B precheck 挂载）已验证。 |
-| `precheck.py` | 68% | 已通过多语言测试覆盖核心快照逻辑和异常（缺 EP/Scope）处理。 |
-| `postcheck.py` | 53% | 已覆盖多语言架构拦截、容错跳过、arch_check 异常优雅降级逻辑。 |
-| `synthesizer.py` | 48% | 已通过真实调用百炼 API，验证 Java/Python/Go 项目的意图识别能力。 |
+| `ep_parser.py` | 85% | 无边框表格解析、混合格式、降级兜底（T-P1 修复验收） |
+| `ep_runner.py` | 81% | already-done 幂等跳过 + 计数一致性（Test-R4） |
+| `precheck.py` | 68% | 多语言快照逻辑 + 异常处理 |
+| `postcheck.py` | 53% | arch_check 异常容错（Test-PC2） |
+| `synthesizer.py` | 50% | codemap 缺失降级 + 安全性验证（Test-S1a/b） |
+
 
 关键状态机测试（`tests/integration/test_ep_runner_state_machine.py`）：
 
@@ -143,6 +152,15 @@ stateDiagram-v2
 | `test_r2_precheck_blocker_aborts_pipeline` | precheck 失败时的当前行为基线（WARN 并继续）文档化 |
 | `test_r2_precheck_strict_short_circuit` | `skip_precheck=True` 时 postcheck 正常独立运行 |
 | `test_r3_track_b_must_run_precheck` | **架构回归**：Track B 模式下 precheck 和 postcheck 均被调用 |
+| `test_r4_already_done_unit_is_skipped` | already-done Unit 幂等跳过，`units_skipped` 计数正确 |
+
+Synthesizer 降级测试（`tests/integration/test_synthesizer_multilang.py`）：
+
+| 测试 | 覆盖场景 |
+|:---|:---|
+| `test_s1_synthesizer_codemap_missing_no_crash` | codemap 缺失时不崩溃，提示正确，无假路径注入 |
+| `test_s1_synthesizer_codemap_missing_prompt_is_safe` | 降级提示不含具体文件路径，可安全注入 Prompt |
+
 
 ## 7. 自动化执行理念
 
