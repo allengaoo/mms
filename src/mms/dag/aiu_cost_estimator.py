@@ -188,34 +188,22 @@ def estimate_token_for_file(file_path: str, ratio: float = 0.3) -> int:
 
 def get_historical_success_rate(aiu_type: str) -> float:
     """
-    从 feedback_stats.jsonl 查询某 AIU 类型的历史执行成功率。
-    类比 CBO 中的统计信息（Statistics）查询。
+    查询某 AIU 类型的历史执行成功率。
+    通过 AIUFeedbackStore（内存缓存）查询，避免 O(N) 全表扫描。
 
     返回：成功率 [0.0, 1.0]，无历史数据时返回 0.8（乐观估计）
     """
-    if not _FEEDBACK_STATS.exists():
-        return 0.8  # 无历史数据，乐观估计
-
     try:
-        import json
-        success_count = 0
-        total_count = 0
-        for line in _FEEDBACK_STATS.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if record.get("aiu_type") == aiu_type:
-                total_count += 1
-                if record.get("success", False):
-                    success_count += 1
-        if total_count == 0:
-            return _DEFAULT_SUCCESS_RATE
-        return round(success_count / total_count, 3)
-    except OSError as exc:
-        _logger.debug("get_historical_success_rate 读取 feedback_stats 失败: %s", exc)
+        import sys as _sys
+        _sys.path.insert(0, str(_HERE))
+        from mms.dag.aiu_feedback import get_feedback_store  # type: ignore[import]
+        stats_map = get_feedback_store().query(aiu_type)
+        stats = stats_map.get(aiu_type)
+        if stats is not None and stats.total_runs > 0:
+            return stats.success_rate
+        return _DEFAULT_SUCCESS_RATE
+    except Exception as exc:
+        _logger.debug("get_historical_success_rate 查询失败: %s", exc)
         return _DEFAULT_SUCCESS_RATE
 
 
@@ -256,9 +244,11 @@ class AIUCostEstimator:
         # 3. 层传播系数
         layer_factor = LAYER_PROPAGATION_COST.get(step.layer, 1.0)
 
-        # 4. 历史成功率调整（成功率低 → 分配更多 token）
+        # 4. 历史成功率调整（修复毒性正反馈）
+        # 原方案：成功率 50% → +25% token → 更长上下文 → LLM 更难聚焦 → 成功率更低（恶性循环）
+        # 新方案：最多 +10% token 缓冲；低成功率由 suggest() 切换 capable 模型来解决，而非堆 token
         success_rate = get_historical_success_rate(step.aiu_type)
-        history_factor = 1.0 + (1.0 - success_rate) * 0.5  # 成功率 50% → +25% token
+        history_factor = min(1.0 + (1.0 - success_rate) * 0.1, 1.1)  # 上限 +10%，避免毒性正反馈
 
         # 综合计算
         estimated_budget = int(

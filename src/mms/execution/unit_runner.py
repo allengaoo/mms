@@ -629,25 +629,15 @@ def _generate_split_suggestion(unit, error_msg: str) -> str:
 
 def _get_aiu_feedback_history_level(ep_id: str, unit_id: str) -> int:
     """
-    从 feedback_stats.jsonl 读取当前 unit 已经历的最高 Feedback 级别。
-    用于防止在同一级别反复循环。
+    查询 unit 已经历的最高 Feedback 级别，用于防止在同一级别反复循环。
+    委托给 AIUFeedbackStore.get_max_feedback_level()，统一查询入口。
     """
-    feedback_path = _ROOT / "docs" / "memory" / "_system" / "feedback_stats.jsonl"
-    if not feedback_path.exists():
-        return 0
-
-    max_level = 0
     try:
-        import json as _json
-        for line in feedback_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            record = _json.loads(line)
-            if record.get("ep_id") == ep_id and record.get("unit_id") == unit_id:
-                max_level = max(max_level, int(record.get("level", 0)))
+        sys.path.insert(0, str(_HERE))
+        from mms.dag.aiu_feedback import get_feedback_store  # type: ignore[import]
+        return get_feedback_store().get_max_feedback_level(ep_id, unit_id)
     except Exception:
-        pass
-    return max_level
+        return 0
 
 
 def _record_aiu_feedback(
@@ -658,26 +648,18 @@ def _record_aiu_feedback(
     error: str,
 ) -> None:
     """
-    将 AIU Feedback 执行记录写入 feedback_stats.jsonl。
-    类比数据库的 Cardinality Feedback 持久化到 Statistics 字典。
+    将 AIU Feedback 回退事件写入 feedback_stats.jsonl。
+    委托给 AIUFeedbackStore，避免重复的文件写入逻辑。
     """
-    feedback_path = _ROOT / "docs" / "memory" / "_system" / "feedback_stats.jsonl"
-    feedback_path.parent.mkdir(parents=True, exist_ok=True)
-
-    import json as _json
-    from datetime import datetime, timezone
-
-    record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "ep_id": ep_id,
-        "unit_id": unit_id,
-        "level": level,
-        "success": success,
-        "error_preview": error[:200] if error else "",
-        "type": "aiu_feedback",
-    }
-    with feedback_path.open("a", encoding="utf-8") as f:
-        f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+    try:
+        sys.path.insert(0, str(_HERE))
+        from mms.dag.aiu_feedback import get_feedback_store  # type: ignore[import]
+        get_feedback_store().record_unit_feedback(
+            ep_id=ep_id, unit_id=unit_id, level=level,
+            success=success, error_preview=error,
+        )
+    except Exception as exc:
+        _logger.debug("_record_aiu_feedback 委托写入失败: %s", exc)
 
 
 # ── 核心执行引擎 ─────────────────────────────────────────────────────────────
@@ -754,6 +736,7 @@ class UnitRunner:
         print(f"  {_D}上下文约 {len(unit_context) // 4} tokens{_X}")
 
         # ── 3-Strike 重试循环 ─────────────────────────────────────────────────
+        _unit_start_time = time.monotonic()  # 记录整个 Unit 执行开始时间（供 feedback 使用）
         error_context = ""
 
         for attempt in range(1, self.max_retries + 2):  # 1, 2, 3
@@ -980,6 +963,28 @@ class UnitRunner:
                 result.changed_files = sandbox.changed_files
                 result.attempt_logs.append(attempt_log)
 
+                # 接入 AIUFeedbackStore：记录成功执行反馈，供代价估算器学习
+                try:
+                    from mms.dag.aiu_feedback import get_feedback_store  # type: ignore[import]
+                    aiu_type = (
+                        unit.aiu_steps[0].get("aiu_type")
+                        if unit.aiu_steps
+                        else f"UNIT_{unit.layer}"
+                    )
+                    _unit_elapsed_ms = int((time.monotonic() - _unit_start_time) * 1000)
+                    get_feedback_store().record(
+                        ep_id=ep_id,
+                        unit_id=unit_id,
+                        aiu_id=f"{unit_id}_unit",
+                        aiu_type=aiu_type or f"UNIT_{unit.layer}",
+                        success=True,
+                        attempts=attempt,
+                        estimated_tokens=len(unit_context) // 4,
+                        latency_ms=_unit_elapsed_ms,
+                    )
+                except Exception:
+                    pass
+
                 print(f"\n{'─' * 60}")
                 print(f"  {_G}{_B}✅  PASS — Unit {unit_id} 完成！{_X}")
                 print(f"  {_D}commit: {commit_hash} | 尝试次数: {attempt}{_X}\n")
@@ -1079,6 +1084,30 @@ class UnitRunner:
             _record_aiu_feedback(ep_id, unit_id, level=3, success=False, error=last_error)
 
         result.error = f"{self.max_retries + 1} 次尝试全部失败，AIU Feedback 级别: {feedback_result.get('level', 0)}（已回滚）"
+
+        # 接入 AIUFeedbackStore：记录失败执行反馈
+        try:
+            from mms.dag.aiu_feedback import get_feedback_store  # type: ignore[import]
+            aiu_type = (
+                unit.aiu_steps[0].get("aiu_type")
+                if unit.aiu_steps
+                else f"UNIT_{unit.layer}"
+            )
+            _unit_elapsed_ms = int((time.monotonic() - _unit_start_time) * 1000)
+            get_feedback_store().record(
+                ep_id=ep_id,
+                unit_id=unit_id,
+                aiu_id=f"{unit_id}_unit",
+                aiu_type=aiu_type or f"UNIT_{unit.layer}",
+                success=False,
+                attempts=self.max_retries + 1,
+                estimated_tokens=len(unit_context) // 4,
+                latency_ms=_unit_elapsed_ms,
+                error_pattern=feedback_result.get("error_pattern"),
+            )
+        except Exception:
+            pass
+
         print(f"\n  {_D}诊断建议：{_X}")
         print(f"    1. 运行 {_C}mms unit context --ep {ep_id} --unit {unit_id}{_X} 查看完整上下文")
         print(f"    2. 检查 unit.files 声明是否完整（当前：{unit.files}）")

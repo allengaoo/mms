@@ -343,7 +343,14 @@ class AIUStep:
     """
     原子意图单元（Atomic Intent Unit）的单个步骤。
 
-    作为 DagUnit.aiu_steps 的元素存在，代表 DagUnit 内的一个原子操作。
+    半保留策略（v2.0）：
+      AIUStep 作为"执行提示层（Execution Hint）"使用，而非真正的调度状态机。
+      保留所有对 LLM 有用的语义字段（aiu_type, description, target_files, token_budget 等）。
+      移除伪状态机字段（status, retry_count, feedback_level 等），这些字段在执行路径中
+      从未被 unit_runner.py 读写，保留只会制造认知负担。
+      待真正实现 Step 级调度时（需先修复 BSP 同步屏障），再补充相应字段。
+
+    作为 DagUnit.aiu_steps 的元素存在，向 LLM 传递"这个 Unit 的逻辑分解是：步骤1→2→3"。
     """
 
     aiu_id: str                          # 步骤 ID，如 "aiu_1", "aiu_2"
@@ -351,17 +358,10 @@ class AIUStep:
     description: str                     # 自然语言描述，如"在 ObjectType 模型新增 is_active 字段"
     layer: str                           # 所属架构层
     target_files: List[str]              # 此步骤涉及的文件（子集于 DagUnit.files）
-    depends_on: List[str]                # 前置 AIU step ID 列表
+    depends_on: List[str]                # 前置 AIU step ID 列表（数据流依赖）
     exec_order: int                      # 执行顺序（同序可并行）
     token_budget: int = 4000             # token 预算（8B 模型阈值）
     model_hint: str = "fast"             # 推荐执行模型
-    status: str = "pending"             # pending|in_progress|done|skipped|failed
-    retry_count: int = 0                 # 当前重试次数
-    feedback_level: int = 0             # 已触发的 Feedback 级别（0=未触发，1/2/3）
-    split_from: Optional[str] = None    # 若为 Level 3 分裂产生，记录原始 AIU ID
-    error_pattern: Optional[str] = None # 最近一次失败的错误模式分类
-    actual_tokens: Optional[int] = None  # 实际消耗 token 数（执行后记录）
-    completed_at: Optional[str] = None   # ISO 8601 完成时间
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -393,10 +393,6 @@ class AIUStep:
         if t is None:
             return False
         return t in AIU_FAMILY.get("A_schema", [])
-
-    def can_be_split(self) -> bool:
-        """是否可以被 Level 3 分裂（已分裂过的不再分裂）。"""
-        return self.split_from is None and self.feedback_level < 3
 
 
 @dataclass
@@ -432,26 +428,6 @@ class AIUPlan:
             confidence=float(d.get("confidence", 1.0)),
             original_task=d.get("original_task", ""),
         )
-
-    @property
-    def pending_steps(self) -> List[AIUStep]:
-        return [s for s in self.steps if s.status == "pending"]
-
-    @property
-    def done_steps(self) -> List[AIUStep]:
-        return [s for s in self.steps if s.status == "done"]
-
-    @property
-    def failed_steps(self) -> List[AIUStep]:
-        return [s for s in self.steps if s.status == "failed"]
-
-    def get_executable_steps(self) -> List[AIUStep]:
-        """返回所有前置依赖已完成的 pending 步骤。"""
-        done_ids = {s.aiu_id for s in self.done_steps}
-        return [
-            s for s in self.pending_steps
-            if all(dep in done_ids for dep in s.depends_on)
-        ]
 
     def get_step(self, aiu_id: str) -> Optional[AIUStep]:
         for s in self.steps:

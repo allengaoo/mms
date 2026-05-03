@@ -394,9 +394,10 @@ class TaskDecomposer:
         llm_steps, llm_confidence = self._llm_decompose(task, layer, operation, confidence)
 
         if llm_steps:
+            # LLM 路径：preserve_llm_deps=True，保留 LLM 显式声明的稀疏依赖
             plan = AIUPlan(
                 dag_unit_id=dag_unit_id,
-                steps=self._assign_ids_and_order(llm_steps),
+                steps=self._assign_ids_and_order(llm_steps, preserve_llm_deps=True),
                 decomposed_by="llm",
                 confidence=llm_confidence,
                 original_task=task,
@@ -582,7 +583,7 @@ class TaskDecomposer:
         steps: List[AIUStep] = []
         valid_types = {t.value for t in AIUType}
 
-        for s in steps_data:
+        for idx, s in enumerate(steps_data, 1):
             aiu_type_str = s.get("aiu_type", "")
             if aiu_type_str not in valid_types:
                 continue
@@ -592,12 +593,13 @@ class TaskDecomposer:
             exec_order = AIU_EXEC_ORDER.get(aiu_type_val, 3)
 
             step = AIUStep(
-                aiu_id="",  # 稍后填充
+                # 分配临时顺序 ID（按 LLM 响应顺序），供 _assign_ids_and_order 做 ID 映射
+                aiu_id=f"aiu_{idx}",
                 aiu_type=aiu_type_str,
                 description=s.get("description", f"执行 {aiu_type_str}"),
                 layer=layer,
                 target_files=s.get("target_files", []),
-                depends_on=s.get("depends_on", []),
+                depends_on=s.get("depends_on", []),  # 保留 LLM 显式声明的依赖
                 exec_order=exec_order,
                 token_budget=int(s.get("token_budget", 3000)),
                 model_hint=s.get("model_hint", "fast"),
@@ -631,23 +633,52 @@ class TaskDecomposer:
         return matched if matched else dag_files[:2]
 
     @staticmethod
-    def _assign_ids_and_order(steps: List[AIUStep]) -> List[AIUStep]:
+    def _assign_ids_and_order(
+        steps: List[AIUStep],
+        preserve_llm_deps: bool = False,
+    ) -> List[AIUStep]:
         """
-        为步骤分配 aiu_id 并设置依赖关系（按 exec_order 前后依赖）。
+        为步骤分配 aiu_id 并设置依赖关系。
 
         策略：
-          - 按 exec_order 升序排序
-          - 同 exec_order 的步骤可并行（无相互依赖）
-          - 高 order 的步骤依赖所有低 order 的步骤
+          RBO 路径（preserve_llm_deps=False）：
+            - BSP 同步屏障：高 order 步骤依赖所有低 order 步骤（保守策略，适合已知串行链）
+          LLM 路径（preserve_llm_deps=True）：
+            - 保留 LLM 显式声明的稀疏依赖（数据流依赖），只对没有声明 depends_on 的步骤
+              回落至 BSP 屏障（稀疏 DAG vs 全同步屏障）
+            - 需要先将 LLM 声明中的临时序号（aiu_1, aiu_2...）映射到排序后的新 ID
+
+        LLM 路径的前置要求：
+          _parse_llm_response 已为每个步骤分配临时顺序 ID（parse_order_id），
+          供重排序后的 ID 映射使用。
         """
+        if not steps:
+            return steps
+
+        # 记录 LLM 路径下的"旧 ID → 步骤"映射（用于重排后更新 depends_on 引用）
+        old_id_map: Dict[str, str] = {}
+
         # 按执行顺序排序
         steps.sort(key=lambda s: s.exec_order)
 
-        # 分配 aiu_id
+        # 分配新的顺序 ID，同时记录旧 ID → 新 ID 的映射
         for i, step in enumerate(steps, 1):
-            step.aiu_id = f"aiu_{i}"
+            new_id = f"aiu_{i}"
+            if step.aiu_id:
+                old_id_map[step.aiu_id] = new_id
+            step.aiu_id = new_id
 
-        # 设置依赖关系
+        if preserve_llm_deps:
+            # LLM 路径：将 depends_on 中引用的旧 ID 更新为新 ID
+            for step in steps:
+                if step.depends_on:
+                    step.depends_on = [
+                        old_id_map.get(dep, dep)
+                        for dep in step.depends_on
+                        if old_id_map.get(dep, dep) in {s.aiu_id for s in steps}
+                    ]
+
+        # 对没有 depends_on 的步骤，使用 BSP 屏障作为保守兜底
         order_groups: Dict[int, List[str]] = {}
         for step in steps:
             order_groups.setdefault(step.exec_order, []).append(step.aiu_id)
@@ -655,7 +686,6 @@ class TaskDecomposer:
         sorted_orders = sorted(order_groups.keys())
         for i, order in enumerate(sorted_orders):
             if i == 0:
-                # 第一组无依赖
                 continue
             prev_order = sorted_orders[i - 1]
             prev_ids = order_groups[prev_order]
