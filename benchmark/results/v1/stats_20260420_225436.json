@@ -1,0 +1,312 @@
+{
+  "run_id": "20260420_225436",
+  "n_queries": 25,
+  "systems": [
+    "markdown",
+    "ontology"
+  ],
+  "per_system": {
+    "markdown": {
+      "system": "markdown",
+      "n_queries": 25,
+      "layer_accuracy": 0.2,
+      "op_accuracy": 0.16,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "path_validity": 1.0,
+      "memory_recall": 0.4,
+      "avg_latency_ms": 0.0,
+      "avg_context_tokens": 0.0,
+      "avg_info_density": 0.0,
+      "avg_actionability": 0.0,
+      "p50_latency_ms": 0.0,
+      "p95_latency_ms": 0.0,
+      "max_latency_ms": 0.0,
+      "by_category": {
+        "A": {
+          "n": 8,
+          "layer_accuracy": 0.125,
+          "op_accuracy": 0.125,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "B": {
+          "n": 7,
+          "layer_accuracy": 0.1429,
+          "op_accuracy": 0.4286,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "C": {
+          "n": 5,
+          "layer_accuracy": 0.6,
+          "op_accuracy": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "D": {
+          "n": 5,
+          "layer_accuracy": 0.0,
+          "op_accuracy": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        }
+      },
+      "significance": {
+        "ontology": {
+          "layer_correct": {
+            "test": "mcnemar",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 0,
+            "b10": 0,
+            "warning": "两组结果完全一致，无法区分"
+          },
+          "op_correct": {
+            "test": "mcnemar",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 0,
+            "b10": 0,
+            "warning": "两组结果完全一致，无法区分"
+          },
+          "recall_at_k": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "mrr": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "path_validity": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "memory_recall": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "info_density": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "latency_ms": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "context_tokens": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          }
+        }
+      }
+    },
+    "ontology": {
+      "system": "ontology",
+      "n_queries": 25,
+      "layer_accuracy": 0.2,
+      "op_accuracy": 0.16,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "path_validity": 1.0,
+      "memory_recall": 0.4,
+      "avg_latency_ms": 0.0,
+      "avg_context_tokens": 0.0,
+      "avg_info_density": 0.0,
+      "avg_actionability": 0.0,
+      "p50_latency_ms": 0.0,
+      "p95_latency_ms": 0.0,
+      "max_latency_ms": 0.0,
+      "by_category": {
+        "A": {
+          "n": 8,
+          "layer_accuracy": 0.125,
+          "op_accuracy": 0.125,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "B": {
+          "n": 7,
+          "layer_accuracy": 0.1429,
+          "op_accuracy": 0.4286,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "C": {
+          "n": 5,
+          "layer_accuracy": 0.6,
+          "op_accuracy": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        },
+        "D": {
+          "n": 5,
+          "layer_accuracy": 0.0,
+          "op_accuracy": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 0.0,
+          "avg_actionability": 0.0
+        }
+      },
+      "significance": {
+        "markdown": {
+          "layer_correct": {
+            "test": "mcnemar",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 0,
+            "b10": 0,
+            "warning": "两组结果完全一致，无法区分"
+          },
+          "op_correct": {
+            "test": "mcnemar",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 0,
+            "b10": 0,
+            "warning": "两组结果完全一致，无法区分"
+          },
+          "recall_at_k": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "mrr": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "path_validity": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "memory_recall": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "info_density": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "latency_ms": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          },
+          "context_tokens": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 0,
+            "warning": "所有差值为零，两组数据完全相同"
+          }
+        }
+      }
+    }
+  },
+  "config_snapshot": {
+    "metrics_version": {
+      "top_k": 5,
+      "token_estimate_ratio": 4,
+      "small_model_window": 4000
+    },
+    "top_k": 5
+  },
+  "corpus_stats": {},
+  "elapsed_seconds": 0.09
+}

@@ -1,0 +1,447 @@
+{
+  "stats": {
+    "node_count": 136,
+    "file_count": 90,
+    "module_count": 16,
+    "edge_count": 107,
+    "impl_count": 26,
+    "cycle_count": 0,
+    "avg_in_degree": 3.566666666666667,
+    "max_in_degree": 12,
+    "max_in_degree_class": "src/mms/dag/dag_model.py::DagState"
+  },
+  "in_degree": {
+    "src/mms/analysis/ast_diff.py::AstDiffResult": 3,
+    "src/mms/analysis/ast_diff.py::ChangeKind": 3,
+    "src/mms/analysis/ast_diff.py::ContractChange": 3,
+    "src/mms/analysis/ast_skeleton.py::FileSkeleton": 3,
+    "src/mms/analysis/ast_skeleton.py::ClassSkeleton": 1,
+    "src/mms/analysis/ast_skeleton.py::MethodSkeleton": 1,
+    "src/mms/analysis/signal_fusion.py::LayerInference": 2,
+    "src/mms/bootstrap/signal_fusion.py::LayerInference": 2,
+    "src/mms/analysis/signal_fusion.py::ObjectTypeMapping": 2,
+    "src/mms/bootstrap/signal_fusion.py::ObjectTypeMapping": 2,
+    "src/mms/dag/aiu_types.py::AIUStep": 2,
+    "src/mms/dag/aiu_types.py::AIUType": 9,
+    "src/mms/dag/dag_model.py::DagState": 12,
+    "src/mms/dag/aiu_types.py::AIUPlan": 3,
+    "src/mms/analysis/arch_resolver.py::ArchResolver": 1,
+    "src/mms/providers/bailian.py::BailianProvider": 2,
+    "src/mms/dag/aiu_types.py::AIUErrorPattern": 5,
+    "src/mms/execution/file_applier.py::FileApplier": 5,
+    "src/mms/execution/sandbox.py::GitSandbox": 5,
+    "src/mms/memory/graph_resolver.py::MemoryGraph": 4,
+    "src/mms/utils/mms_config.py::MmsConfig": 2,
+    "src/mms/memory/memory_functions.py::MemoryInsight": 1,
+    "src/mms/memory/memory_functions.py::Provenance": 1,
+    "src/mms/providers/base.py::EmbedProvider": 4,
+    "src/mms/providers/base.py::LLMProvider": 7,
+    "src/mms/providers/base.py::ProviderUnavailableError": 7,
+    "src/mms/trace/tracer.py::TraceConfig": 1,
+    "src/mms/trace/event.py::TraceEvent": 2,
+    "src/mms/dag/dag_model.py::DagUnit": 6,
+    "src/mms/execution/unit_runner.py::UnitRunner": 6
+  },
+  "top_depends_on": [
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncAction",
+      "target": "src/mms/analysis/ast_diff.py::AstDiffResult"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncReport",
+      "target": "src/mms/analysis/ast_diff.py::AstDiffResult"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::OntologySyncer",
+      "target": "src/mms/analysis/ast_diff.py::AstDiffResult"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncAction",
+      "target": "src/mms/analysis/ast_diff.py::ChangeKind"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncReport",
+      "target": "src/mms/analysis/ast_diff.py::ChangeKind"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::OntologySyncer",
+      "target": "src/mms/analysis/ast_diff.py::ChangeKind"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncAction",
+      "target": "src/mms/analysis/ast_diff.py::ContractChange"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::SyncReport",
+      "target": "src/mms/analysis/ast_diff.py::ContractChange"
+    },
+    {
+      "source": "src/mms/analysis/ontology_syncer.py::OntologySyncer",
+      "target": "src/mms/analysis/ast_diff.py::ContractChange"
+    },
+    {
+      "source": "src/mms/analysis/parsers/protocol.py::ASTParserProtocol",
+      "target": "src/mms/analysis/ast_skeleton.py::FileSkeleton"
+    },
+    {
+      "source": "src/mms/analysis/parsers/regex_parser.py::RegexFallbackParser",
+      "target": "src/mms/analysis/ast_skeleton.py::FileSkeleton"
+    },
+    {
+      "source": "src/mms/analysis/parsers/tree_sitter_parser.py::TreeSitterParser",
+      "target": "src/mms/analysis/ast_skeleton.py::ClassSkeleton"
+    },
+    {
+      "source": "src/mms/analysis/parsers/tree_sitter_parser.py::TreeSitterParser",
+      "target": "src/mms/analysis/ast_skeleton.py::FileSkeleton"
+    },
+    {
+      "source": "src/mms/analysis/parsers/tree_sitter_parser.py::TreeSitterParser",
+      "target": "src/mms/analysis/ast_skeleton.py::MethodSkeleton"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratedMemory",
+      "target": "src/mms/analysis/signal_fusion.py::LayerInference"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratorReport",
+      "target": "src/mms/analysis/signal_fusion.py::LayerInference"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratedMemory",
+      "target": "src/mms/bootstrap/signal_fusion.py::LayerInference"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratorReport",
+      "target": "src/mms/bootstrap/signal_fusion.py::LayerInference"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratedMemory",
+      "target": "src/mms/analysis/signal_fusion.py::ObjectTypeMapping"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratorReport",
+      "target": "src/mms/analysis/signal_fusion.py::ObjectTypeMapping"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratedMemory",
+      "target": "src/mms/bootstrap/signal_fusion.py::ObjectTypeMapping"
+    },
+    {
+      "source": "src/mms/bootstrap/memory_seed_generator.py::GeneratorReport",
+      "target": "src/mms/bootstrap/signal_fusion.py::ObjectTypeMapping"
+    },
+    {
+      "source": "src/mms/dag/aiu_cost_estimator.py::AIUCostEstimator",
+      "target": "src/mms/dag/aiu_types.py::AIUStep"
+    },
+    {
+      "source": "src/mms/dag/aiu_cost_estimator.py::AIUCostEstimator",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/dag/aiu_registry.py::AIUTypeDef",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/dag/aiu_registry.py::AIURegistry",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/dag/atomicity_check.py::CheckResult",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/dag/dag_model.py::DagUnit",
+      "target": "src/mms/dag/aiu_types.py::AIUPlan"
+    },
+    {
+      "source": "src/mms/dag/dag_model.py::DagState",
+      "target": "src/mms/dag/aiu_types.py::AIUPlan"
+    },
+    {
+      "source": "src/mms/dag/task_decomposer.py::TaskDecomposer",
+      "target": "src/mms/dag/aiu_types.py::AIUPlan"
+    },
+    {
+      "source": "src/mms/dag/task_decomposer.py::TaskDecomposer",
+      "target": "src/mms/dag/aiu_types.py::AIUStep"
+    },
+    {
+      "source": "src/mms/dag/task_decomposer.py::TaskDecomposer",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/dag/task_decomposer.py::TaskDecomposer",
+      "target": "src/mms/analysis/arch_resolver.py::ArchResolver"
+    },
+    {
+      "source": "src/mms/execution/autonomous_runner.py::TurnRecord",
+      "target": "src/mms/providers/bailian.py::BailianProvider"
+    },
+    {
+      "source": "src/mms/execution/autonomous_runner.py::AutonomousResult",
+      "target": "src/mms/providers/bailian.py::BailianProvider"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AiuOutputCarry",
+      "target": "src/mms/dag/aiu_types.py::AIUErrorPattern"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AttemptLog",
+      "target": "src/mms/dag/aiu_types.py::AIUErrorPattern"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::RunResult",
+      "target": "src/mms/dag/aiu_types.py::AIUErrorPattern"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::UnitRunner",
+      "target": "src/mms/dag/aiu_types.py::AIUErrorPattern"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::BatchRunner",
+      "target": "src/mms/dag/aiu_types.py::AIUErrorPattern"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AiuOutputCarry",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AttemptLog",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::RunResult",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::UnitRunner",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::BatchRunner",
+      "target": "src/mms/dag/aiu_types.py::AIUType"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AiuOutputCarry",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AttemptLog",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::RunResult",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::UnitRunner",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::BatchRunner",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AiuOutputCarry",
+      "target": "src/mms/execution/file_applier.py::FileApplier"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AttemptLog",
+      "target": "src/mms/execution/file_applier.py::FileApplier"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::RunResult",
+      "target": "src/mms/execution/file_applier.py::FileApplier"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::UnitRunner",
+      "target": "src/mms/execution/file_applier.py::FileApplier"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::BatchRunner",
+      "target": "src/mms/execution/file_applier.py::FileApplier"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AiuOutputCarry",
+      "target": "src/mms/execution/sandbox.py::GitSandbox"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::AttemptLog",
+      "target": "src/mms/execution/sandbox.py::GitSandbox"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::RunResult",
+      "target": "src/mms/execution/sandbox.py::GitSandbox"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::UnitRunner",
+      "target": "src/mms/execution/sandbox.py::GitSandbox"
+    },
+    {
+      "source": "src/mms/execution/unit_runner.py::BatchRunner",
+      "target": "src/mms/execution/sandbox.py::GitSandbox"
+    },
+    {
+      "source": "src/mms/memory/freshness_checker.py::FreshnessReport",
+      "target": "src/mms/memory/graph_resolver.py::MemoryGraph"
+    },
+    {
+      "source": "src/mms/memory/freshness_checker.py::FreshnessChecker",
+      "target": "src/mms/memory/graph_resolver.py::MemoryGraph"
+    },
+    {
+      "source": "src/mms/memory/graph_health.py::HealthReport",
+      "target": "src/mms/memory/graph_resolver.py::MemoryGraph"
+    },
+    {
+      "source": "src/mms/memory/graph_resolver.py::MemoryNode",
+      "target": "src/mms/utils/mms_config.py::MmsConfig"
+    },
+    {
+      "source": "src/mms/memory/graph_resolver.py::MemoryGraph",
+      "target": "src/mms/utils/mms_config.py::MmsConfig"
+    },
+    {
+      "source": "src/mms/memory/memory_actions.py::ActionResult",
+      "target": "src/mms/memory/graph_resolver.py::MemoryGraph"
+    },
+    {
+      "source": "src/mms/memory/memory_actions.py::ActionResult",
+      "target": "src/mms/memory/memory_functions.py::MemoryInsight"
+    },
+    {
+      "source": "src/mms/memory/memory_actions.py::ActionResult",
+      "target": "src/mms/memory/memory_functions.py::Provenance"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianProvider",
+      "target": "src/mms/providers/base.py::EmbedProvider"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianEmbedProvider",
+      "target": "src/mms/providers/base.py::EmbedProvider"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianEmbedProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/bailian.py::BailianEmbedProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/claude.py::ProviderPendingError",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/claude.py::ClaudeProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/claude.py::ProviderPendingError",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/claude.py::ClaudeProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/gemini.py::GeminiProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/gemini.py::GeminiProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaProvider",
+      "target": "src/mms/providers/base.py::EmbedProvider"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaEmbedProvider",
+      "target": "src/mms/providers/base.py::EmbedProvider"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaEmbedProvider",
+      "target": "src/mms/providers/base.py::LLMProvider"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/providers/ollama.py::OllamaEmbedProvider",
+      "target": "src/mms/providers/base.py::ProviderUnavailableError"
+    },
+    {
+      "source": "src/mms/trace/reporter.py::TraceSummary",
+      "target": "src/mms/trace/tracer.py::TraceConfig"
+    },
+    {
+      "source": "src/mms/trace/tracer.py::TraceConfig",
+      "target": "src/mms/trace/event.py::TraceEvent"
+    },
+    {
+      "source": "src/mms/trace/tracer.py::EPTracer",
+      "target": "src/mms/trace/event.py::TraceEvent"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::EpRunState",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::UnitRunSummary",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::EpRunResult",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::BatchGroup",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::IntentPlanSummary",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::EpRunPipeline",
+      "target": "src/mms/dag/dag_model.py::DagState"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::EpRunState",
+      "target": "src/mms/dag/dag_model.py::DagUnit"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::UnitRunSummary",
+      "target": "src/mms/dag/dag_model.py::DagUnit"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::EpRunResult",
+      "target": "src/mms/dag/dag_model.py::DagUnit"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::BatchGroup",
+      "target": "src/mms/dag/dag_model.py::DagUnit"
+    },
+    {
+      "source": "src/mms/workflow/ep_runner.py::IntentPlanSummary",
+      "target": "src/mms/dag/dag_model.py::DagUnit"
+    }
+  ]
+}

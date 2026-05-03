@@ -1,0 +1,368 @@
+{
+  "run_id": "20260421_231341_v1_improved",
+  "n_queries": 25,
+  "systems": [
+    "markdown",
+    "ontology"
+  ],
+  "per_system": {
+    "markdown": {
+      "system": "markdown",
+      "n_queries": 25,
+      "layer_accuracy": 0.2,
+      "op_accuracy": 0.28,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "path_validity": 1.0,
+      "memory_recall": 0.64,
+      "avg_latency_ms": 11.94,
+      "avg_context_tokens": 587.4,
+      "avg_info_density": 0.0,
+      "avg_actionability": 2.52,
+      "p50_latency_ms": 10.77,
+      "p95_latency_ms": 11.86,
+      "max_latency_ms": 40.24,
+      "by_category": {
+        "A": {
+          "n": 8,
+          "layer_accuracy": 0.125,
+          "op_accuracy": 0.375,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 576.2,
+          "avg_actionability": 2.625
+        },
+        "B": {
+          "n": 7,
+          "layer_accuracy": 0.1429,
+          "op_accuracy": 0.2857,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 577.7,
+          "avg_actionability": 2.0
+        },
+        "C": {
+          "n": 5,
+          "layer_accuracy": 0.6,
+          "op_accuracy": 0.4,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 616.8,
+          "avg_actionability": 2.8
+        },
+        "D": {
+          "n": 5,
+          "layer_accuracy": 0.0,
+          "op_accuracy": 0.0,
+          "recall_at_k": 0.0,
+          "mrr": 0.0,
+          "info_density": 0.0,
+          "avg_context_tokens": 589.4,
+          "avg_actionability": 2.8
+        }
+      },
+      "significance": {
+        "ontology": {
+          "layer_correct": {
+            "test": "mcnemar",
+            "statistic": 6.75,
+            "p_value": 0.0094,
+            "significant": true,
+            "n_pairs": 25,
+            "b01": 11,
+            "b10": 1,
+            "warning": null
+          },
+          "op_correct": {
+            "test": "mcnemar",
+            "statistic": 2.4,
+            "p_value": 0.1213,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 11,
+            "b10": 4,
+            "warning": null
+          },
+          "recall_at_k": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -3.4078,
+            "p_value": 0.0007,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 15,
+            "effect_r": 0.8799,
+            "w_plus": 0,
+            "w_minus": 120.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "mrr": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -2.6656,
+            "p_value": 0.0077,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 9,
+            "effect_r": 0.8885,
+            "w_plus": 0,
+            "w_minus": 45.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "path_validity": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "z_score": -4.0145,
+            "p_value": 0.0001,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 21,
+            "effect_r": 0.876,
+            "w_plus": 231.0,
+            "w_minus": 0.0,
+            "warning": null
+          },
+          "memory_recall": {
+            "test": "wilcoxon",
+            "statistic": 23.0,
+            "z_score": -0.4587,
+            "p_value": 0.6465,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 10,
+            "effect_r": 0.145,
+            "w_plus": 32.0,
+            "w_minus": 23.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "info_density": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -3.4078,
+            "p_value": 0.0007,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 15,
+            "effect_r": 0.8799,
+            "w_plus": 0,
+            "w_minus": 120.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "latency_ms": {
+            "test": "wilcoxon",
+            "statistic": 25.0,
+            "z_score": -3.6997,
+            "p_value": 0.0002,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 25,
+            "effect_r": 0.7399,
+            "w_plus": 300.0,
+            "w_minus": 25.0,
+            "warning": null
+          },
+          "context_tokens": {
+            "test": "wilcoxon",
+            "statistic": 18,
+            "z_score": -3.888,
+            "p_value": 0.0001,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 25,
+            "effect_r": 0.7776,
+            "w_plus": 18,
+            "w_minus": 307.0,
+            "warning": null
+          }
+        }
+      }
+    },
+    "ontology": {
+      "system": "ontology",
+      "n_queries": 25,
+      "layer_accuracy": 0.6,
+      "op_accuracy": 0.56,
+      "recall_at_k": 0.3933,
+      "mrr": 0.2,
+      "path_validity": 0.6729,
+      "memory_recall": 0.58,
+      "avg_latency_ms": 4.28,
+      "avg_context_tokens": 986.6,
+      "avg_info_density": 0.4061,
+      "avg_actionability": 2.2,
+      "p50_latency_ms": 0.65,
+      "p95_latency_ms": 3.88,
+      "max_latency_ms": 80.53,
+      "by_category": {
+        "A": {
+          "n": 8,
+          "layer_accuracy": 0.375,
+          "op_accuracy": 0.375,
+          "recall_at_k": 0.3125,
+          "mrr": 0.1875,
+          "info_density": 0.2962,
+          "avg_context_tokens": 935.4,
+          "avg_actionability": 2.0
+        },
+        "B": {
+          "n": 7,
+          "layer_accuracy": 0.5714,
+          "op_accuracy": 0.5714,
+          "recall_at_k": 0.2381,
+          "mrr": 0.119,
+          "info_density": 0.2068,
+          "avg_context_tokens": 1016.0,
+          "avg_actionability": 2.0
+        },
+        "C": {
+          "n": 5,
+          "layer_accuracy": 0.8,
+          "op_accuracy": 0.6,
+          "recall_at_k": 0.5,
+          "mrr": 0.4,
+          "info_density": 0.598,
+          "avg_context_tokens": 1034.0,
+          "avg_actionability": 2.2
+        },
+        "D": {
+          "n": 5,
+          "layer_accuracy": 0.8,
+          "op_accuracy": 0.8,
+          "recall_at_k": 0.6333,
+          "mrr": 0.1333,
+          "info_density": 0.669,
+          "avg_context_tokens": 979.8,
+          "avg_actionability": 2.8
+        }
+      },
+      "significance": {
+        "markdown": {
+          "layer_correct": {
+            "test": "mcnemar",
+            "statistic": 6.75,
+            "p_value": 0.0094,
+            "significant": true,
+            "n_pairs": 25,
+            "b01": 11,
+            "b10": 1,
+            "warning": null
+          },
+          "op_correct": {
+            "test": "mcnemar",
+            "statistic": 2.4,
+            "p_value": 0.1213,
+            "significant": false,
+            "n_pairs": 25,
+            "b01": 11,
+            "b10": 4,
+            "warning": null
+          },
+          "recall_at_k": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -3.4078,
+            "p_value": 0.0007,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 15,
+            "effect_r": 0.8799,
+            "w_plus": 0,
+            "w_minus": 120.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "mrr": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -2.6656,
+            "p_value": 0.0077,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 9,
+            "effect_r": 0.8885,
+            "w_plus": 0,
+            "w_minus": 45.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "path_validity": {
+            "test": "wilcoxon",
+            "statistic": 0.0,
+            "z_score": -4.0145,
+            "p_value": 0.0001,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 21,
+            "effect_r": 0.876,
+            "w_plus": 231.0,
+            "w_minus": 0.0,
+            "warning": null
+          },
+          "memory_recall": {
+            "test": "wilcoxon",
+            "statistic": 23.0,
+            "z_score": -0.4587,
+            "p_value": 0.6465,
+            "significant": false,
+            "n_pairs": 25,
+            "n_effective": 10,
+            "effect_r": 0.145,
+            "w_plus": 32.0,
+            "w_minus": 23.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "info_density": {
+            "test": "wilcoxon",
+            "statistic": 0,
+            "z_score": -3.4078,
+            "p_value": 0.0007,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 15,
+            "effect_r": 0.8799,
+            "w_plus": 0,
+            "w_minus": 120.0,
+            "warning": "样本量较小（N<20），p 值仅供参考"
+          },
+          "latency_ms": {
+            "test": "wilcoxon",
+            "statistic": 25.0,
+            "z_score": -3.6997,
+            "p_value": 0.0002,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 25,
+            "effect_r": 0.7399,
+            "w_plus": 300.0,
+            "w_minus": 25.0,
+            "warning": null
+          },
+          "context_tokens": {
+            "test": "wilcoxon",
+            "statistic": 18,
+            "z_score": -3.888,
+            "p_value": 0.0001,
+            "significant": true,
+            "n_pairs": 25,
+            "n_effective": 25,
+            "effect_r": 0.7776,
+            "w_plus": 18,
+            "w_minus": 307.0,
+            "warning": null
+          }
+        }
+      }
+    }
+  },
+  "config_snapshot": {
+    "metrics_version": {
+      "top_k": 5,
+      "token_estimate_ratio": 4,
+      "small_model_window": 4000
+    },
+    "top_k": 5
+  },
+  "corpus_stats": {},
+  "elapsed_seconds": 0.44
+}

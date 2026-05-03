@@ -430,15 +430,17 @@ def run_all_cases() -> List[CaseResult]:
     code, out, err = run("seed", "ingest", _PYTEST_RAW, "--dry-run",
                          "--seed-name", CI_NAME, timeout=30)
     results.append(CaseResult(
-        id="D-03", group="D", name="LLM pending 不崩溃，无 --format v31-manual 错误提示",
+        id="D-03", group="D", name="LLM 降级不崩溃，输出 fallback/pending 友好提示",
         command=f"mulan seed ingest '{_PYTEST_RAW}' --dry-run（LLM pending 环境）",
         expected_exit=0, actual_exit=code, stdout=out, stderr=err,
         checks=[
             ("exit code 为 0",              code == 0,                      "0"),
             ("不含 Traceback",              check_not_in(out + err, "Traceback"), "无崩溃"),
             ("不含 v31-manual 错误选项名",  check_not_in(out, "v31-manual"), "无错误选项"),
-            ("pending 状态友好提示",        check_in(out, "Pending") or
-                                            check_in(out, "pending"),        "pending 提示"),
+            ("LLM 降级状态友好提示",         check_in(out, "Pending") or
+                                            check_in(out, "pending") or
+                                            check_in(out, "fallback") or
+                                            check_in(out, "占位符"),         "pending/fallback 提示"),
         ],
     ))
 

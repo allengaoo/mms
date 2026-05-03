@@ -29,7 +29,7 @@ from mms.memory.intent_classifier import (
     build_intent_plan_line,
 )
 from mms.execution.unit_runner import _quick_syntax_check, AiuOutputCarry, _extract_signature_snippet
-from benchmark.src.metrics.aiu_quality import (
+from benchmark.v1_legacy.src.metrics.aiu_quality import (
     calc_aiu_decomp_precision,
     calc_aiu_decomp_recall,
     calc_aiu_order_similarity,

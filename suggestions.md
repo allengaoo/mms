@@ -1,273 +1,175 @@
 
 
-以下是将木兰系统重构为“弹性伸缩工具链”以及强化“Bootstrap v2”的具体工程实施方案。我将通过架构图、流程图以及核心数据结构的定义，为你提供可直接转化为代码级的落地指导。
+# 木兰（Mulan）系统 TDD 落地详细实施规范
+
+## 阶段一：建立物理沙箱与隔离测试基建
+
+**工程依据**：木兰系统强依赖文件读写。共享测试目录会导致状态污染（State Pollution）。必须通过 Pytest Fixtures 提供每次运行即抛弃的“无菌室”。
+
+*   **目标修改文件**：
+
+    *   `tests/conftest.py`
+
+    *   `tests/fixtures/spring-boot-demo/` (需创建基础结构)
+
+*   **Cursor 提示词模板**：
+
+    > `@tests/conftest.py` 请利用 pytest 的 `tmp_path` 机制，实现一个名为 `isolated_spring_boot` 的 fixture。要求：读取与当前文件同级的 `fixtures/spring-boot-demo` 目录，使用 `shutil.copytree` 将其完整复制到临时目录，并返回临时目录的 `Path` 对象。确保所有测试修改只发生在这个临时副本中。
+
+*   **代码契约与约束**：
+
+    *   绝对禁止在 `tests/fixtures/` 的原始目录中执行写操作。
+
+    *   靶机结构必须包含真实的特征文件（如 `pom.xml`、带有 `@RestController` 的 Controller）。
+
+*   **验收标准**：
+
+    *   运行 `pytest tests/conftest.py` 无错误。手动检查临时目录在测试结束后能被垃圾回收。
 
 ---
 
-### 第一部分：将木兰重构为“弹性伸缩工具链（Elastic Toolchain）”
+## 阶段二：下钻确定性底座的纯函数测试
 
-**工程目标**：将木兰现有的单轨控制流（Pipeline）升级为双轨分发流。核心是将底层的知识图谱（Layer 2）和安全验证（Layer 4）包装成标准化工具（Tools/MCP），让大模型可以自主调用，而小模型继续留在原有流水线中。
+**工程依据**：测试系统的物理层算法（脱敏、哈希、图遍历），必须剥离所有 LLM I/O，追求 100% 确定性和毫秒级执行。
 
-#### 1. 弹性架构总览图 (Elastic Architecture Diagram)
+*   **目标修改文件**：
 
-```text
+    *   `tests/analysis/test_ast_skeleton.py`
 
-┌─────────────────────────────────────────────────────────────────────────────┐
+    *   `tests/memory/test_graph_resolver.py`
 
-│                          EP Runner (任务入口)                                │
+    *   `tests/core/test_sanitize.py`
 
-│                   src/mms/workflow/ep_[runner.py](http://runner.py)                             │
+*   **Cursor 提示词模板**：
 
-└─────────────────────────────────┬───────────────────────────────────────────┘
+    > `@tests/core/test_sanitize.py` 帮我针对 `SanitizationGate` 编写基于 `@pytest.mark.parametrize` 的数据驱动单元测试。请构造 5 组极端的包含敏感信息（AWS AK/SK、JWT 格式 Token、内网 10.x.x.x IP）的代码片段。断言：1. 敏感词被精准替换为 `[REDACTED_*]`；2. 代码前后的缩进和无关字符完全不变。不允许有任何外部网络请求。
 
-                                  ▼
+*   **代码契约与约束**：
 
-                     【Capability Router (能力探针)】
+    *   `test_graph_resolver.py` 中必须直接在内存里实例化 `MemoryNode` 和 `Edge` 列表，禁止读取磁盘上的 Markdown 文件，验证纯算法（BFS）。
 
-                      读取 mms_config.yaml 中定义的模型级别
+    *   `test_ast_skeleton.py` 必须断言代码加入空行/注释后`compute_semantic_hash` 结果不变。
 
-                                  │
+*   **验收标准**：
 
-          ┌───────────────────────┴────────────────────────┐
-
-     [Level < 8: 小模型/离线][Level >= 8: 大模型/云端]
-
-          │                                                │
-
-          ▼                                                ▼
-
-【Track A: Micro-Pipeline (微观流水线)】    【Track B: Autonomous Agent (自治智能体)】
-
- 模块: dag/task_[decomposer.py](http://decomposer.py)              模块: execution/autonomous_[runner.py](http://runner.py)
-
- 特征: 强制拆分 43 种微观 AIU                特征: 封装为 1 个 Macro-AIU (全量意图)
-
- 控制: UnitRunner 串行控制, 3-Strike       控制: ReAct/Plan-Solve 自循环
-
- 上下文: 系统主动检索并强行拼接 (Inject)     上下文: 大模型按需主动调用 Tools 检索
-
-          │                                                │
-
-          └───────────────────────┬────────────────────────┘
-
-                                  ▼
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-
-│               Tool Abstraction Layer (MCP 工具抽象层)                       │
-
-│                   src/mms/agent_tools/[registry.py](http://registry.py)                           │
-
-│                                                                             │
-
-│ [Tool 1] tool_query_ontology(keyword)  → 映射至 memory/graph_[resolver.py](http://resolver.py)    │
-
-│ [Tool 2] tool_get_ast(file_path)       → 映射至 analysis/ast_[skeleton.py](http://skeleton.py)    │
-
-│ [Tool 3] tool_dry_run_diff(diff)       → 映射至 execution/[sandbox.py](http://sandbox.py) +      │
-
-│                                           analysis/arch_[check.py](http://check.py)            │
-
-│ [Tool 4] tool_run_pytest(test_path)    → 映射至 workflow/[postcheck.py](http://postcheck.py)       │
-
-└─────────────────────────────────────────────────────────────────────────────┘
-
-```
-
-#### 2. 实施细节：模型分流与配置
-
-在 `docs/memory/_system/config.yaml` 中新增能力定义，并在 `ep_runner.py` 中实现拦截。
-
-*   **配置设计**：
-
-    ```yaml
-
-    runner:
-
-      execution_mode: "auto"  # auto | pipeline | autonomous
-
-      capability_levels:
-
-        "qwen3-32b": 5        # Level < 8 走 Track A (Pipeline)
-
-        "qwen3-coder-plus": 5
-
-        "claude-3.5-opus": 9  # Level >= 8 走 Track B (Autonomous)
-
-        "gpt-4o": 9
-
-    ```
-
-#### 3. 实施细节：Tool Abstraction (MCP 工具层)
-
-这是大模型向下穿透获取企业架构知识的关键。在 `src/mms/agent_tools/` 中，必须以严谨的 JSON Schema 定义工具入参，以防大模型调用报错。
-
-*   **核心工具 1：图谱语义探针 `tool_query_ontology`**
-
-    *   **描述给大模型 (System Prompt)**：“当你需要了解当前项目的架构规范、API 契约、领域模型约束时，调用此工具。传入关键词。”
-
-    *   **内部执行**：直接调用现有的 `graph_resolver.hybrid_search(keyword)`。
-
-    *   **返回格式**：将找回的 `MemoryNode` 列表转化为精简的 Markdown 字符串返回给大模型。
-
-*   **核心工具 2：AST 物理探针 `tool_get_ast`**
-
-    *   **描述给大模型**：“在你修改某个文件前，调用此工具获取该文件的完整类、函数签名及 imports 列表，避免盲目猜测变量名。”
-
-    *   **内部执行**：查询 `ast_index.json`，返回对应 `file_path` 的骨架（Skeleton）。
-
-*   **核心工具 3：沙箱验证器 `tool_dry_run_diff`**
-
-    *   **描述给大模型**：“在你认为代码编写完成后，提交标准的 Diff 格式到此工具。系统将在隔离沙箱中进行架构红线扫描和语法验证。”
-
-    *   **内部执行**：在 `.mulan-shadow-workspaces` 中应用 Diff，调用 `arch_check.py`，返回全绿（Success）或具体的报错堆栈（Traceback）。
-
-#### 4. 实施细节：Autonomous Runner 执行循环
-
-新建 `src/mms/execution/autonomous_runner.py`。这是一个标准的 `while` 循环，将控制权（Control Flow）交还给大模型。
-
-*   **循环逻辑**：
-
-    1.  **System Prompt 初始化**：告知模型你现在是一个资深架构师，你的目标是完成 Macro-AIU（宏观任务），你有 4 个工具可用。
-
-    2.  **Action 阶段**：模型输出希望调用的 Tool（如 `tool_query_ontology`）及参数。
-
-    3.  **Observation 阶段**：木兰系统在本地执行该 Tool，将结果追加到 Message 历史中，再次请求大模型。
-
-    4.  **Verification 阶段**：大模型生成代码 Diff 并调用 `tool_dry_run_diff`。如果返回 Error，大模型会自动阅读 Error 并发起下一轮修改。
-
-    5.  **Exit 阶段**：大模型调用 `tool_finish(status="success")`，木兰结束沙箱，执行最终合并。
+    *   执行此阶段测试总耗时严格 < 1 秒。
 
 ---
 
-### 第二部分：针对 v5.0 Bootstrap v2 的强化建议
+## 阶段三：控制流与大模型协议的录制回放 (VCR Integration)
 
-**工程目标**：解决纯正则推断在老旧/奇葩项目中的误判问题；实现从项目现存文档（如 `CONTRIBUTING.md`）到木兰动态本体（Ontology）的自动吸收，达成“零阻力接管”。
+**工程事实**：LLM 输出具有不确定性。通过 VCR 录制机制，将概率层转换为本地的 JSON/YAML 卡带，以测试木兰内部的状态机与容错逻辑。
 
-#### 1. 强化 Bootstrap v2 流程图 (Enhanced Bootstrap Flowchart)
+*   **目标修改文件**：
 
-```text
+    *   `tests/dag/test_task_decomposer.py`
 
-[Start mms bootstrap]
+    *   `tests/execution/test_autonomous_runner.py`
 
-       │
+*   **Cursor 提示词模板**：
 
-       ▼
+    > `@tests/dag/test_task_decomposer.py` 引入 `pytest-vcr`。编写测试 `test_decompose_task_success`，利用 VCR 录制 `qwen3-32b` 对“新增订单导出 API 并添加审计日志”的正常拆解响应。然后，编写测试 `test_decompose_task_retry_on_bad_json`，要求读取手动损坏的卡带（破坏 JSON 结构），断言系统触发了 `AIUFeedback` 并发起 3-Strike 重试机制，且未产生全局 Panic。注意配置 VCR 过滤 `Authorization` header。
 
-【Step 1: 静态嗅探 (Sniffer)】(dep_[sniffer.py](http://sniffer.py))
+*   **代码契约与约束**：
 
-   ├─ 检测包管理器 (pom.xml, go.mod) → 决定 Seed Pack
+    *   VCR 配置必须包含 `filter_headers=['Authorization']`，严禁在提交的卡带（Cassettes）中泄露百炼 API Key。
 
-   └─ ▶ [新增] 检测项目中是否存在 `.cursorrules`, `CONTRIBUTING.md`, `docs/arch.md`
+    *   死锁测试：对于 `autonomous_runner`，强制 Mock 工具层一直报错，断言循环能在 `max_turns` 时抛出 `MaxTurnsExceeded` 异常中断。
 
-          │
+*   **验收标准**：
 
-          └─▶ 触发异步进程: Rule Absorber (后台静默将这些文档蒸馏为本体和约束，不阻塞主流程)
+    *   断网环境下，运行 `pytest tests/dag/` 和 `tests/execution/` 必须全绿通过。
 
-       │
+---
 
-       ▼
+## 阶段四：零阻力接管的冷启动宏观验证
 
-【Step 2: AST 骨架化】(ast_[skeleton.py](http://skeleton.py))
+**工程事实**：验证 Bootstrap v2 能否在无 LLM 介入的情况下，通过多路信号融合和框架强覆盖，精准解构陌生企业项目。
 
-   └─ 提取物理代码结构 → ast_index.json
+*   **目标修改文件**：
 
-       │
+    *   `tests/bootstrap/test_bootstrap_populator.py`
 
-       ▼
+*   **Cursor 提示词模板**：
 
-【Step 3: 框架强制覆盖 (Framework Override Pass)】▶ [核心重构点]
+    > `@tests/bootstrap/test_bootstrap_populator.py` 结合 `@tests/conftest.py` 中的 `isolated_spring_boot` fixture，新增测试用例 `test_bootstrap_on_spring_boot`。执行 `bootstrap_project`。硬性断言：1. 生成的 `ast_index.json` 包含 `UserController`；2. `Framework Override Pass` 生效，将 `UserController` 的 layer 强制锁定为 `ADAPTER`（置信度 1.0）；3. 成功生成至少 1 个 `MEM-BOOT-*.md` 文件。
 
-   ├─ 读取 `seed_packs/<name>/match_conditions.yaml`
+*   **代码契约与约束**：
 
-   ├─ AST 选择器精确命中 (如: 继承自 `django.db.models.Model`)
+    *   测试过程中必须触发 `signal_fusion.py` 中的 `load_overrides` 逻辑，验证 YAML 驱动的规则被正确挂载。
 
-   └─ 命中则直接锁定 Layer 和 ObjectType，并标记 Confidence = 1.0 (短路后续推断)
+*   **验收标准**：
 
-       │
+    *   针对靶机冷启动的集成测试顺利完成，证明多语言物理骨架提取逻辑闭环。
 
-       ▼
+---
 
-【Step 4: 五路信号推断 (Signal Fusion)】(signal_[fusion.py](http://fusion.py))
+## 阶段五：安全门控的反向攻击防御 (Negative Testing)
 
-   └─ 对 Step 3 未命中的类，继续使用 路径/命名/注解/依赖 融合加权推断
+**工程事实**：安全验证层（Layer 4）是企业防线的底座，必须通过红蓝对抗（注入脏代码）来测试其熔断有效性。
 
-       │
+*   **目标修改文件**：
 
-       ▼
+    *   `tests/analysis/test_arch_check.py`
 
-【Step 5: 初始记忆生成与合并】
+    *   `tests/workflow/test_migration_gate.py`
 
-   ├─ 融合推断产生的基线记忆 (MEM-BOOT-*.md)
+*   **Cursor 提示词模板**：
 
-   └─ ▶ [新增] 合并 Step 1 中后台 Rule Absorber 刚刚蒸馏完毕的企业特有规范记忆
+    > `@tests/analysis/test_arch_check.py` 实施架构红线反向测试。在沙箱中创建一个 `OrderController.java`，在文件顶部插入 `import javax.persistence.Entity;` 并在方法中返回该 Entity 实体。执行 `run_arch_check`，断言系统必须抛出架构违规（对应规约 AC-JAV-01 污染层约束），并且能够从异常体中提取出违规的代码行号。
 
-       │
+*   **代码契约与约束**：
 
-[End] 彻底接管项目，初始化完成
+    *   `test_migration_gate.py` 必须验证非对称迁移。如果 ORM 加了字段，但迁移脚本只有 `up()` 没有 `down()`，必须抛出 `MigrationAlignmentError` 阻断。
 
-```
+*   **验收标准**：
 
-#### 2. 实施细节：框架强制覆盖机制 (Framework Override Pass)
+    *   所有恶意注入的代码均被 Layer 4 精准拦截并报错，未流入下一步合并阶段。
 
-绝不能将特定的框架规则硬编码在 `signal_fusion.py` 的 Python 代码中。必须采用 **Data as Code (数据即代码)**，通过 YAML 驱动。
+---
 
-*   **数据结构设计**：在每个种子包（如 `seed_packs/python_django/`）下创建 `match_conditions.yaml`。
+## 阶段六：自学习与图谱演进测试
 
-    ```yaml
+**工程事实**：验证 Layer 5 的知识蒸馏是否具备降噪能力，以及图谱是否能基于访问频率实现物理级的衰减剪枝。
 
-    # docs/memory/seed_packs/python_django/match_conditions.yaml
+*   **目标修改文件**：
 
-    overrides:
+    *   `tests/analysis/test_seed_absorber.py`
 
-      - rule_id: DJANGO_MODEL_IS_ENTITY
+    *   `tests/memory/test_entropy_scan.py`
 
-        # AST 选择器：只要类的基类包含 models.Model
+*   **Cursor 提示词模板**：
 
-        ast_selector: "ClassDef[bases*='models.Model']"
+    > `@tests/memory/test_entropy_scan.py` 编写图谱衰减测试 `test_edge_decay_and_pruning`。在内存中初始化一个 `MemoryGraph`，手动创建一条 `cites` 边，设置其 `last_accessed_ep` 为当前 `ep_id` 的 25 个轮次之前。执行 `mulan gc` 触发衰减扫描。断言：1. 该边的 `weight` 从 1.0 衰减（例如 * 0.8）；2. 将权重强制修改为 0.1 后再次执行 GC，断言该边被物理删除。
 
-        # 短路赋值
+*   **代码契约与约束**：
 
-        force_layer: "DOMAIN"
+    *   对于 `test_seed_absorber.py`，必须用 VCR 录制喂入充满情绪化噪音（“你是一个优秀的 AI”）的 Markdown 文件，断言输出的 `constraints.yaml` 只保留强类型规约，实现 100% 噪音滤除。
 
-        force_object_type: "Entity"
+*   **验收标准**：
 
-        confidence: 1.0
+    *   系统具备明确的自愈（降噪）与遗忘（剪枝）特征。
 
-      - rule_id: DJANGO_VIEW_IS_ADAPTER
+---
 
-        ast_selector: "ClassDef[bases*='APIView']"
+## 阶段七：E2E 真实评测与 Pass@1 闭环
 
-        force_layer: "ADAPTER"
+**工程事实**：前 6 阶段保证了工厂机器运转正常，最后必须用端到端执行来验证产品质量（代码测试通过率）。
 
-        force_object_type: "Controller"
+*   **目标修改文件**：
 
-        confidence: 1.0
+    *   `benchmark/v2/layer1_swebench/runner.py`
 
-    ```
+*   **Cursor 提示词模板**：
 
-*   **执行引擎修改**：在 `signal_fusion.py` 中，执行逻辑改为：
+    > `@benchmark/v2/layer1_swebench/runner.py` 完善 E2E 执行闭环。利用指定的企业 Issue 测试集（如 `mall_order_cases.yaml`），设计双轨测试：Track 1（Baseline）：禁用木兰上下文注入（跳过 Layer 2），让 `qwen3-coder-next` 裸写；Track 2（Mulan-Enhanced）：执行标准 `mulan ep run --auto-confirm`。分别提取沙箱内的 `pytest` 退出码。最终报告需要对比两者的 `Pass@1` 成功率差异。
 
-    1. 遍历当前项目的所有的 `ClassSkeleton`。
+*   **代码契约与约束**：
 
-    2. 第一遍筛选：针对加载的 `match_conditions.yaml` 执行 AST Selector 匹配。如果命中，直接为其赋予 `inferred_layer` 和 `code_object_type`，置信度 1.0。
+    *   不要断言 LLM 生成的具体代码字符串。
 
-    3. 第二遍筛选：对于置信度 < 1.0 的类，再运行原有的“五路信号加权逻辑”。这保证了框架核心组件 100% 被正确归类。
+    *   只检查最终状态`exit_code == 0` 以及 `arch_check` 全绿。
 
-#### 3. 实施细节：Rule Absorber 的无缝前置集成
+*   **验收标准**：
 
-目前 `seed_absorber.py` 需要开发者手动运行 URL 吸收。对于新接手的企业项目，应做到完全自动化。
-
-*   **执行逻辑设计**：
-
-    1.  在 `ontology_populator.py` (Bootstrap 入口) 执行时，扫描项目根目录及 `docs/`, `.github/` 下的特征文件。特征列表包括`CONTRIBUTING.md`, `.cursorrules`, `ARCHITECTURE.md`, `CODING_GUIDELINES.md`。
-
-    2.  一旦发现此类文件，调用现有的 `seed_absorber.absorb(file_path)`。
-
-    3.  **核心提示词（System Prompt）调优**：告诉 qwen3-32b：“你正在扫描当前项目遗留的自然语言开发文档。请提取其中的强约束规约，抛弃所有关于环境搭建、Git 操作的噪音，仅输出纯粹的架构层规约（AC 规则）和业务领域概念，格式化为 MMS 本体 YAML。”
-
-    4.  生成的自定义种子文件直接写入 `docs/memory/shared/CC/`（作为高优先级的跨切面约束）和 `docs/memory/ontology/` 中。
-
-**工程价值总结**：
-
-通过以上改造，当你用木兰执行 `mulan bootstrap` 时，系统不仅能在 5 秒内精准看透 Django/Spring Boot 等框架的底层物理结构，还能自动“读懂”前任工程师留下的文本规范，并将其转化为大模型在编写代码时无法逾越的数字高墙。这才是真正的“零阻力接管”。
+    *   自动化生成类似 `Mulan Context Pass@1: 60% (vs Baseline: 25%)` 的 Markdown 报告。证明木兰架构带来了真实的工程产出提升。

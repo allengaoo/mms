@@ -165,3 +165,113 @@ class TestDecayEdges:
         assert stats["decayed"] == 1
         assert stats["skipped"] == 1
         assert stats["total_edges"] == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 6 TDD：mulan gc 触发衰减 + 物理剪枝验证
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestGcTriggeredDecay:
+    """
+    验证：经过 gc 触发的衰减后，低权重边被物理删除（从 weights 文件中移除）。
+    """
+
+    @staticmethod
+    def _make_weights(path: Path, data: dict) -> None:
+        import yaml
+        path.write_text(yaml.dump(data, allow_unicode=True))
+
+    @staticmethod
+    def _load_weights(path: Path) -> dict:
+        import yaml
+        if not path.exists():
+            return {}
+        return yaml.safe_load(path.read_text()) or {}
+
+    def test_gc_physically_removes_pruned_edges(self, isolated_weights):
+        """
+        gc 运行后，weight < prune_threshold 的边必须从 weights 文件中物理删除，
+        不只是标记为过期。
+        """
+        from mms.memory.entropy_scan import decay_edges
+        self._make_weights(isolated_weights, {
+            "MN-GC-001": {
+                "cites:stale_file.py": {"weight": 0.1, "last_ep": "EP-10", "access_count": 0},
+                "about:concept_alive": {"weight": 1.5, "last_ep": "EP-98", "access_count": 5},
+            }
+        })
+        stats = decay_edges(
+            "EP-100",
+            dry_run=False,
+            decay_factor=0.5,
+            prune_threshold=0.2,  # 0.1 < 0.2，应被剪枝
+            decay_window=20,
+        )
+        weights_after = self._load_weights(isolated_weights)
+        node_edges = weights_after.get("MN-GC-001", {})
+        assert "cites:stale_file.py" not in node_edges, (
+            "低权重边应被物理删除，不应保留在 weights 文件中"
+        )
+        assert "about:concept_alive" in node_edges, (
+            "高权重边不应被删除"
+        )
+        assert stats["pruned"] >= 1
+
+    def test_gc_dry_run_does_not_physically_delete(self, isolated_weights):
+        """dry_run 模式下，pruned 边不写入磁盘（文件保持原始状态）。"""
+        from mms.memory.entropy_scan import decay_edges
+        self._make_weights(isolated_weights, {
+            "MN-GC-002": {
+                "cites:old.py": {"weight": 0.05, "last_ep": "EP-10", "access_count": 0},
+            }
+        })
+        content_before = isolated_weights.read_text()
+        stats = decay_edges(
+            "EP-100",
+            dry_run=True,
+            prune_threshold=0.1,
+            decay_window=20,
+        )
+        content_after = isolated_weights.read_text()
+        assert content_before == content_after, (
+            "dry_run 模式不应修改磁盘上的 weights 文件"
+        )
+
+    def test_gc_all_edges_pruned_removes_node(self, isolated_weights):
+        """节点所有边都被剪枝后，节点本身也应从 weights 文件中删除。"""
+        from mms.memory.entropy_scan import decay_edges
+        self._make_weights(isolated_weights, {
+            "MN-EMPTY-001": {
+                "cites:dead_ref.py": {"weight": 0.01, "last_ep": "EP-01", "access_count": 0},
+            }
+        })
+        decay_edges(
+            "EP-100",
+            dry_run=False,
+            prune_threshold=0.05,
+            decay_window=5,
+        )
+        weights_after = self._load_weights(isolated_weights)
+        assert "MN-EMPTY-001" not in weights_after, (
+            "所有边被剪枝后，空节点应从 weights 文件中删除"
+        )
+
+    def test_gc_stats_total_edges_is_positive(self, isolated_weights):
+        """stats 中 total_edges 应等于处理的边总数（大于 0）。"""
+        from mms.memory.entropy_scan import decay_edges
+        self._make_weights(isolated_weights, {
+            "MN-STATS-001": {
+                "e1": {"weight": 0.05, "last_ep": "EP-10", "access_count": 0},
+                "e2": {"weight": 0.5,  "last_ep": "EP-10", "access_count": 0},
+                "e3": {"weight": 1.5,  "last_ep": "EP-98", "access_count": 5},
+            }
+        })
+        stats = decay_edges(
+            "EP-100",
+            dry_run=False,
+            decay_factor=0.8,
+            prune_threshold=0.1,
+            decay_window=20,
+        )
+        assert stats.get("total_edges", 0) == 3, "3 条边应全部被统计"
+        assert stats.get("skipped", 0) >= 1, "至少 1 条新边被跳过"

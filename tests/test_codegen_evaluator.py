@@ -29,7 +29,7 @@ _HERE = Path(__file__).resolve().parent
 _MMS_ROOT = _HERE.parent
 
 sys.path.insert(0, str(_MMS_ROOT))
-sys.path.insert(0, str(_MMS_ROOT / "benchmark" / "src"))
+sys.path.insert(0, str(_MMS_ROOT / "benchmark" / "v1_legacy" / "src"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

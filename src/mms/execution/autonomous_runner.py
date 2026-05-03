@@ -40,6 +40,15 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 
+# ─── 异常类 ──────────────────────────────────────────────────────────────────
+
+class MaxTurnsExceededError(RuntimeError):
+    """
+    当 raise_on_max_turns=True 且 Autonomous Runner 达到最大轮次时抛出。
+    用于 TDD 测试精确断言「超限行为」，默认模式下不抛出。
+    """
+
+
 # ─── 数据类 ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -137,21 +146,24 @@ def run_autonomous(
     timeout_s: Optional[float] = None,
     task_desc: str = "",
     verbose: bool = True,
+    raise_on_max_turns: bool = False,
 ) -> AutonomousResult:
     """
     Autonomous Runner 主入口。
 
     Args:
-        ep_id:          EP 编号
-        model:          LLM 模型名（需支持 Tool-Calling）
-        dry_run:        不写文件
-        skip_precheck:  跳过 precheck（EP Runner 传入）
-        skip_postcheck: 跳过 postcheck
-        max_turns:      最大轮次（None 时从 config 读取，默认 10）
-        token_budget:   Token 预算（None 时从 config 读取）
-        timeout_s:      总超时秒数
-        task_desc:      任务描述（空时从 EP 文件读取）
-        verbose:        打印执行过程
+        ep_id:              EP 编号
+        model:              LLM 模型名（需支持 Tool-Calling）
+        dry_run:            不写文件
+        skip_precheck:      跳过 precheck（EP Runner 传入）
+        skip_postcheck:     跳过 postcheck
+        max_turns:          最大轮次（None 时从 config 读取，默认 10）
+        token_budget:       Token 预算（None 时从 config 读取）
+        timeout_s:          总超时秒数
+        task_desc:          任务描述（空时从 EP 文件读取）
+        verbose:            打印执行过程
+        raise_on_max_turns: 为 True 时，超出最大轮次抛出 MaxTurnsExceededError
+                            而非静默返回（用于 TDD 测试断言）
 
     Returns:
         AutonomousResult
@@ -337,6 +349,10 @@ def run_autonomous(
         result.error = f"达到最大轮次 {_max_turns}，任务未完成"
         result.success = False
         log(f"\n  ⚠️  达到最大轮次 {_max_turns}，强制结束")
+        if raise_on_max_turns:
+            raise MaxTurnsExceededError(
+                f"ep_id={ep_id}，在 {_max_turns} 轮内未完成任务"
+            )
 
     result.turns_used = len(result.turns)
     result.elapsed_s = time.monotonic() - start

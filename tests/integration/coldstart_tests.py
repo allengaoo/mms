@@ -84,9 +84,9 @@ def ok(results: List[CaseResult], id: str, desc: str, *checks: bool,
 def test_bootstrap(results: List[CaseResult]) -> None:
     # A-01: dry-run 在项目根目录（默认路径）
     rc, out, err = run(["bootstrap", "--dry-run"])
-    ok(results, "A-01", "bootstrap --dry-run 输出 Step 1/4 技术栈嗅探",
+    ok(results, "A-01", "bootstrap --dry-run 输出 Step 1/6 技术栈嗅探",
        rc == 0,
-       "Step 1/4" in out,
+       "Step 1/6" in out,
        "技术栈嗅探" in out or "tech stack" in out.lower(),
        stdout=out, stderr=err, exit_code=rc)
 
@@ -98,14 +98,14 @@ def test_bootstrap(results: List[CaseResult]) -> None:
        "dry-run" in out or "预览" in out,
        stdout=out, stderr=err, exit_code=rc)
 
-    # A-03: dry-run 完整流程 4 步
+    # A-03: dry-run 完整流程 6 步（Bootstrap v2）
     rc, out, err = run(["bootstrap", "--dry-run"])
-    ok(results, "A-03", "bootstrap --dry-run 输出完整 4 步流程",
+    ok(results, "A-03", "bootstrap --dry-run 输出完整 6 步流程",
        rc == 0,
-       "Step 1/4" in out,
-       "Step 2/4" in out,
-       "Step 3/4" in out,
-       "Step 4/4" in out,
+       "Step 1/6" in out,
+       "Step 2/6" in out,
+       "Step 3/6" in out,
+       "Step 4/6" in out,
        stdout=out, stderr=err, exit_code=rc)
 
     # A-04: --skip-ast 跳过 AST 骨架化

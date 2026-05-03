@@ -1,4 +1,145 @@
 {
+  "src/mms/agent_tools/registry.py": {
+    "path": "src/mms/agent_tools/registry.py",
+    "lang": "python",
+    "package": "src.mms.agent_tools",
+    "classes": [
+      {
+        "name": "ToolResult",
+        "bases": [],
+        "methods": [
+          {
+            "name": "to_message",
+            "signature": "(self) -> str",
+            "docstring": "转为追加到 LLM 消息历史的 Observation 字符串。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "工具调用结果。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ToolDef",
+        "bases": [],
+        "methods": [],
+        "docstring": "工具定义（注册表内部存储）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ToolRegistry",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "register",
+            "signature": "(self, tool_def: ToolDef) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get",
+            "signature": "(self, name: str) -> Optional[ToolDef]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "call",
+            "signature": "(self, name: str, **kwargs: Any) -> ToolResult",
+            "docstring": "调用工具，捕获所有异常，返回 ToolResult。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_schemas",
+            "signature": "(self) -> List[Dict[str, Any]]",
+            "docstring": "返回符合 OpenAI / 百炼 tools 格式的工具描述列表。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_system_prompt_section",
+            "signature": "(self) -> str",
+            "docstring": "生成写入 System Prompt 的工具使用说明段落。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "list_names",
+            "signature": "(self) -> List[str]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "全局工具注册表。",
+        "annotations": []
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "get_tool_registry",
+        "signature": "() -> ToolRegistry",
+        "docstring": "获取全局 ToolRegistry 单例（懒加载，首次调用时注册所有工具）。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Any",
+      "Callable",
+      "Dict",
+      "List",
+      "Optional"
+    ],
+    "fingerprint": "sha256:58744a4980292a9d"
+  },
+  "src/mms/agent_tools/tools.py": {
+    "path": "src/mms/agent_tools/tools.py",
+    "lang": "python",
+    "package": "src.mms.agent_tools",
+    "classes": [],
+    "top_level_functions": [
+      {
+        "name": "register_all_tools",
+        "signature": "(registry: ToolRegistry) -> None",
+        "docstring": "向 ToolRegistry 注册所有内置工具。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Any",
+      "MemoryGraph",
+      "Path",
+      "ToolDef",
+      "ToolRegistry",
+      "ToolResult"
+    ],
+    "fingerprint": "sha256:76f7e5003d600844"
+  },
   "src/mms/analysis/arch_check.py": {
     "path": "src/mms/analysis/arch_check.py",
     "lang": "python",
@@ -759,6 +900,381 @@
       "Tuple"
     ],
     "fingerprint": "sha256:e718d587ccd181ad"
+  },
+  "src/mms/analysis/signal_fusion.py": {
+    "path": "src/mms/analysis/signal_fusion.py",
+    "lang": "python",
+    "package": "src.mms.analysis",
+    "classes": [
+      {
+        "name": "SignalBreakdown",
+        "bases": [],
+        "methods": [
+          {
+            "name": "weighted_total",
+            "signature": "(self) -> float",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "LayerScore",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "LayerInference",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ObjectTypeMapping",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "infer_layer",
+        "signature": "(class_name: str, file_path: str, annotations: Optional[List[str]] = None, bases: Optional[List[str]] = None, imports: Optional[List[str]] = None, class_name_map: Optional[Dict[str, str]] = None, code_graph_in_degrees: Optional[Dict[str, int]] = None, class_fqn: Optional[str] = None) -> LayerInference",
+        "docstring": "fn_infer_layer 的 Python 实现。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      },
+      {
+        "name": "detect_code_object_type",
+        "signature": "(class_name: str, annotations: Optional[List[str]] = None, methods: Optional[List[dict]] = None, layer_inference: Optional[LayerInference] = None) -> ObjectTypeMapping",
+        "docstring": "fn_detect_code_object_type 的 Python 实现。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Dict",
+      "List",
+      "Optional",
+      "Path"
+    ],
+    "fingerprint": "sha256:00226d380a66818a"
+  },
+  "src/mms/bootstrap/code_graph_builder.py": {
+    "path": "src/mms/bootstrap/code_graph_builder.py",
+    "lang": "python",
+    "package": "src.mms.bootstrap",
+    "classes": [
+      {
+        "name": "DependsOnEdge",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ImplementsEdge",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ContainsEdge",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "CodeGraph",
+        "bases": [],
+        "methods": [
+          {
+            "name": "get_in_degree",
+            "signature": "(self, fqn: str) -> int",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_dependents",
+            "signature": "(self, fqn: str) -> List[str]",
+            "docstring": "返回所有依赖该类的类（被依赖方 → 调用方）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_dependencies",
+            "signature": "(self, fqn: str) -> List[str]",
+            "docstring": "返回该类依赖的所有类（调用方 → 被依赖方）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "detect_cycles",
+            "signature": "(self) -> List[List[str]]",
+            "docstring": "检测循环依赖（Tarjan SCC 算法简化版）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "代码依赖图（fn_build_code_graph 的输出）。",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "build_code_graph",
+        "signature": "(ast_index: Dict[str, dict], project_root: Optional[Path] = None, filter_external: bool = True) -> CodeGraph",
+        "docstring": "从 ast_index.json 构建代码依赖图。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Dict",
+      "List",
+      "Optional",
+      "Path",
+      "Set",
+      "Tuple"
+    ],
+    "fingerprint": "sha256:60db302987f27931"
+  },
+  "src/mms/bootstrap/memory_seed_generator.py": {
+    "path": "src/mms/bootstrap/memory_seed_generator.py",
+    "lang": "python",
+    "package": "src.mms.bootstrap",
+    "classes": [
+      {
+        "name": "GeneratedMemory",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "GeneratorReport",
+        "bases": [],
+        "methods": [
+          {
+            "name": "total",
+            "signature": "(self) -> int",
+            "docstring": "",
+            "decorators": [
+              "property"
+            ],
+            "annotations": [
+              "property"
+            ],
+            "is_async": false
+          }
+        ],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "generate_seed_memories",
+        "signature": "(inference_results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]], ast_index: Dict[str, dict], output_dir: Path, min_confidence: float = 0.5, max_per_layer: int = 10, dry_run: bool = False, id_prefix: str = 'MEM-BOOT') -> GeneratorReport",
+        "docstring": "为推断结果中的核心类生成初始 MemoryNode 文件。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Dict",
+      "LayerInference",
+      "List",
+      "ObjectTypeMapping",
+      "Optional",
+      "Path",
+      "Tuple"
+    ],
+    "fingerprint": "sha256:25404bd110d4acbf"
+  },
+  "src/mms/bootstrap/ontology_populator.py": {
+    "path": "src/mms/bootstrap/ontology_populator.py",
+    "lang": "python",
+    "package": "src.mms.bootstrap",
+    "classes": [
+      {
+        "name": "BootstrapV2Report",
+        "bases": [],
+        "methods": [
+          {
+            "name": "print_summary",
+            "signature": "(self) -> None",
+            "docstring": "打印 Bootstrap 执行摘要。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "bootstrap_project",
+        "signature": "(project_root: Optional[Path] = None, dry_run: bool = False, skip_ast: bool = False, skip_seeds: bool = False, skip_memory_gen: bool = False, skip_doc_absorb: bool = False, min_confidence: float = 0.5, max_per_layer: int = 10, verbose: bool = True) -> BootstrapV2Report",
+        "docstring": "Bootstrap v2：完整执行 action_bootstrap 的 9 条 Rules。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Dict",
+      "List",
+      "Optional",
+      "Path"
+    ],
+    "fingerprint": "sha256:ffd15aaf5a4c19b1"
+  },
+  "src/mms/bootstrap/signal_fusion.py": {
+    "path": "src/mms/bootstrap/signal_fusion.py",
+    "lang": "python",
+    "package": "src.mms.bootstrap",
+    "classes": [
+      {
+        "name": "SignalBreakdown",
+        "bases": [],
+        "methods": [
+          {
+            "name": "total",
+            "signature": "(self) -> float",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "LayerInference",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ObjectTypeMapping",
+        "bases": [],
+        "methods": [],
+        "docstring": "",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "OverrideRule",
+        "bases": [],
+        "methods": [],
+        "docstring": "单条 ast_overrides 规则（从 match_conditions.yaml 加载）。",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "load_overrides",
+        "signature": "(project_root: Path, detected_stacks: Optional[List[str]] = None) -> List[OverrideRule]",
+        "docstring": "从 seed_packs/{stack}/match_conditions.yaml 中收集所有 ast_overrides 规则。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      },
+      {
+        "name": "apply_override",
+        "signature": "(class_name: str, bases: List[str], annotations: List[str], override_rules: List[OverrideRule]) -> Optional[Tuple[LayerInference, 'ObjectTypeMapping']]",
+        "docstring": "对单个类应用 Override Pass。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      },
+      {
+        "name": "infer_layer",
+        "signature": "(file_path: str, class_name: str, annotations: Optional[List[str]] = None, bases: Optional[List[str]] = None, parent_layers: Optional[Dict[str, str]] = None, in_degree: int = 0, out_degree_by_layer: Optional[Dict[str, int]] = None, signal_rules: Optional[Dict] = None) -> LayerInference",
+        "docstring": "五路信号融合推断架构层。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      },
+      {
+        "name": "detect_code_object_type",
+        "signature": "(class_name: str, annotations: Optional[List[str]] = None, methods: Optional[List[dict]] = None, layer_inference: Optional[LayerInference] = None) -> ObjectTypeMapping",
+        "docstring": "基于推断层级和方法签名确定代码对象的语义类型。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      },
+      {
+        "name": "infer_all",
+        "signature": "(ast_index: Dict[str, dict], code_graph_in_degrees: Optional[Dict[str, int]] = None, code_graph_out_by_layer: Optional[Dict[str, Dict[str, int]]] = None, signal_rules: Optional[Dict] = None, min_confidence: float = 0.25, project_root: Optional[Path] = None, detected_stacks: Optional[List[str]] = None, override_rules: Optional[List[OverrideRule]] = None) -> Dict[str, Tuple[LayerInference, ObjectTypeMapping]]",
+        "docstring": "对 ast_index 中所有类批量推断层级和对象类型。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Any",
+      "Dict",
+      "List",
+      "Optional",
+      "Path",
+      "Tuple"
+    ],
+    "fingerprint": "sha256:95c8f1d682714dd3"
   },
   "src/mms/core/indexer.py": {
     "path": "src/mms/core/indexer.py",
@@ -2048,6 +2564,63 @@
       "Tuple"
     ],
     "fingerprint": "sha256:4fb463adb6063c47"
+  },
+  "src/mms/execution/autonomous_runner.py": {
+    "path": "src/mms/execution/autonomous_runner.py",
+    "lang": "python",
+    "package": "src.mms.execution",
+    "classes": [
+      {
+        "name": "TurnRecord",
+        "bases": [],
+        "methods": [],
+        "docstring": "单轮 ReAct 记录。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "AutonomousResult",
+        "bases": [],
+        "methods": [
+          {
+            "name": "message",
+            "signature": "(self) -> str",
+            "docstring": "",
+            "decorators": [
+              "property"
+            ],
+            "annotations": [
+              "property"
+            ],
+            "is_async": false
+          }
+        ],
+        "docstring": "Autonomous Runner 最终结果。",
+        "annotations": [
+          "dataclass"
+        ]
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "run_autonomous",
+        "signature": "(ep_id: str, model: str = 'qwen3-32b', dry_run: bool = False, skip_precheck: bool = False, skip_postcheck: bool = False, max_turns: Optional[int] = None, token_budget: Optional[int] = None, timeout_s: Optional[float] = None, task_desc: str = '', verbose: bool = True) -> AutonomousResult",
+        "docstring": "Autonomous Runner 主入口。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Any",
+      "BailianProvider",
+      "Dict",
+      "List",
+      "Optional",
+      "Path"
+    ],
+    "fingerprint": "sha256:2bbdbcc8ec3cb4c3"
   },
   "src/mms/execution/file_applier.py": {
     "path": "src/mms/execution/file_applier.py",
@@ -4402,6 +4975,416 @@
     "imports": [],
     "fingerprint": "sha256:83ff718ac5f40245"
   },
+  "src/mms/ontology/registry.py": {
+    "path": "src/mms/ontology/registry.py",
+    "lang": "python",
+    "package": "src.mms.ontology",
+    "classes": [
+      {
+        "name": "PropertyDef",
+        "bases": [],
+        "methods": [],
+        "docstring": "ObjectType 的属性定义。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ValidationRule",
+        "bases": [],
+        "methods": [],
+        "docstring": "ObjectType 或 Action 的校验规则。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ObjectTypeDef",
+        "bases": [],
+        "methods": [
+          {
+            "name": "from_yaml",
+            "signature": "(cls, data: dict) -> 'ObjectTypeDef'",
+            "docstring": "",
+            "decorators": [
+              "classmethod"
+            ],
+            "annotations": [
+              "classmethod"
+            ],
+            "is_async": false
+          }
+        ],
+        "docstring": "ObjectType 定义（对应 Palantir ObjectType Schema）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "FunctionDef",
+        "bases": [],
+        "methods": [
+          {
+            "name": "from_yaml",
+            "signature": "(cls, data: dict) -> 'FunctionDef'",
+            "docstring": "",
+            "decorators": [
+              "classmethod"
+            ],
+            "annotations": [
+              "classmethod"
+            ],
+            "is_async": false
+          }
+        ],
+        "docstring": "Function 定义（纯计算，无副作用）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ActionParameterDef",
+        "bases": [],
+        "methods": [],
+        "docstring": "Action 参数定义。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "SubmissionCriterion",
+        "bases": [],
+        "methods": [],
+        "docstring": "Action 的提交前校验条件（类比 Palantir submission_criteria）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ActionRule",
+        "bases": [],
+        "methods": [],
+        "docstring": "Action 中的单条规则（对应 Palantir Action Rules）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ActionDef",
+        "bases": [],
+        "methods": [
+          {
+            "name": "from_yaml",
+            "signature": "(cls, data: dict) -> 'ActionDef'",
+            "docstring": "",
+            "decorators": [
+              "classmethod"
+            ],
+            "annotations": [
+              "classmethod"
+            ],
+            "is_async": false
+          }
+        ],
+        "docstring": "Action 定义（有副作用的事务，修改本体对象和 Link）。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ValidationResult",
+        "bases": [],
+        "methods": [],
+        "docstring": "ObjectType 实例校验结果。",
+        "annotations": [
+          "dataclass"
+        ]
+      },
+      {
+        "name": "ObjectTypeRegistry",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self, objects_dir: Optional[Path] = None) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get",
+            "signature": "(self, type_id: str) -> Optional[ObjectTypeDef]",
+            "docstring": "根据 ID 获取 ObjectType 定义。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "all_ids",
+            "signature": "(self) -> List[str]",
+            "docstring": "列出所有已注册的 ObjectType ID。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "layer_1_types",
+            "signature": "(self) -> List[ObjectTypeDef]",
+            "docstring": "返回 Layer 1（代码结构）的 ObjectType（CodeFile/CodeClass/CodeModule）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "layer_2_types",
+            "signature": "(self) -> List[ObjectTypeDef]",
+            "docstring": "返回 Layer 2（记忆图谱）的 ObjectType（MemoryNode 及其子类）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "validate",
+            "signature": "(self, type_id: str, instance: dict) -> ValidationResult",
+            "docstring": "校验一个 ObjectType 实例是否符合定义。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "summary",
+            "signature": "(self) -> str",
+            "docstring": "返回注册表摘要字符串。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "加载并管理所有 ObjectType 定义（docs/memory/ontology/objects/*.yaml）。",
+        "annotations": []
+      },
+      {
+        "name": "FunctionRegistry",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self, funcs_dir: Optional[Path] = None) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get",
+            "signature": "(self, fn_id: str) -> Optional[FunctionDef]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "all_ids",
+            "signature": "(self) -> List[str]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "register_implementation",
+            "signature": "(self, fn_id: str, impl: Callable) -> None",
+            "docstring": "注册 Function 的 Python 实现。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_implementation",
+            "signature": "(self, fn_id: str) -> Optional[Callable]",
+            "docstring": "获取已注册的 Python 实现，未注册时返回 None。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "call",
+            "signature": "(self, fn_id: str, **kwargs: Any) -> Any",
+            "docstring": "调用已注册的 Function 实现。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_signal_rules",
+            "signature": "(self, fn_id: str) -> dict",
+            "docstring": "获取 Function 的信号规则（用于 fn_infer_layer）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "summary",
+            "signature": "(self) -> str",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "加载并管理所有 Function 定义（docs/memory/ontology/functions/*.yaml）。",
+        "annotations": []
+      },
+      {
+        "name": "ActionRegistry",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self, actions_dir: Optional[Path] = None) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get",
+            "signature": "(self, action_id: str) -> Optional[ActionDef]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "all_ids",
+            "signature": "(self) -> List[str]",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "check_submission_criteria",
+            "signature": "(self, action_id: str, params: dict) -> List[str]",
+            "docstring": "校验 Action 的提交前条件（submission_criteria）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "get_rules",
+            "signature": "(self, action_id: str) -> List[ActionRule]",
+            "docstring": "获取 Action 的执行规则列表（按顺序）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "summary",
+            "signature": "(self) -> str",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "加载并管理所有 Action 定义（docs/memory/ontology/actions/*.yaml）。",
+        "annotations": []
+      },
+      {
+        "name": "RuleEngine",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self, function_registry: Optional[FunctionRegistry] = None, action_registry: Optional[ActionRegistry] = None) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "should_skip",
+            "signature": "(self, rule: ActionRule, context: dict) -> bool",
+            "docstring": "判断规则是否应跳过（评估 skip_if 表达式）。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "execute_function_rule",
+            "signature": "(self, rule: ActionRule, context: dict) -> Optional[Any]",
+            "docstring": "执行 function_rule：调用 FunctionRegistry 中的 Python 实现。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "run_action",
+            "signature": "(self, action_id: str, params: dict, on_rule: Optional[Callable[[ActionRule, dict], Any]] = None) -> List[dict]",
+            "docstring": "执行一个 Action 的所有 Rules。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "Action Rules 执行引擎。",
+        "annotations": []
+      },
+      {
+        "name": "OntologyRegistry",
+        "bases": [],
+        "methods": [
+          {
+            "name": "__init__",
+            "signature": "(self, ontology_dir: Optional[Path] = None) -> None",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "summary",
+            "signature": "(self) -> str",
+            "docstring": "",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "validate_completeness",
+            "signature": "(self) -> List[str]",
+            "docstring": "校验本体定义的完整性：",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          }
+        ],
+        "docstring": "统一的本体注册表入口，聚合四个子注册表。",
+        "annotations": []
+      }
+    ],
+    "top_level_functions": [
+      {
+        "name": "get_ontology_registry",
+        "signature": "() -> OntologyRegistry",
+        "docstring": "获取模块级默认 OntologyRegistry 实例（懒创建单例）。",
+        "decorators": [],
+        "annotations": [],
+        "is_async": false
+      }
+    ],
+    "imports": [
+      "Any",
+      "Callable",
+      "Dict",
+      "List",
+      "Optional",
+      "Path"
+    ],
+    "fingerprint": "sha256:b558f93a065f6058"
+  },
   "src/mms/providers/bailian.py": {
     "path": "src/mms/providers/bailian.py",
     "lang": "python",
@@ -4433,6 +5416,14 @@
             "name": "complete_messages",
             "signature": "(self, messages: list, max_tokens: int = 4096) -> str",
             "docstring": "支持多角色消息（system + user）的完整接口。",
+            "decorators": [],
+            "annotations": [],
+            "is_async": false
+          },
+          {
+            "name": "complete_with_tools",
+            "signature": "(self, messages: list, tools: list, max_tokens: int = 4096) -> dict",
+            "docstring": "支持 Tool-Calling 的消息接口（兼容 OpenAI function-calling / 百炼 tools 格式）。",
             "decorators": [],
             "annotations": [],
             "is_async": false
@@ -4493,7 +5484,7 @@
       "Path",
       "ProviderUnavailableError"
     ],
-    "fingerprint": "sha256:c5ffed72c5b597a4"
+    "fingerprint": "sha256:8c560fabb91d423b"
   },
   "src/mms/providers/base.py": {
     "path": "src/mms/providers/base.py",

@@ -65,11 +65,18 @@ def _get_compiled() -> List[Tuple[re.Pattern, str]]:
             raw = raw.strip()
             if raw:
                 try:
+                    re.compile(raw)  # 预验证，过滤无效正则
                     patterns.append((raw, '[REDACTED_CUSTOM]'))
-                except Exception:
-                    pass
+                except re.error:
+                    logger.warning("SanitizationGate: 忽略无效的自定义正则: %r", raw)
 
-    _compiled = [(re.compile(p), repl) for p, repl in patterns]
+    compiled = []
+    for p, repl in patterns:
+        try:
+            compiled.append((re.compile(p), repl))
+        except re.error:
+            logger.warning("SanitizationGate: 编译正则失败，已跳过: %r", p)
+    _compiled = compiled
     return _compiled
 
 

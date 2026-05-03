@@ -6,6 +6,7 @@
 **定位**：面向工程团队的端侧 AI 编码工具链。它不是聊天 IDE 插件，而是一个结构化的任务执行系统——将自然语言描述的编码任务，经过意图分解、知识检索、代码生成、质量验证、知识回流五个环节，生成可直接应用的代码变更，且全程不上传业务代码。
 
 **核心价值**：
+
 - **知识复用**：将历次 EP 执行产生的架构决策、教训和模式沉淀为可检索的记忆图谱，新任务执行时精准注入，减少重复错误
 - **框架感知**：Bootstrap v2 通过 YAML 驱动的多信号融合，自动理解项目的分层架构（无需人工标注）
 - **双轨执行**：Track A（UnitRunner 串行流水线）适合小模型；Track B（Autonomous ReAct 循环）适合有 Tool-Calling 能力的大模型，共享同一套工具层
@@ -113,7 +114,7 @@ src/mms/execution/
 ├── sandboxed_runner.py    Sandbox 化执行包装器
 ├── unit_compare.py        双模型对比 + 语义评审
 ├── internal_reviewer.py   双角色内部评审（feature flag）
-├── autonomous_runner.py   ★ Track B ReAct 循环（max_turns=10）
+├── autonomous_runner.py   ★ Track B ReAct 循环（max_turns=10，MaxTurnsExceededError）
 ├── unit_cmd.py            unit 子命令
 └── fix_gen.py             自动生成修复建议
 ```
@@ -223,7 +224,7 @@ src/mms/analysis/          代码静态分析（14 个模块）
 └── parsers/               AST 解析器适配层（protocol/factory/regex/tree_sitter）
 
 src/mms/core/              基础 I/O（安全写入）
-├── sanitize.py            SanitizationGate（API Key / JWT / IP 脱敏）
+├── sanitize.py            SanitizationGate（API Key / JWT / IP 脱敏，支持 MMS_SANITIZE_EXTRA 自定义正则）
 ├── writer.py              安全文件写入（集成脱敏屏障）
 ├── reader.py              编码自适应读取（TTL 缓存）
 └── indexer.py             记忆索引构建器（MEMORY_INDEX.json）
@@ -383,6 +384,8 @@ mulan ep run EP-NNN  （config.yaml: execution_mode=autonomous）
 │  三重安全边界：                                                      │
 │    elapsed > timeout_s  → finish_reason="timeout"                  │
 │    turn > max_turns     → finish_reason="max_turns"                 │
+│                            （raise_on_max_turns=True 时抛出         │
+│                              MaxTurnsExceededError，供测试断言）    │
 │    LLM 调用异常         → finish_reason="error"（不抛出）           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -666,12 +669,21 @@ mms/
 │   ├── go_gin/ palantir_arch/ react_zustand/
 │   └── {match_conditions.yaml（含 ast_overrides）/ constraints/ ontology/}
 │
-├── benchmark/                     Benchmark v2（三层模块化）
-│   └── v2/（layer1_swebench / layer2_memory / layer3_safety）
+├── benchmark/
+│   ├── run_benchmark.py           ★ 主入口（原 run_benchmark_v2.py）
+│   ├── v2/                        Benchmark v2（三层模块化，活跃维护）
+│   │   ├── layer1_swebench/       ★ L1：ΔPass@1（DualRailRunner 双轨对比）
+│   │   ├── layer2_memory/         L2：记忆质量（D1~D4 维度）
+│   │   └── layer3_safety/         L3：安全门控（离线，< 1s）
+│   └── v1_legacy/                 ★ 已废弃（原 benchmark/src/，仅历史参考）
 │
 └── tests/
+    ├── conftest.py                ★ 全局 fixture（isolated_spring_boot / vcr_config）
+    ├── fixtures/spring-boot-demo/ ★ Java Spring Boot 靶机（7 个 Java 文件）
+    ├── cassettes/                 VCR cassette 存储（pytest-recording）
     ├── integration/               集成测试（真实 CLI 调用）
-    └── test_*.py                  单元测试（878 tests passed）
+    ├── benchmark/                 Benchmark v2 单元测试
+    └── test_*.py                  单元测试（1063 tests passed）
 ```
 
 ---
@@ -696,11 +708,13 @@ DASHSCOPE_MODEL_REASONING=qwen3-32b
 DASHSCOPE_MODEL_CODING=qwen3-coder-plus
 ```
 
-| 任务 | 模型 |
-|---|---|
-| 意图合成 / DAG 生成 / 代码评审 / 知识蒸馏 | `qwen3-32b` |
-| 代码生成 | `qwen3-coder-plus` |
-| Tool-Calling（Track B） | 需支持 tools 参数的模型 |
+
+| 任务                          | 模型                 |
+| --------------------------- | ------------------ |
+| 意图合成 / DAG 生成 / 代码评审 / 知识蒸馏 | `qwen3-32b`        |
+| 代码生成                        | `qwen3-coder-plus` |
+| Tool-Calling（Track B）       | 需支持 tools 参数的模型    |
+
 
 ### 冷启动新项目（Bootstrap v2，零 LLM）
 
@@ -735,6 +749,28 @@ agent:
 
 mulan ep run EP-001                 # 自动走 Track B ReAct 循环
 ```
+
+---
+
+## Benchmark v2
+
+三层模块化评测框架，用于量化 Mulan 的核心价值主张。
+
+| 层 | 指标 | 运行模式 | 说明 |
+|---|---|---|---|
+| **L1 SWE-bench** | ΔPass@1、Info Density | 离线/在线双模式 | Mulan-Enhanced vs Baseline 双轨对比 |
+| **L2 记忆质量** | D1 精准检索 / D2 注入提升 / D3 跨任务留存 / D4 漂移检测 | D1/D4 离线，D2/D3 需 LLM | 四维记忆质量评分 |
+| **L3 安全门控** | 检出率 / 漏报 / 误报 | 完全离线（< 1s） | SanitizationGate + MigrationGate + ArchCheck |
+
+```bash
+# 快速离线运行（当前得分 L3: 94.7%）
+python benchmark/run_benchmark.py
+
+# 在线模式（需配置 LLM API + Docker）
+python benchmark/run_benchmark.py --level online --layers l1 l2
+```
+
+> **旧版 Benchmark**（检索质量对比 BM25 vs Hybrid RAG vs Ontology）已归档至 `benchmark/v1_legacy/`，不再维护。
 
 ---
 
@@ -799,11 +835,25 @@ mulan ast-diff
 ## 测试
 
 ```bash
-pytest tests/ -v                                      # 全量（878 tests）
+pytest tests/ -v                                      # 全量（1063 passed）
 pytest tests/ -m "not slow and not integration"       # 快速单元测试
 pytest tests/integration/ -m integration              # 集成测试（真实 CLI）
 pytest tests/ --cov=src/mms --cov-report=html
 ```
+
+### TDD 覆盖层（7 阶段）
+
+
+| 阶段             | 测试文件                                                   | 覆盖点                                                 |
+| -------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| 1 物理沙箱         | `tests/conftest.py`、`tests/fixtures/spring-boot-demo/` | 全局 fixture（Spring Boot 靶机、Python 项目、VCR 配置）         |
+| 2 纯函数          | `test_ast_skeleton.py`（+9）、`test_sanitize.py`（34）      | 语义哈希稳定性（格式化不漂移）、SanitizationGate 全模式                |
+| 3 VCR 控制流      | `test_autonomous_runner_control.py`（12）                | max_turns 阻断、tool_finish 退出、`MaxTurnsExceededError` |
+| 4 Bootstrap 宏观 | `test_bootstrap_on_spring_boot.py`（15）                 | Spring Boot fixture 端到端、幂等性、dry_run、detected_stacks |
+| 5 安全门控         | `test_arch_check.py`（15）                               | AC-1~AC-4 阳性 + 阴性（tmp_path 注入，完全离线）                 |
+| 6 图演化          | `test_edge_decay.py`（+4）、`test_seed_absorber.py`（18）   | GC 物理剪枝、dry_run 不写磁盘、seed_absorber 噪声过滤             |
+| 7 E2E Pass@1   | `test_layer1_swebench.py`（+9）                          | DualRailRunner 双轨对比、ΔPass@1、在线模式 mock 验证            |
+
 
 ---
 

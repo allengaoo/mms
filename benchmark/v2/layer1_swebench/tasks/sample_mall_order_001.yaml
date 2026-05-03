@@ -1,0 +1,58 @@
+##############################################################################
+# Layer 1 · 企业 Java 靶机任务（mall 订单服务）
+#
+# 数据来源：基于 github.com/macrozheng/mall 真实 Issue 结构改编
+# 目的：验证 Mulan 在 Java Spring Boot 项目中的代码生成质量
+##############################################################################
+
+schema_version: "1.0"
+source: "enterprise-fixture-mall"
+
+tasks:
+
+  - id: "mall_order_001"
+    repo: "macrozheng/mall"
+    language: java
+    domain: ecommerce_order
+    issue_title: "OmsOrderDetail 新增 product_snapshot 字段时漏改 DTO 和 Mapper"
+    issue_description: |
+      在 OmsOrderDetail 实体类中新增了 product_snapshot 字段（JSON 格式，
+      记录下单时的商品快照），但 OmsOrderDetailDto 和 OmsOrderDetailMapper.xml
+      未同步更新，导致查询接口返回数据中缺少该字段。
+    fail_tests:
+      - "tests/order/test_order_detail_dto.py::test_product_snapshot_in_dto"
+    pass_tests:
+      - "tests/order/test_order_detail_dto.py::test_product_snapshot_in_dto"
+    hints:
+      - "需要修改 OmsOrderDetail.java 增加 product_snapshot 字段"
+      - "同步修改 OmsOrderDetailDto.java"
+      - "更新 OmsOrderDetailMapper.xml 的 resultMap"
+    reference_patch_summary: |
+      1. OmsOrderDetail.java: 添加 private String productSnapshot 字段（@Column）
+      2. OmsOrderDetailDto.java: 添加对应 DTO 字段
+      3. OmsOrderDetailMapper.xml: resultMap 增加 productSnapshot 映射
+    expected_aiu_type: "SCHEMA_ADD_FIELD"
+    difficulty: medium
+    tags: ["java", "spring-boot", "mybatis", "dto", "mapper"]
+
+  - id: "mall_order_002"
+    repo: "macrozheng/mall"
+    language: java
+    domain: ecommerce_order
+    issue_title: "closeTimeoutOrders 超时关单方法未正确筛选待付款状态"
+    issue_description: |
+      OmsOrderServiceImpl.closeTimeoutOrders() 方法应只关闭状态为「待付款（status=0）」
+      且创建时间超过 timeout 分钟的订单，但当前实现未加 status 过滤条件，
+      导致所有超时订单（包括已支付订单）都被错误关闭。
+    fail_tests:
+      - "tests/order/test_close_timeout.py::test_only_close_pending_orders"
+    pass_tests:
+      - "tests/order/test_close_timeout.py::test_only_close_pending_orders"
+    hints:
+      - "在 OmsOrderMapper.xml 的 closeTimeoutOrders 查询中添加 status = 0 条件"
+      - "同时确保 createTime < NOW() - INTERVAL timeout MINUTE 的条件正确"
+    reference_patch_summary: |
+      OmsOrderMapper.xml: WHERE 子句增加 AND status = 0 条件
+    expected_aiu_type: "BUG_FIX"
+    difficulty: easy
+    tags: ["java", "spring-boot", "mybatis", "bug-fix", "order"]

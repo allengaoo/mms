@@ -228,3 +228,141 @@ class TestAstSkeletonBuilder:
                 assert "fingerprint" in val
                 assert val["fingerprint"].startswith("sha256:")
                 break
+
+
+class TestSemanticHashStability:
+    """
+    语义哈希稳定性测试（Phase 2 TDD）。
+
+    核心命题：格式化工具（Black / gofmt）不应引发虚假漂移，
+    真实签名/类型变更必须引发漂移。
+    """
+
+    def test_whitespace_change_no_drift(self):
+        """仅添加空行不应改变指纹。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float) -> dict: pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+
+                def create(self, amount: float) -> dict: pass
+
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 == fp2, "仅空行变化不应导致指纹变化"
+
+    def test_comment_change_no_drift(self):
+        """增删注释不应改变指纹。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float) -> dict: pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+                # 创建订单
+                def create(self, amount: float) -> dict: pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 == fp2, "增删注释不应导致指纹变化"
+
+    def test_docstring_change_no_drift(self):
+        """修改 docstring 不应改变指纹（指纹只基于签名）。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float) -> dict:
+                    \"\"\"旧版文档。\"\"\"
+                    pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float) -> dict:
+                    \"\"\"重写了文档字符串，描述更详细。\"\"\"
+                    pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 == fp2, "修改 docstring 不应导致指纹变化"
+
+    def test_new_parameter_causes_drift(self):
+        """新增函数参数必须触发指纹变化。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float) -> dict: pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+                def create(self, amount: float, member_id: int) -> dict: pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 != fp2, "新增参数必须触发指纹变化"
+
+    def test_return_type_change_causes_drift(self):
+        """变更返回类型注解必须触发指纹变化。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def list_orders(self) -> list: pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+                def list_orders(self) -> list[dict]: pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 != fp2, "返回类型变更必须触发指纹变化"
+
+    def test_new_method_causes_drift(self):
+        """新增方法必须触发指纹变化。"""
+        source_before = textwrap.dedent("""
+            class OrderService:
+                def create(self) -> dict: pass
+        """)
+        source_after = textwrap.dedent("""
+            class OrderService:
+                def create(self) -> dict: pass
+                def delete(self, order_id: int) -> None: pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 != fp2, "新增方法必须触发指纹变化"
+
+    def test_rename_class_causes_drift(self):
+        """重命名类必须触发指纹变化。"""
+        source_before = "class OldService:\n    def run(self): pass\n"
+        source_after = "class NewService:\n    def run(self): pass\n"
+        fp1 = _compute_fingerprint(_parse_python(source_before, "svc.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "svc.py"))
+        assert fp1 != fp2, "重命名类必须触发指纹变化"
+
+    def test_empty_file_stable(self):
+        """空文件反复计算指纹结果一致。"""
+        skel = _parse_python("", "empty.py")
+        fp1 = _compute_fingerprint(skel)
+        fp2 = _compute_fingerprint(skel)
+        assert fp1 == fp2
+
+    def test_black_formatted_no_drift(self):
+        """
+        模拟 Black 格式化：将单行定义拆为多行，逻辑等价，指纹应不变。
+        （Black 不改变函数签名，只改变缩进/换行等）
+        """
+        source_before = textwrap.dedent("""
+            class PaymentService:
+                def process(self, amount: float, currency: str) -> bool: pass
+        """)
+        # Black 会将过长的签名拆行，但 AST 解析后签名相同
+        source_after = textwrap.dedent("""
+            class PaymentService:
+                def process(
+                    self,
+                    amount: float,
+                    currency: str,
+                ) -> bool: pass
+        """)
+        fp1 = _compute_fingerprint(_parse_python(source_before, "pay.py"))
+        fp2 = _compute_fingerprint(_parse_python(source_after, "pay.py"))
+        assert fp1 == fp2, "Black 格式化（拆行签名）不应触发指纹变化"
