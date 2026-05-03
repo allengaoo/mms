@@ -1,0 +1,158 @@
+# AIU 族 E：基础设施与配置类（Infrastructure / Config Operators）
+# 版本：v1.0 | 2026-05-04 | RBO YAML 迁移（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: E_infrastructure
+layer_affinity: [INFRASTRUCTURE, PLATFORM]
+
+aius:
+  - id: CONFIG_MODIFY
+    family: E_infrastructure
+    layer_affinity: [INFRASTRUCTURE, PLATFORM]
+    exec_order: 1
+    base_cost: 1500
+    description: "修改系统配置项、Feature Flag 或环境变量"
+    input_schema:
+      config_key:
+        type: string
+        required: true
+        description: "配置键名（如 ENABLE_NEW_CHECKOUT、MAX_RETRY_COUNT）"
+      config_type:
+        type: string
+        required: true
+        enum: [feature_flag, env_var, system_config, db_config, cache_config]
+        description: "配置类型"
+      new_value:
+        type: string
+        required: true
+        description: "新配置值（字符串表示）"
+      scope:
+        type: string
+        required: false
+        default: "global"
+        enum: [global, per_tenant, per_env, per_user]
+        description: "配置生效范围"
+      rollout_strategy:
+        type: string
+        required: false
+        default: "immediate"
+        enum: [immediate, gradual, canary, scheduled]
+        description: "发布策略（Feature Flag 时推荐 gradual）"
+    validation_rules:
+      ast_target: "Module"
+      required_patterns:
+        - "os\\.environ|config\\[|settings\\."  # 通过配置对象访问
+      forbidden_patterns:
+        - "hardcoded|magic_number"  # 禁止硬编码魔法值
+    rbo_triggers:
+      keywords:
+        - "配置"
+        - "feature flag"
+        - "systemconfig"
+        - "开关"
+        - "config"
+        - "feature toggle"
+        - "环境变量"
+        - "系统配置"
+      description_template: "修改系统配置 / Feature Flag"
+      token_budget: 1500
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/core/"
+        - "docs/memory/_system/routing/"
+
+  - id: EVENT_ADD_PRODUCER
+    family: E_infrastructure
+    layer_affinity: [INFRASTRUCTURE]
+    exec_order: 3
+    base_cost: 3000
+    description: "新增消息事件生产者（Kafka Producer / RabbitMQ Publisher）"
+    input_schema:
+      event_name:
+        type: string
+        required: true
+        description: "事件名（如 OrderCreatedEvent）"
+      topic:
+        type: string
+        required: true
+        description: "消息主题/队列名"
+      broker:
+        type: string
+        required: false
+        default: "kafka"
+        enum: [kafka, rabbitmq, redis_stream, sqs]
+        description: "消息中间件类型"
+      serialization:
+        type: string
+        required: false
+        default: "json"
+        enum: [json, avro, protobuf]
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "producer\\.send|publish\\(|enqueue\\("
+        - "KafkaProducer|Producer|Publisher"
+      forbidden_patterns: []
+
+  - id: EVENT_ADD_CONSUMER
+    family: E_infrastructure
+    layer_affinity: [INFRASTRUCTURE]
+    exec_order: 3
+    base_cost: 3500
+    description: "新增消息事件消费者（Kafka Consumer / RabbitMQ Subscriber）"
+    input_schema:
+      event_name:
+        type: string
+        required: true
+        description: "监听的事件名"
+      topic:
+        type: string
+        required: true
+        description: "监听的消息主题/队列名"
+      consumer_group:
+        type: string
+        required: false
+        description: "消费者组 ID"
+      retry_policy:
+        type: string
+        required: false
+        default: "exponential_backoff"
+        enum: [none, fixed, exponential_backoff, dead_letter]
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "consumer\\.subscribe|@kafka_consumer|@consumer"
+        - "KafkaConsumer|Consumer|Subscriber"
+      forbidden_patterns: []
+
+  - id: CACHE_ADD_READ
+    family: E_infrastructure
+    layer_affinity: [INFRASTRUCTURE]
+    exec_order: 3
+    base_cost: 2000
+    description: "为查询方法新增缓存层（Redis/Memcached）"
+    input_schema:
+      target_method:
+        type: string
+        required: true
+        description: "需要缓存的目标方法名"
+      cache_key_pattern:
+        type: string
+        required: true
+        description: "缓存键模式（如 order:{order_id}）"
+      ttl_seconds:
+        type: integer
+        required: false
+        default: 300
+        description: "缓存 TTL（秒）"
+      cache_type:
+        type: string
+        required: false
+        default: "redis"
+        enum: [redis, memcached, local, distributed]
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "redis\\.get|cache\\.get|@cache|@cached"
+      forbidden_patterns: []

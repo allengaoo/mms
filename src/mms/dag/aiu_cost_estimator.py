@@ -297,31 +297,3 @@ class AIUCostEstimator:
     def get_total_budget(self, steps: List[AIUStep]) -> int:
         """计算整个 AIUPlan 的总 token 预算（串行执行下的上界）。"""
         return sum(s.token_budget for s in steps)
-
-    def get_critical_path_budget(self, steps: List[AIUStep]) -> int:
-        """
-        计算关键路径（最长依赖链）的 token 预算。
-        类比数据库执行计划的关键路径代价。
-        """
-        if not steps:
-            return 0
-
-        # 构建依赖图，动态规划计算最长路径
-        id_to_step = {s.aiu_id: s for s in steps}
-        memo: Dict[str, int] = {}
-
-        def dp(aiu_id: str) -> int:
-            if aiu_id in memo:
-                return memo[aiu_id]
-            step = id_to_step.get(aiu_id)
-            if step is None:
-                return 0
-            if not step.depends_on:
-                memo[aiu_id] = step.token_budget
-                return step.token_budget
-            max_dep = max(dp(dep) for dep in step.depends_on)
-            result = max_dep + step.token_budget
-            memo[aiu_id] = result
-            return result
-
-        return max(dp(s.aiu_id) for s in steps)

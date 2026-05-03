@@ -54,6 +54,22 @@ aius:
       forbidden_patterns:
         - "SessionLocal\\(\\)"    # 禁止手动创建 Session
         - "return\\s+\\{['\"]"    # 禁止返回裸字典
+    rbo_triggers:
+      keywords:
+        - "api"
+        - "endpoint"
+        - "接口"
+        - "路由"
+        - "router"
+        - "handler"
+        - "http"
+        - "get/post/put/delete"
+        - "restful"
+      description_template: "在 {module} 模块新增 FastAPI {method} 路由"
+      token_budget: 3500
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/api/v1/endpoints/"
 
   - id: ROUTE_ADD_PERMISSION
     family: D_interface
@@ -87,6 +103,21 @@ aius:
       required_patterns:
         - "@require_permission|@UseGuards|@Roles|@Permission"
       forbidden_patterns: []
+    rbo_triggers:
+      keywords:
+        - "权限"
+        - "permission"
+        - "rbac"
+        - "require_permission"
+        - "授权"
+        - "access control"
+        - "鉴权"
+      description_template: "为 {endpoint} 添加 @require_permission 权限守卫"
+      token_budget: 1500
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/api/v1/endpoints/"
+        - "backend/app/core/rbac.py"
 
   - id: FRONTEND_ADD_PAGE
     family: D_interface

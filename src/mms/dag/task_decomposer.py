@@ -6,9 +6,10 @@ task_decomposer.py — 任务分解器（AIU 序列生成）
 
 分解策略（两阶段，RBO 优先）：
   阶段 1  RBO（Rule-Based Optimizer）:
-          基于关键词规则匹配 12 种高频 AIU 类型。
-          无 LLM 调用，零延迟，100% 确定性。
-          覆盖约 70% 的常见开发任务。
+          基于关键词规则匹配 AIU 类型（由 AIURegistry.get_rbo_rules() 动态加载）。
+          OCP 扩展：在 schemas/aius/*.yaml 中为任意 AIU 添加 rbo_triggers 块，
+          TaskDecomposer 初始化时自动纳入，无需修改 Python 源码。
+          无 LLM 调用，零延迟，100% 确定性，覆盖约 70% 的常见开发任务。
 
   阶段 2  LLM 兜底（仅在 RBO miss 时触发）:
           RBO 无法分解时，调用 qwen3-coder-next 分解。
@@ -24,7 +25,7 @@ task_decomposer.py — 任务分解器（AIU 序列生成）
   DagUnit 已经存在时，task_decomposer 为其生成 AIUPlan（子步骤）。
   DagUnit 不存在时，可独立使用（synthesizer 场景）。
 
-EP-129 | 2026-04-22
+EP-129 v2.1 | 2026-05-04 | OCP: RBO 规则迁移至 YAML
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 _HERE = Path(__file__).resolve().parent
 try:
@@ -46,14 +47,12 @@ try:
     sys.path.insert(0, str(_HERE))
     from mms.dag.aiu_types import (  # type: ignore[import]
         AIUType, AIUStep, AIUPlan, AIU_EXEC_ORDER, AIU_LAYER_MAP,
-        RBO_COVERED_AIU_TYPES,
     )
     from mms.utils.mms_config import cfg as _cfg  # type: ignore[import]
 except ImportError:
     try:
         from mms.dag.aiu_types import (  # type: ignore[import]
             AIUType, AIUStep, AIUPlan, AIU_EXEC_ORDER, AIU_LAYER_MAP,
-            RBO_COVERED_AIU_TYPES,
         )
     except ImportError:
         raise
@@ -114,158 +113,13 @@ CONJUNCTION_PATTERNS = [
 ]
 
 
-# ── RBO 规则库 ────────────────────────────────────────────────────────────────
-
-# 每条 RBO 规则：{keywords, aiu_type, description_template, layer, files_patterns}
-RBO_RULES: List[Dict] = [
-    {
-        "id": "rbo_schema_add_field",
-        "aiu_type": AIUType.SCHEMA_ADD_FIELD,
-        "keywords": [
-            "新增字段", "添加字段", "加字段", "新增列", "add field", "add column",
-            "新增属性", "添加属性", "扩展模型",
-        ],
-        "description_template": "在 {model} 模型新增字段，生成 Alembic migration",
-        "token_budget": 3000,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/domain/", "backend/alembic/versions/"],
-    },
-    {
-        "id": "rbo_contract_add_response",
-        "aiu_type": AIUType.CONTRACT_ADD_RESPONSE,
-        "keywords": [
-            "响应模型", "response model", "responseSchema", "返回结构",
-            "返回字段", "response schema", "pydantic response",
-        ],
-        "description_template": "新增 {entity} 的 Pydantic Response Schema",
-        "token_budget": _token_budget_fast(),
-        "model_hint": "fast",
-        "files_hint": ["backend/app/api/v1/schemas/"],
-    },
-    {
-        "id": "rbo_contract_add_request",
-        "aiu_type": AIUType.CONTRACT_ADD_REQUEST,
-        "keywords": [
-            "请求模型", "request model", "requestSchema", "请求体",
-            "入参", "request schema", "pydantic request",
-        ],
-        "description_template": "新增 {entity} 的 Pydantic Request Schema",
-        "token_budget": _token_budget_fast(),
-        "model_hint": "fast",
-        "files_hint": ["backend/app/api/v1/schemas/"],
-    },
-    {
-        "id": "rbo_mutation_insert",
-        "aiu_type": AIUType.MUTATION_ADD_INSERT,
-        "keywords": [
-            "新增", "创建", "create", "insert", "添加记录", "写入",
-            "新建", "保存", "持久化",
-        ],
-        "description_template": "在 {entity} Repository 新增 create 方法",
-        "token_budget": 3500,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/domain/", "backend/app/services/control/"],
-    },
-    {
-        "id": "rbo_mutation_update",
-        "aiu_type": AIUType.MUTATION_ADD_UPDATE,
-        "keywords": [
-            "更新", "修改", "update", "edit", "变更", "改变状态",
-            "批量更新", "部分更新",
-        ],
-        "description_template": "在 {entity} Service 新增 update 方法",
-        "token_budget": 3500,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/services/control/"],
-    },
-    {
-        "id": "rbo_query_select",
-        "aiu_type": AIUType.QUERY_ADD_SELECT,
-        "keywords": [
-            "查询", "列表", "list", "select", "搜索", "过滤",
-            "分页查询", "查找", "检索",
-        ],
-        "description_template": "在 {entity} Repository 新增查询方法",
-        "token_budget": 3000,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/domain/", "backend/app/services/control/"],
-    },
-    {
-        "id": "rbo_route_add_endpoint",
-        "aiu_type": AIUType.ROUTE_ADD_ENDPOINT,
-        "keywords": [
-            "api", "endpoint", "接口", "路由", "router", "handler",
-            "http", "get/post/put/delete", "restful",
-        ],
-        "description_template": "在 {module} 模块新增 FastAPI {method} 路由",
-        "token_budget": 3500,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/api/v1/endpoints/"],
-    },
-    {
-        "id": "rbo_route_permission",
-        "aiu_type": AIUType.ROUTE_ADD_PERMISSION,
-        "keywords": [
-            "权限", "permission", "rbac", "require_permission",
-            "授权", "access control", "鉴权",
-        ],
-        "description_template": "为 {endpoint} 添加 @require_permission 权限守卫",
-        "token_budget": 1500,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/api/v1/endpoints/", "backend/app/core/rbac.py"],
-    },
-    {
-        "id": "rbo_logic_guard",
-        "aiu_type": AIUType.LOGIC_ADD_GUARD,
-        "keywords": [
-            "校验", "validate", "validation", "前置检查", "参数检查",
-            "输入验证", "raise exception", "抛出异常",
-        ],
-        "description_template": "在 {method} 方法新增前置校验逻辑",
-        "token_budget": _token_budget_fast(),
-        "model_hint": "fast",
-        "files_hint": ["backend/app/services/control/"],
-    },
-    {
-        "id": "rbo_test_unit",
-        "aiu_type": AIUType.TEST_ADD_UNIT,
-        "keywords": [
-            "测试", "test", "pytest", "单元测试", "unit test",
-            "mock", "补充测试", "test case",
-        ],
-        "description_template": "为 {module} 补充 pytest 单元测试",
-        "token_budget": 3000,
-        "model_hint": "fast",
-        "files_hint": ["backend/tests/unit/", "scripts/mms/tests/"],
-    },
-    {
-        "id": "rbo_doc_sync",
-        "aiu_type": AIUType.DOC_SYNC,
-        "keywords": [
-            "文档", "docs", "e2e_traceability", "frontend_page_map",
-            "同步文档", "更新文档", "doc sync",
-        ],
-        "description_template": "同步更新架构文档（e2e_traceability / frontend_page_map）",
-        "token_budget": 1500,
-        "model_hint": "fast",
-        "files_hint": [
-            "docs/architecture/e2e_traceability.md",
-            "docs/architecture/frontend_page_map.md",
-        ],
-    },
-    {
-        "id": "rbo_config_modify",
-        "aiu_type": AIUType.CONFIG_MODIFY,
-        "keywords": [
-            "配置", "feature flag", "systemconfig", "开关", "config",
-            "feature toggle", "环境变量", "系统配置",
-        ],
-        "description_template": "修改系统配置 / Feature Flag",
-        "token_budget": 1500,
-        "model_hint": "fast",
-        "files_hint": ["backend/app/core/", "docs/memory/_system/routing/"],
-    },
-]
+# ── RBO 规则加载（OCP：YAML 驱动，不再硬编码）────────────────────────────────
+#
+# RBO 规则由 AIURegistry.get_rbo_rules() 从 schemas/aius/*.yaml 动态加载。
+# 扩展 RBO：在任意 YAML 文件的 AIU 条目中添加 rbo_triggers 块，无需修改此文件。
+#
+# 此处保留空列表作为 _fallback_rbo_rules，仅在 AIURegistry 不可用时使用。
+_FALLBACK_RBO_RULES: List = []
 
 
 # ── LLM 分解 Prompt ───────────────────────────────────────────────────────────
@@ -320,7 +174,15 @@ class TaskDecomposer:
     """
 
     def __init__(self) -> None:
-        self._rbo_rules = RBO_RULES
+        # OCP：从 AIURegistry 动态加载 RBO 规则（YAML 驱动）
+        # 新增 RBO 类型只需在 schemas/aius/*.yaml 添加 rbo_triggers 块，
+        # TaskDecomposer 下次实例化自动识别，无需修改此文件。
+        try:
+            from mms.dag.aiu_registry import get_registry  # type: ignore[import]
+            loaded = get_registry().get_rbo_rules()
+            self._rbo_rules = loaded if loaded else _FALLBACK_RBO_RULES
+        except Exception:
+            self._rbo_rules = _FALLBACK_RBO_RULES
 
     @staticmethod
     def should_decompose(task: str, confidence: float) -> bool:
@@ -330,7 +192,7 @@ class TaskDecomposer:
         触发条件（满足任一）：
           1. 意图置信度 < 0.6
           2. 任务描述包含并列连词（"且/以及/另外"等）
-          3. 任务描述长度 > 80 字符且 RBO 能匹配多种类型
+          3. 任务描述长度 > 80 字符且 RBO 能匹配多种 AIU 类型
         """
         if confidence < DECOMPOSE_CONFIDENCE_THRESHOLD:
             return True
@@ -341,10 +203,14 @@ class TaskDecomposer:
                 return True
 
         if len(task) > LONG_TASK_THRESHOLD:
-            # 粗略检查是否涉及多个 AIU 类型关键词
+            try:
+                from mms.dag.aiu_registry import get_registry  # type: ignore[import]
+                rbo_rules = get_registry().get_rbo_rules()
+            except Exception:
+                rbo_rules = []
             matched_rules = 0
-            for rule in RBO_RULES:
-                if any(kw in task_lower for kw in rule["keywords"]):
+            for rule in rbo_rules:
+                if any(kw in task_lower for kw in rule.get("keywords", [])):
                     matched_rules += 1
                     if matched_rules >= 2:
                         return True
@@ -394,10 +260,9 @@ class TaskDecomposer:
         llm_steps, llm_confidence = self._llm_decompose(task, layer, operation, confidence)
 
         if llm_steps:
-            # LLM 路径：preserve_llm_deps=True，保留 LLM 显式声明的稀疏依赖
             plan = AIUPlan(
                 dag_unit_id=dag_unit_id,
-                steps=self._assign_ids_and_order(llm_steps, preserve_llm_deps=True),
+                steps=self._assign_ids_and_order(llm_steps),
                 decomposed_by="llm",
                 confidence=llm_confidence,
                 original_task=task,
@@ -502,8 +367,9 @@ class TaskDecomposer:
                     model_hint=test_rule.get("model_hint", "fast"),
                 ))
 
-        # 置信度：命中规则数 / 可能的最大规则数
-        confidence = min(len(deduped) / max(len(RBO_COVERED_AIU_TYPES), 1) * 4, 1.0)
+        # 置信度：命中规则数 / 已加载 RBO 规则总数，最高 1.0
+        total_rules = max(len(self._rbo_rules), 1)
+        confidence = min(len(deduped) / total_rules * 4, 1.0)
         return steps, round(confidence, 2)
 
     def _llm_decompose(
@@ -593,13 +459,12 @@ class TaskDecomposer:
             exec_order = AIU_EXEC_ORDER.get(aiu_type_val, 3)
 
             step = AIUStep(
-                # 分配临时顺序 ID（按 LLM 响应顺序），供 _assign_ids_and_order 做 ID 映射
-                aiu_id=f"aiu_{idx}",
+                aiu_id="",  # 由 _assign_ids_and_order 按 exec_order 排序后统一分配
                 aiu_type=aiu_type_str,
                 description=s.get("description", f"执行 {aiu_type_str}"),
                 layer=layer,
                 target_files=s.get("target_files", []),
-                depends_on=s.get("depends_on", []),  # 保留 LLM 显式声明的依赖
+                depends_on=[],  # depends_on 始终清空；执行顺序由 exec_order 表达
                 exec_order=exec_order,
                 token_budget=int(s.get("token_budget", 3000)),
                 model_hint=s.get("model_hint", "fast"),
@@ -633,66 +498,21 @@ class TaskDecomposer:
         return matched if matched else dag_files[:2]
 
     @staticmethod
-    def _assign_ids_and_order(
-        steps: List[AIUStep],
-        preserve_llm_deps: bool = False,
-    ) -> List[AIUStep]:
+    def _assign_ids_and_order(steps: List[AIUStep]) -> List[AIUStep]:
         """
-        为步骤分配 aiu_id 并设置依赖关系。
+        按 exec_order 排序后分配顺序 aiu_id；depends_on 始终清空。
 
-        策略：
-          RBO 路径（preserve_llm_deps=False）：
-            - BSP 同步屏障：高 order 步骤依赖所有低 order 步骤（保守策略，适合已知串行链）
-          LLM 路径（preserve_llm_deps=True）：
-            - 保留 LLM 显式声明的稀疏依赖（数据流依赖），只对没有声明 depends_on 的步骤
-              回落至 BSP 屏障（稀疏 DAG vs 全同步屏障）
-            - 需要先将 LLM 声明中的临时序号（aiu_1, aiu_2...）映射到排序后的新 ID
-
-        LLM 路径的前置要求：
-          _parse_llm_response 已为每个步骤分配临时顺序 ID（parse_order_id），
-          供重排序后的 ID 映射使用。
+        AIUStep 已是纯规划提示层（half-preserve 策略），执行顺序由 exec_order 字段
+        唯一表达，不再需要 depends_on 来描述 DAG 边。清空 depends_on 可避免
+        LLM 生成的幻觉依赖和 BSP 全同步屏障带来的不必要串行化。
         """
         if not steps:
             return steps
 
-        # 记录 LLM 路径下的"旧 ID → 步骤"映射（用于重排后更新 depends_on 引用）
-        old_id_map: Dict[str, str] = {}
-
-        # 按执行顺序排序
         steps.sort(key=lambda s: s.exec_order)
-
-        # 分配新的顺序 ID，同时记录旧 ID → 新 ID 的映射
         for i, step in enumerate(steps, 1):
-            new_id = f"aiu_{i}"
-            if step.aiu_id:
-                old_id_map[step.aiu_id] = new_id
-            step.aiu_id = new_id
-
-        if preserve_llm_deps:
-            # LLM 路径：将 depends_on 中引用的旧 ID 更新为新 ID
-            for step in steps:
-                if step.depends_on:
-                    step.depends_on = [
-                        old_id_map.get(dep, dep)
-                        for dep in step.depends_on
-                        if old_id_map.get(dep, dep) in {s.aiu_id for s in steps}
-                    ]
-
-        # 对没有 depends_on 的步骤，使用 BSP 屏障作为保守兜底
-        order_groups: Dict[int, List[str]] = {}
-        for step in steps:
-            order_groups.setdefault(step.exec_order, []).append(step.aiu_id)
-
-        sorted_orders = sorted(order_groups.keys())
-        for i, order in enumerate(sorted_orders):
-            if i == 0:
-                continue
-            prev_order = sorted_orders[i - 1]
-            prev_ids = order_groups[prev_order]
-            for step in steps:
-                if step.exec_order == order and not step.depends_on:
-                    step.depends_on = list(prev_ids)
-
+            step.aiu_id = f"aiu_{i}"
+            step.depends_on = []
         return steps
 
 

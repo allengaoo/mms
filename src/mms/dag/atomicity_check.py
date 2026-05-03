@@ -18,12 +18,18 @@ atomicity_check.py — MMS Unit 原子性验证器
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from collections import defaultdict, deque
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[2]     # src/（用于文件相对路径拼接）
 _HERE = Path(__file__).resolve().parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]  # 项目根（/Users/.../mms）
+
+# code_graph.json 路径（由 code_graph_builder 生成，位于项目根下）
+_CODE_GRAPH_PATH = _PROJECT_ROOT / "docs" / "memory" / "_system" / "code_graph.json"
 
 try:
     import sys as _sys
@@ -78,6 +84,86 @@ def infer_layer(file_path: str) -> str:
     if file_path.endswith(".md") or file_path.startswith("docs/"):
         return "docs"
     return "unknown"
+
+
+# ── 代码图谱连通性辅助（A3 升级）────────────────────────────────────────────
+
+def _build_file_graph(code_graph_path: Path = _CODE_GRAPH_PATH) -> Dict[str, Set[str]]:
+    """
+    从 code_graph.json 构建文件级无向邻接表。
+
+    code_graph.json 的 top_depends_on 字段存储了类级有向边（source 依赖 target）：
+      {"source": "src/a.py::ClassA", "target": "src/b.py::ClassB"}
+    此函数将其转为文件级无向图（忽略方向），用于连通性检查。
+
+    Returns:
+        {file_path: {neighbor_file, ...}, ...}，仅包含有边的文件
+    """
+    if not code_graph_path.exists():
+        return {}
+    try:
+        data = json.loads(code_graph_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+    graph: Dict[str, Set[str]] = defaultdict(set)
+    for edge in data.get("top_depends_on", []):
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if "::" not in src or "::" not in tgt:
+            continue
+        src_file = src.split("::")[0].replace("\\", "/")
+        tgt_file = tgt.split("::")[0].replace("\\", "/")
+        if src_file != tgt_file:
+            graph[src_file].add(tgt_file)
+            graph[tgt_file].add(src_file)  # 无向化：双向可达
+
+    return dict(graph)
+
+
+def _normalize_path(file_path: str) -> str:
+    """规范化文件路径为相对路径（去除项目根前缀）。"""
+    p = file_path.replace("\\", "/")
+    for root in (str(_PROJECT_ROOT), str(_ROOT)):
+        root_str = root.replace("\\", "/").rstrip("/") + "/"
+        if p.startswith(root_str):
+            return p[len(root_str):]
+    return p
+
+
+def _are_files_connected(files: List[str], graph: Dict[str, Set[str]]) -> Tuple[bool, List[str]]:
+    """
+    使用 BFS 检查文件列表中所有文件是否属于同一连通分量。
+
+    Args:
+        files: 要检查的文件路径列表（相对路径）
+        graph: 文件级无向邻接表
+
+    Returns:
+        (is_connected, isolated_files)
+        - is_connected: True 表示所有文件均连通（或只有 ≤1 个文件）
+        - isolated_files: 与其他文件完全不相连的文件列表
+    """
+    if len(files) <= 1:
+        return True, []
+
+    norm_files = [_normalize_path(f) for f in files]
+    file_set: Set[str] = set(norm_files)
+
+    # BFS 从第一个文件出发，遍历所有可达的"目标文件集合中的成员"
+    start = norm_files[0]
+    visited: Set[str] = {start}
+    queue: deque = deque([start])
+
+    while queue:
+        curr = queue.popleft()
+        for neighbor in graph.get(curr, set()):
+            if neighbor in file_set and neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+
+    isolated = [files[i] for i, nf in enumerate(norm_files) if nf not in visited]
+    return len(isolated) == 0, isolated
 
 
 def estimate_tokens(file_paths: List[str]) -> int:
@@ -136,33 +222,72 @@ def check_a2_token_budget(
     )
 
 
-def check_a3_layer_consistency(files: List[str]) -> CheckResult:
-    """A3：所有文件属于同一架构层（不含 testing 和 docs）"""
-    if not files:
-        return CheckResult(passed=True, label="A3 层一致性", detail="无文件")
+def check_a3_layer_consistency(
+    files: List[str],
+    code_graph_path: Optional[Path] = None,
+) -> CheckResult:
+    """
+    A3：评估文件集合的内聚性（Cohesion）。
 
+    策略（双轨，优先使用代码图谱）：
+      Track A（优先）：代码图谱连通性检查
+        - 从 code_graph.json 构建文件级无向邻接表
+        - 检查所有文件是否属于同一连通分量
+        - 优点：精确反映实际代码耦合，不依赖路径规则
+        - 若 code_graph.json 不存在或文件不在图中，降级至 Track B
+
+      Track B（Fallback）：架构层路径前缀检查
+        - 原有逻辑：所有文件属于同一架构层
+        - 层不一致为警告（is_warning=True），不硬性阻断
+    """
+    if not files:
+        return CheckResult(passed=True, label="A3 内聚性", detail="无文件")
+
+    graph = _build_file_graph(code_graph_path or _CODE_GRAPH_PATH)
+
+    # Track A：代码图谱连通性（仅当图已加载且包含本次文件中至少一个文件时激活）
+    norm_files = [_normalize_path(f) for f in files]
+    files_in_graph = [nf for nf in norm_files if nf in graph]
+
+    if graph and len(files) > 1 and files_in_graph:
+        is_connected, isolated = _are_files_connected(files, graph)
+        if is_connected:
+            return CheckResult(
+                passed=True,
+                label="A3 内聚性",
+                detail=f"代码图谱连通（{len(files)} 个文件属同一连通分量）",
+            )
+        else:
+            isolated_names = [Path(f).name for f in isolated]
+            return CheckResult(
+                passed=False,
+                label="A3 内聚性",
+                detail=f"代码图谱不连通，孤立文件：{', '.join(isolated_names)}",
+                is_warning=True,  # 不连通为警告，不硬性阻断
+            )
+
+    # Track B：架构层路径前缀检查（Fallback）
     layers = [infer_layer(f) for f in files]
-    # 排除 testing 和 docs（允许与任何业务层混合）
     business_layers = [lyr for lyr in layers if lyr not in ("testing", "docs", "unknown")]
 
     if not business_layers:
         return CheckResult(
             passed=True,
-            label="A3 层一致性",
-            detail=f"全部为 testing/docs 文件（{', '.join(set(layers))}）",
+            label="A3 内聚性",
+            detail=f"全部为 testing/docs 文件（{', '.join(set(layers))}）[层一致性 fallback]",
         )
 
     unique_layers = set(business_layers)
     passed = len(unique_layers) <= 1
-
     layer_map = {f: infer_layer(f) for f in files}
     detail_parts = [f"{Path(f).name}→{lyr}" for f, lyr in layer_map.items()]
+    suffix = "" if graph else "（图谱不可用，使用层一致性 fallback）"
 
     return CheckResult(
         passed=passed,
-        label="A3 层一致性",
-        detail=f"{', '.join(detail_parts)}",
-        is_warning=not passed,  # 层不一致为警告，不硬性阻断
+        label="A3 内聚性",
+        detail=f"{', '.join(detail_parts)}{suffix}",
+        is_warning=not passed,
     )
 
 

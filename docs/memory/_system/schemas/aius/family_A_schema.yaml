@@ -49,6 +49,23 @@ aius:
         - "migration|alembic|flyway"       # 迁移脚本引用
       forbidden_patterns:
         - "SessionLocal\\(\\)"            # 不应在 Model 中直接操作 Session
+    rbo_triggers:
+      keywords:
+        - "新增字段"
+        - "添加字段"
+        - "加字段"
+        - "新增列"
+        - "add field"
+        - "add column"
+        - "新增属性"
+        - "添加属性"
+        - "扩展模型"
+      description_template: "在 {model} 模型新增字段，生成 Alembic migration"
+      token_budget: 3000
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/domain/"
+        - "backend/alembic/versions/"
 
   - id: SCHEMA_MODIFY_FIELD
     family: A_schema
@@ -150,6 +167,20 @@ aius:
         - "class_validators|field_validator|validator"
       forbidden_patterns:
         - "def\\s+\\w+.*:\\s*Session"  # Request Schema 不应包含 DB 操作
+    rbo_triggers:
+      keywords:
+        - "请求模型"
+        - "request model"
+        - "requestSchema"
+        - "请求体"
+        - "入参"
+        - "request schema"
+        - "pydantic request"
+      description_template: "新增 {entity} 的 Pydantic Request Schema"
+      token_budget: 2000
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/api/v1/schemas/"
 
   - id: CONTRACT_ADD_RESPONSE
     family: A_schema
@@ -182,6 +213,20 @@ aius:
         - "model_config.*from_attributes|class Config:.*orm_mode = True"
       forbidden_patterns:
         - "password|hashed_password|salt"    # Response Schema 不能包含敏感字段
+    rbo_triggers:
+      keywords:
+        - "响应模型"
+        - "response model"
+        - "responseSchema"
+        - "返回结构"
+        - "返回字段"
+        - "response schema"
+        - "pydantic response"
+      description_template: "新增 {entity} 的 Pydantic Response Schema"
+      token_budget: 2000
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/api/v1/schemas/"
 
   - id: CONTRACT_MODIFY_RESPONSE
     family: A_schema

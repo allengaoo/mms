@@ -1,0 +1,125 @@
+# AIU 族 B：业务逻辑控制流类（Business Logic / Control Flow Operators）
+# 版本：v1.0 | 2026-05-04 | RBO YAML 迁移（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: B_control_flow
+layer_affinity: [APPLICATION, DOMAIN]
+
+aius:
+  - id: LOGIC_ADD_GUARD
+    family: B_control_flow
+    layer_affinity: [APPLICATION]
+    exec_order: 3
+    base_cost: 2000
+    description: "在 Service/Use-Case 方法新增前置校验逻辑（Guard/Precondition）"
+    input_schema:
+      target_method:
+        type: string
+        required: true
+        description: "目标方法名（如 create_order）"
+      guard_type:
+        type: string
+        required: true
+        enum: [null_check, permission_check, state_check, business_rule, rate_limit]
+        description: "守卫类型"
+      error_type:
+        type: string
+        required: false
+        default: "ValueError"
+        description: "校验失败时抛出的异常类型"
+      message:
+        type: string
+        required: false
+        description: "失败提示信息"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "raise\\s+\\w+Error|raise\\s+\\w+Exception"  # 必须有异常抛出
+        - "if\\s+not\\s+|if\\s+.*is None"              # 前置条件判断
+      forbidden_patterns:
+        - "return None"  # Guard 不应静默返回
+    rbo_triggers:
+      keywords:
+        - "校验"
+        - "validate"
+        - "validation"
+        - "前置检查"
+        - "参数检查"
+        - "输入验证"
+        - "raise exception"
+        - "抛出异常"
+      description_template: "在 {method} 方法新增前置校验逻辑"
+      token_budget: 2000
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/services/control/"
+
+  - id: LOGIC_ADD_CONDITION
+    family: B_control_flow
+    layer_affinity: [APPLICATION, DOMAIN]
+    exec_order: 3
+    base_cost: 2500
+    description: "在业务方法中新增条件分支逻辑（if/elif/else 决策路径）"
+    input_schema:
+      target_method:
+        type: string
+        required: true
+        description: "目标方法名"
+      condition_type:
+        type: string
+        required: true
+        enum: [state_based, flag_based, threshold_based, rule_based]
+        description: "条件类型"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "if\\s+|elif\\s+"
+      forbidden_patterns: []
+
+  - id: LOGIC_ADD_BRANCH
+    family: B_control_flow
+    layer_affinity: [APPLICATION]
+    exec_order: 3
+    base_cost: 3000
+    description: "新增多路分支策略（Strategy Pattern 或 Handler Chain）"
+    input_schema:
+      target_class:
+        type: string
+        required: true
+        description: "目标类名"
+      branch_strategy:
+        type: string
+        required: true
+        enum: [strategy_pattern, chain_of_responsibility, command_pattern, factory]
+    validation_rules:
+      ast_target: "ClassDef"
+      required_patterns:
+        - "ABC|abstractmethod|Protocol"  # 应使用抽象基类
+      forbidden_patterns: []
+
+  - id: LOGIC_EXTRACT_METHOD
+    family: B_control_flow
+    layer_affinity: [APPLICATION, DOMAIN]
+    exec_order: 3
+    base_cost: 3500
+    description: "从现有方法中提取子方法（Refactor: Extract Method）"
+    input_schema:
+      source_method:
+        type: string
+        required: true
+        description: "源方法名"
+      extracted_name:
+        type: string
+        required: true
+        description: "提取出的新方法名（snake_case）"
+      visibility:
+        type: string
+        required: false
+        default: "private"
+        enum: [private, protected, public]
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "def\\s+_"  # 提取的方法通常是私有方法（_开头）
+      forbidden_patterns: []

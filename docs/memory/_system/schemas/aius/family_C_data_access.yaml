@@ -1,0 +1,203 @@
+# AIU 族 C：数据访问类（Data Access / Repository Operators）
+# 版本：v1.0 | 2026-05-04 | RBO YAML 迁移（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: C_data_access
+layer_affinity: [DOMAIN, INFRASTRUCTURE]
+
+aius:
+  - id: MUTATION_ADD_INSERT
+    family: C_data_access
+    layer_affinity: [DOMAIN, INFRASTRUCTURE]
+    exec_order: 2
+    base_cost: 3000
+    description: "在 Repository/Service 新增 create/insert 方法"
+    input_schema:
+      target_entity:
+        type: string
+        required: true
+        description: "目标实体/聚合根名称（如 Order, User）"
+      return_type:
+        type: string
+        required: false
+        default: "entity"
+        enum: [entity, id, bool, void]
+        description: "方法返回类型"
+      transactional:
+        type: boolean
+        required: false
+        default: true
+        description: "是否需要事务包裹"
+      batch_support:
+        type: boolean
+        required: false
+        default: false
+        description: "是否支持批量插入"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "session\\.add|db\\.add|repository\\.save|save\\("
+        - "session\\.commit\\(|session\\.flush\\("
+      forbidden_patterns:
+        - "SELECT\\s+|select\\s+"  # INSERT 方法不应包含查询
+    rbo_triggers:
+      keywords:
+        - "新增"
+        - "创建"
+        - "create"
+        - "insert"
+        - "添加记录"
+        - "写入"
+        - "新建"
+        - "保存"
+        - "持久化"
+      description_template: "在 {entity} Repository 新增 create 方法"
+      token_budget: 3500
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/domain/"
+        - "backend/app/services/control/"
+
+  - id: MUTATION_ADD_UPDATE
+    family: C_data_access
+    layer_affinity: [DOMAIN, INFRASTRUCTURE]
+    exec_order: 2
+    base_cost: 3000
+    description: "在 Service/Repository 新增 update 方法（含部分更新支持）"
+    input_schema:
+      target_entity:
+        type: string
+        required: true
+        description: "目标实体/聚合根名称"
+      update_strategy:
+        type: string
+        required: false
+        default: "partial"
+        enum: [full, partial, patch, optimistic_lock]
+        description: "更新策略（partial = PATCH 语义）"
+      version_field:
+        type: string
+        required: false
+        description: "乐观锁版本字段（optimistic_lock 时必填）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "session\\.merge|db\\.merge|update\\(|save\\("
+      forbidden_patterns:
+        - "DELETE\\s+|delete\\s+"  # UPDATE 方法不应包含删除
+    rbo_triggers:
+      keywords:
+        - "更新"
+        - "修改"
+        - "update"
+        - "edit"
+        - "变更"
+        - "改变状态"
+        - "批量更新"
+        - "部分更新"
+      description_template: "在 {entity} Service 新增 update 方法"
+      token_budget: 3500
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/services/control/"
+
+  - id: MUTATION_ADD_DELETE
+    family: C_data_access
+    layer_affinity: [DOMAIN, INFRASTRUCTURE]
+    exec_order: 2
+    base_cost: 2000
+    description: "在 Repository/Service 新增 delete/soft-delete 方法"
+    input_schema:
+      target_entity:
+        type: string
+        required: true
+        description: "目标实体名称"
+      delete_strategy:
+        type: string
+        required: false
+        default: "soft"
+        enum: [hard, soft, cascade]
+        description: "删除策略（soft = 逻辑删除）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "is_deleted|deleted_at|soft_delete|session\\.delete"
+      forbidden_patterns: []
+
+  - id: QUERY_ADD_SELECT
+    family: C_data_access
+    layer_affinity: [DOMAIN, INFRASTRUCTURE]
+    exec_order: 2
+    base_cost: 2500
+    description: "在 Repository/Query Service 新增查询方法（含分页/过滤支持）"
+    input_schema:
+      target_entity:
+        type: string
+        required: true
+        description: "查询目标实体名称"
+      query_type:
+        type: string
+        required: true
+        enum: [by_id, by_field, list_all, paginated, aggregation]
+        description: "查询类型"
+      filters:
+        type: array
+        required: false
+        description: "过滤条件字段列表"
+      pagination:
+        type: boolean
+        required: false
+        default: false
+        description: "是否支持分页（limit/offset 或 cursor）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "session\\.query|db\\.query|select\\(|scalars\\("
+        - "filter\\(|where\\("
+      forbidden_patterns:
+        - "session\\.add|session\\.commit"  # 查询方法不应有副作用
+    rbo_triggers:
+      keywords:
+        - "查询"
+        - "列表"
+        - "list"
+        - "select"
+        - "搜索"
+        - "过滤"
+        - "分页查询"
+        - "查找"
+        - "检索"
+      description_template: "在 {entity} Repository 新增查询方法"
+      token_budget: 3000
+      model_hint: "fast"
+      files_hint:
+        - "backend/app/domain/"
+        - "backend/app/services/control/"
+
+  - id: QUERY_ADD_FILTER
+    family: C_data_access
+    layer_affinity: [DOMAIN, INFRASTRUCTURE]
+    exec_order: 2
+    base_cost: 2000
+    description: "为已有查询方法新增复合过滤条件"
+    input_schema:
+      target_method:
+        type: string
+        required: true
+        description: "目标查询方法名"
+      filter_fields:
+        type: array
+        required: true
+        description: "新增的过滤字段列表"
+      filter_logic:
+        type: string
+        required: false
+        default: "AND"
+        enum: [AND, OR, NOT]
+        description: "过滤逻辑"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "filter\\(|where\\(|and_\\(|or_\\("
+      forbidden_patterns: []

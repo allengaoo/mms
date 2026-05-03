@@ -1,0 +1,130 @@
+# AIU 族 F：验证与文档类（Validation / Documentation Operators）
+# 版本：v1.0 | 2026-05-04 | RBO YAML 迁移（OCP 重构）
+# ──────────────────────────────────────────────────────────────────────────────
+
+schema_version: "1.0"
+family: F_validation
+layer_affinity: [TESTING, DOCS]
+
+aius:
+  - id: TEST_ADD_UNIT
+    family: F_validation
+    layer_affinity: [TESTING]
+    exec_order: 6
+    base_cost: 3000
+    description: "为目标模块补充 pytest 单元测试（含 mock + edge case）"
+    input_schema:
+      target_module:
+        type: string
+        required: true
+        description: "被测模块路径（如 backend/app/services/control/order_service.py）"
+      test_framework:
+        type: string
+        required: false
+        default: "pytest"
+        enum: [pytest, unittest, jest, vitest]
+        description: "测试框架"
+      coverage_targets:
+        type: array
+        required: false
+        description: "需要覆盖的函数/方法列表"
+      mock_dependencies:
+        type: array
+        required: false
+        description: "需要 mock 的依赖（如 database session, external API）"
+      edge_cases:
+        type: array
+        required: false
+        description: "需要覆盖的边界场景（如 empty_input, none_value, large_batch）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "def test_|@pytest\\.mark\\."  # 必须有 pytest 测试函数
+        - "assert\\s+|pytest\\.raises"   # 必须有断言
+      forbidden_patterns:
+        - "time\\.sleep"  # 测试不应有真实等待
+    rbo_triggers:
+      keywords:
+        - "测试"
+        - "test"
+        - "pytest"
+        - "单元测试"
+        - "unit test"
+        - "mock"
+        - "补充测试"
+        - "test case"
+      description_template: "为 {module} 补充 pytest 单元测试"
+      token_budget: 3000
+      model_hint: "fast"
+      files_hint:
+        - "backend/tests/unit/"
+        - "scripts/mms/tests/"
+
+  - id: TEST_ADD_INTEGRATION
+    family: F_validation
+    layer_affinity: [TESTING]
+    exec_order: 7
+    base_cost: 4000
+    description: "为目标场景补充集成测试（含 DB、外部 API 交互）"
+    input_schema:
+      scenario:
+        type: string
+        required: true
+        description: "测试场景描述（如 用户下单完整流程）"
+      test_client:
+        type: string
+        required: false
+        default: "httpx"
+        enum: [httpx, requests, testclient, playwright]
+        description: "HTTP 测试客户端"
+      fixtures_needed:
+        type: array
+        required: false
+        description: "需要的 pytest fixture 列表（如 db_session, auth_token）"
+    validation_rules:
+      ast_target: "FunctionDef"
+      required_patterns:
+        - "@pytest\\.mark\\.integration|@pytest\\.mark\\.asyncio"
+        - "client\\.|httpx\\.|requests\\."
+      forbidden_patterns: []
+
+  - id: DOC_SYNC
+    family: F_validation
+    layer_affinity: [DOCS]
+    exec_order: 8
+    base_cost: 1500
+    description: "同步更新架构文档（e2e_traceability / frontend_page_map / README）"
+    input_schema:
+      doc_type:
+        type: string
+        required: true
+        enum: [e2e_traceability, frontend_page_map, api_spec, readme, adr]
+        description: "文档类型"
+      change_summary:
+        type: string
+        required: true
+        description: "本次代码变更摘要（用于生成文档更新内容）"
+      affected_sections:
+        type: array
+        required: false
+        description: "受影响的文档章节列表"
+    validation_rules:
+      ast_target: "Module"
+      required_patterns:
+        - "## |# "  # 必须有 Markdown 标题结构
+      forbidden_patterns: []
+    rbo_triggers:
+      keywords:
+        - "文档"
+        - "docs"
+        - "e2e_traceability"
+        - "frontend_page_map"
+        - "同步文档"
+        - "更新文档"
+        - "doc sync"
+      description_template: "同步更新架构文档（e2e_traceability / frontend_page_map）"
+      token_budget: 1500
+      model_hint: "fast"
+      files_hint:
+        - "docs/architecture/e2e_traceability.md"
+        - "docs/architecture/frontend_page_map.md"

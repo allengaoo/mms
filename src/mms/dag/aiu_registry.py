@@ -59,6 +59,11 @@ class AIUTypeDef:
       layer_affinity   — 架构层亲和性列表（如 ["ADAPTER", "DOMAIN"]）
       input_schema     — DAG 编排时 LLM 遵守的输入参数 Schema（JSON Schema 风格）
       validation_rules — 代码审查时的 AST 验证规则
+
+    v2.1 新增：
+      rbo_triggers     — RBO 规则触发器（OCP：在 YAML 中声明，TaskDecomposer 动态加载）
+                         格式：{keywords: [...], description_template: "...",
+                                token_budget: 3000, model_hint: "fast", files_hint: [...]}
     """
     id: str                              # 如 "SCHEMA_ADD_FIELD"
     family: str = ""                     # 如 "A_schema"
@@ -69,6 +74,7 @@ class AIUTypeDef:
     description: str = ""
     input_schema: Dict = field(default_factory=dict)      # DAG 编排输入规范
     validation_rules: Dict = field(default_factory=dict)  # AST 验证规则
+    rbo_triggers: Dict = field(default_factory=dict)      # RBO 触发器（OCP 扩展）
     is_builtin: bool = True              # 来自 Enum = True；来自 YAML = False
 
 
@@ -194,11 +200,12 @@ class AIURegistry:
             description=item.get("description", existing.description if existing else ""),
             input_schema=existing.input_schema if existing else {},
             validation_rules=existing.validation_rules if existing else {},
+            rbo_triggers=item.get("rbo_triggers") or (existing.rbo_triggers if existing else {}),
             is_builtin=is_builtin,
         )
 
     def _apply_contract_item(self, item: dict) -> None:
-        """将合约 YAML 条目（含 input_schema + validation_rules）合并到注册表。"""
+        """将合约 YAML 条目（含 input_schema + validation_rules + rbo_triggers）合并到注册表。"""
         type_id = item["id"]
         existing = self._registry.get(type_id)
         self._registry[type_id] = AIUTypeDef(
@@ -211,6 +218,7 @@ class AIURegistry:
             description=item.get("description", existing.description if existing else ""),
             input_schema=item.get("input_schema") or (existing.input_schema if existing else {}),
             validation_rules=item.get("validation_rules") or (existing.validation_rules if existing else {}),
+            rbo_triggers=item.get("rbo_triggers") or (existing.rbo_triggers if existing else {}),
             is_builtin=existing.is_builtin if existing else False,
         )
 
@@ -320,6 +328,47 @@ class AIURegistry:
         """返回尚未定义 input_schema 的 AIU 类型列表（待完善合约）。"""
         self._ensure_loaded()
         return sorted(k for k, v in self._registry.items() if not v.input_schema)
+
+    def get_rbo_rules(self) -> List[Dict]:
+        """
+        返回所有定义了 rbo_triggers 的 AIU 类型，格式兼容 TaskDecomposer._rbo_rules。
+
+        OCP 扩展点：在 YAML 中为任意 AIU 类型添加 rbo_triggers 块，
+        TaskDecomposer 下次初始化时自动识别为 RBO 规则，无需修改 Python 源码。
+
+        返回格式：
+          [{"id": "rbo_schema_add_field", "aiu_type": AIUType.SCHEMA_ADD_FIELD,
+            "keywords": [...], "description_template": "...",
+            "token_budget": 3000, "model_hint": "fast", "files_hint": [...]}, ...]
+        """
+        self._ensure_loaded()
+        try:
+            from mms.dag.aiu_types import AIUType  # type: ignore[import]
+        except ImportError:
+            return []
+
+        rules: List[Dict] = []
+        for type_id, def_ in self._registry.items():
+            if not def_.rbo_triggers:
+                continue
+            try:
+                aiu_type = AIUType(type_id)
+            except ValueError:
+                continue  # 非内置 Enum 类型，跳过
+
+            rules.append({
+                "id": f"rbo_{type_id.lower()}",
+                "aiu_type": aiu_type,
+                "keywords": list(def_.rbo_triggers.get("keywords") or []),
+                "description_template": str(def_.rbo_triggers.get("description_template", "")),
+                "token_budget": int(def_.rbo_triggers.get("token_budget", def_.base_cost)),
+                "model_hint": str(def_.rbo_triggers.get("model_hint", "fast")),
+                "files_hint": list(def_.rbo_triggers.get("files_hint") or []),
+            })
+
+        # 按 exec_order 排序，保持确定性
+        rules.sort(key=lambda r: self._registry[r["aiu_type"].value].exec_order)
+        return rules
 
 
 # ── 模块级单例 ────────────────────────────────────────────────────────────────

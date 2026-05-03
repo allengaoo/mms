@@ -4,8 +4,8 @@ aiu_feedback.py — AIU 执行反馈统计系统
 类比数据库 Query Feedback（Cardinality Feedback）机制：
   执行完成后收集真实代价 → 与估算代价对比 → 更新统计 → 下次同类 AIU 受益
 
-改进点（v2.0）：
-  1. 移除 fcntl 强依赖（跨平台崩溃风险）→ 改用 threading.Lock + 可选 filelock
+改进点（v2.1）：
+  1. filelock 升为必选依赖（跨进程并发安全）。安装：pip install filelock>=3.12
   2. 内存态缓存（In-memory Cache）：启动时一次性加载磁盘，之后 query() 不再触发 I/O
   3. 滑动窗口衰减（Decay Window）：每种 AIU 只保留最近 N 条记录，旧记录自动淘汰
   4. 新增 record_unit_feedback() / get_max_feedback_level() 替代 unit_runner 中的直接文件读写
@@ -22,7 +22,7 @@ aiu_feedback.py — AIU 执行反馈统计系统
   docs/memory/_system/feedback_stats.jsonl
   每行一条 JSON 记录（append-only WAL）
 
-EP-129 v2.0 | 2026-05-04
+EP-129 v2.1 | 2026-05-04
 """
 
 from __future__ import annotations
@@ -44,17 +44,10 @@ except ImportError:
     _ROOT = _HERE.parent.parent
 _FEEDBACK_PATH = _ROOT / "docs" / "memory" / "_system" / "feedback_stats.jsonl"
 
-# ── 跨平台文件锁 ──────────────────────────────────────────────────────────────
-# 优先使用 filelock（跨进程安全），降级为 threading.Lock（单进程内安全）
-try:
-    from filelock import FileLock as _FileLock  # type: ignore[import]
-    _HAS_FILELOCK = True
-except ImportError:
-    _HAS_FILELOCK = False
-    _logger.debug(
-        "filelock 未安装，使用 threading.Lock 作为写入锁。"
-        "多进程并发写入可能产生竞争，建议安装：pip install filelock"
-    )
+# ── 跨进程文件锁（必选依赖）─────────────────────────────────────────────────
+# filelock 是 requirements.txt 中的必选依赖，保证多进程 CI/CD 场景的写入安全。
+# 若未安装，直接抛出 ImportError，避免数据竞争造成 feedback_stats.jsonl 损坏。
+from filelock import FileLock as _FileLock  # type: ignore[import]
 
 # ── 可配置常量（优先从 mms_config 读取）──────────────────────────────────────
 
@@ -178,11 +171,8 @@ class AIUFeedbackStore:
         self._cache_loaded = False
         self._lock = threading.Lock()  # 保护内存缓存的读写
 
-        # 跨进程文件锁（写磁盘时使用）
-        if _HAS_FILELOCK:
-            self._file_lock: Optional[object] = _FileLock(str(self._path) + ".lock")
-        else:
-            self._file_lock = None
+        # 跨进程文件锁（写磁盘时使用，filelock 为必选依赖）
+        self._file_lock = _FileLock(str(self._path) + ".lock")
 
     # ── 缓存管理 ─────────────────────────────────────────────────────────────
 
@@ -214,16 +204,11 @@ class AIUFeedbackStore:
                 self._cache_loaded = True
 
     def _write_line(self, line: str) -> None:
-        """线程安全 + 跨进程安全地追加一行到磁盘。"""
+        """线程安全 + 跨进程安全地追加一行到磁盘（FileLock 保证原子写入）。"""
         try:
-            if self._file_lock is not None:
-                with self._file_lock:  # type: ignore[attr-defined]
-                    with self._path.open("a", encoding="utf-8") as f:
-                        f.write(line)
-            else:
-                with self._lock:
-                    with self._path.open("a", encoding="utf-8") as f:
-                        f.write(line)
+            with self._file_lock:
+                with self._path.open("a", encoding="utf-8") as f:
+                    f.write(line)
         except OSError as exc:
             _logger.warning("AIUFeedbackStore 写入磁盘失败: %s", exc)
 

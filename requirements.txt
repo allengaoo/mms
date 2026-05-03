@@ -1,0 +1,14 @@
+# MMS (Mulan Memory System) 依赖清单
+# ──────────────────────────────────────────────────────────
+# 安装：pip install -r requirements.txt
+
+# ── 核心运行时 ─────────────────────────────────────────────
+pyyaml>=6.0            # YAML 解析（AIU Schema、config.yaml）
+filelock>=3.12         # 跨进程文件锁（aiu_feedback.py WAL 写入）
+
+# ── 可选：LLM Provider ─────────────────────────────────────
+# dashscope>=1.14      # 阿里云百炼 SDK（Bailian Provider 需要）
+
+# ── 可选：开发与测试 ──────────────────────────────────────
+# pytest>=7.4          # 测试框架
+# pytest-mock>=3.12    # Mock 工具
