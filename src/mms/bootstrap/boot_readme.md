@@ -11,13 +11,13 @@
 架构推断的大脑，负责融合多路信号。
 
 - `**fn_infer_layer(file_path)`**: 根据文件路径、命名约定等推断其所属的架构层级（如 `L3_domain`, `L4_application`）。
-- `**fn_detect_code_object_type(ast_node, layer)**`: 结合 AST 节点特征和所属层级，推断具体的 ObjectType（如 `DatabaseTable`, `APIEndpoint`）。
+- `**fn_detect_code_object_type(ast_node, layer)`**: 结合 AST 节点特征和所属层级，推断具体的 ObjectType（如 `DatabaseTable`, `APIEndpoint`）。
 
 ### `code_graph_builder.py`
 
 负责底层代码结构的静态分析。
 
-- `**fn_build_code_graph(project_root)**`: 扫描整个代码库，解析 AST，提取类、函数定义及其相互调用/依赖关系，构建 `CodeGraph`。
+- `**fn_build_code_graph(project_root)`**: 扫描整个代码库，解析 AST，提取类、函数定义及其相互调用/依赖关系，构建 `CodeGraph`。
 
 ### `memory_seed_generator.py`
 
@@ -30,7 +30,7 @@
 
 顶层编排脚本，整合上述流程。
 
-- `**bootstrap_project(project_root)**`: 暴露给 CLI 的主入口，顺序调用 Graph Builder -> Signal Fusion -> Seed Generator，并生成 `BootstrapV2Report`。
+- `**bootstrap_project(project_root)`**: 暴露给 CLI 的主入口，顺序调用 Graph Builder -> Signal Fusion -> Seed Generator，并生成 `BootstrapV2Report`。
 
 ## 3. 业务流程图
 

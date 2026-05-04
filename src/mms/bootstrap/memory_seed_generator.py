@@ -92,7 +92,19 @@ def _extract_about_concepts(class_name: str, layer: str) -> List[str]:
 
 # ─── 记忆 Markdown 生成 ───────────────────────────────────────────────────────
 
-_LAYER_ALIASES = {
+# Bootstrap 内部层名 → MemoryNode schema 规范层名（memory_node.yaml enum）
+# Bootstrap 使用 DDD 术语（ADAPTER/APP/DOMAIN），schema 使用 Clean Architecture 术语（L1-L5）
+_SCHEMA_LAYER_MAP = {
+    "ADAPTER":  "L5_interface",       # HTTP controller / gRPC handler / CLI adapter
+    "APP":      "L4_application",     # Application service / use case orchestrator
+    "DOMAIN":   "L3_domain",          # Domain entity / repository / aggregate
+    "PLATFORM": "L2_infrastructure",  # Database client / config / message broker
+    "CC":       "CC",                 # Cross-cutting: util / exception / logging
+    "UNKNOWN":  "CC",                 # Fallback
+}
+
+# 目录名仍保留 Bootstrap 语义（便于开发者理解层级归属）
+_LAYER_DIR_NAMES = {
     "ADAPTER":  "ADAPTER",
     "APP":      "APP",
     "DOMAIN":   "DOMAIN",
@@ -149,11 +161,13 @@ def _render_memory_md(
 
     type_desc = _TYPE_DESCRIPTIONS.get(code_type, f"{code_type} 类型代码对象")
 
+    schema_layer = _SCHEMA_LAYER_MAP.get(layer, layer)
+
     content = f"""\
 ---
 id: {memory_id}
 type: pattern
-layer: {_LAYER_ALIASES.get(layer, layer)}
+layer: {schema_layer}
 tier: {tier}
 tags: {tags_yaml}
 cites_files:

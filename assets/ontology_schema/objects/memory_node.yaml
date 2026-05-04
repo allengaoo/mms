@@ -34,8 +34,8 @@ properties:
   id:
     type: string
     required: true
-    pattern: "^(MEM-L-|AD-|BIZ-|ENV-|MEM-DB-)[0-9A-Z-]+"
-    description: "记忆唯一 ID"
+    pattern: "^(MEM-L-|MEM-BOOT-|AD-|BIZ-|ENV-|MEM-DB-)[0-9A-Z-]+"
+    description: "记忆唯一 ID（MEM-BOOT- 为 bootstrap 自动生成节点保留前缀）"
 
   type:
     type: string

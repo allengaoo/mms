@@ -105,10 +105,14 @@ _NAME_SUFFIXES: Dict[str, List[str]] = {
                  "Resolver", "Delivery"],        # Go/GraphQL 惯用名
     "APP":      ["Service", "UseCase", "Interactor",
                  "Orchestrator", "Manager", "Facade", "Application",
-                 "Usecase"],                     # Go 惯用
+                 "Usecase",                      # Go 惯用
+                 "ServiceImpl", "UseCaseImpl", "InteractorImpl",
+                 "OrchestratorImpl", "ManagerImpl", "FacadeImpl"],  # Java Impl 惯用
     "DOMAIN":   ["Repository", "Repo", "DAO", "Store",
                  "Mapper", "Entity", "Aggregate", "ValueObject",
-                 "Request", "Response", "DTO"],  # Go/Java DTO
+                 "Request", "Response", "DTO",   # Go/Java DTO
+                 "RepositoryImpl", "RepoImpl", "DAOImpl", "StoreImpl",
+                 "MapperImpl"],                  # Java Repository Impl 惯用
     "PLATFORM": ["Config", "Configuration", "Filter",
                  "Interceptor", "Provider", "Factory", "Auth", "Security",
                  "Logger", "Postgres", "Database", "Client",  # Go infra
@@ -312,16 +316,40 @@ def apply_override(
 
 # ─── 信号评分器 ───────────────────────────────────────────────────────────────
 
+_PATH_STRONG_PATTERNS: Dict[str, List[str]] = {
+    # 这些目录名单独出现就具有高置信度，路径信号评分 1.0（权重 0.25 → 贡献 0.25，超过 0.25 阈值）
+    "ADAPTER":  ["controller", "handler", "router", "endpoint"],
+    "APP":      ["service", "usecase", "use_case"],
+    "DOMAIN":   ["entity", "aggregate", "domain", "repository", "model"],
+    "PLATFORM": ["config", "configuration", "infrastructure", "infra"],
+}
+
+
 def _score_path(file_path: str, name_patterns: Optional[Dict] = None) -> Dict[str, float]:
-    """路径信号：目录名关键词匹配评分（各层 0~1）。"""
+    """路径信号：目录名关键词匹配评分（各层 0~1）。
+
+    强信号（entity/aggregate/repository 等明确目录）→ 1.0；
+    弱信号（model/dto/impl 等共享目录）→ 0.4；
+    两类均可叠加（上限 1.0）。
+    """
     patterns = name_patterns or _PATH_PATTERNS
     parts = Path(file_path).parts
     path_str = "/".join(parts).lower()
     scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+
+    # 弱信号路径模式（0.4）
     for layer, keywords in patterns.items():
         for kw in keywords:
             if kw in path_str:
                 scores[layer] = min(1.0, scores[layer] + 0.4)
+
+    # 强信号路径模式（1.0，可独立超过 0.25 阈值）
+    for layer, keywords in _PATH_STRONG_PATTERNS.items():
+        for kw in keywords:
+            if kw in path_str:
+                scores[layer] = 1.0
+                break
+
     return scores
 
 
