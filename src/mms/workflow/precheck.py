@@ -25,13 +25,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 _HERE = Path(__file__).resolve().parent
-try:
-    from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
-except ImportError:
-    _ROOT = _HERE.parent.parent
-_MEMORY_ROOT = _ROOT / "docs" / "memory"
-_CHECKPOINTS_DIR = _MEMORY_ROOT / "_system" / "checkpoints"
-_EP_DIR = _ROOT / "docs" / "execution_plans"
 
 # ANSI 颜色
 _G = "\033[92m"   # green
@@ -51,10 +44,12 @@ def _info(msg: str) -> None: print(f"  {_D}ℹ️  {msg}{_X}")
 
 # ── EP 文件解析 ──────────────────────────────────────────────────────────────
 
-def find_ep_file(ep_id: str) -> Optional[Path]:
+def find_ep_file(ep_id: str, project_root: Optional[Path] = None) -> Optional[Path]:
     """在 docs/execution_plans/ 中查找 EP 文件"""
+    root = project_root or Path.cwd()
+    ep_dir = root / "docs" / "execution_plans"
     ep_norm = ep_id.upper()
-    for f in _EP_DIR.glob("*.md"):
+    for f in ep_dir.glob("*.md"):
         if ep_norm in f.name.upper():
             return f
     return None
@@ -129,19 +124,20 @@ def parse_testing_files(ep_file: Path) -> List[str]:
 
 # ── arch_check 基线扫描 ──────────────────────────────────────────────────────
 
-def run_arch_check_baseline(scope_files: List[str]) -> Dict:
+def run_arch_check_baseline(scope_files: List[str], project_root: Optional[Path] = None) -> Dict:
     """
     运行 arch_check.py，返回违反列表字典。
     结构：{"violations": [{"check": "AC-1", "file": "...", "message": "..."}], "total": N}
     """
-    arch_check = _HERE / "mms.analysis.arch_check.py"
+    root = project_root or Path.cwd()
+    arch_check = _HERE.parent / "analysis" / "arch_check.py"
     if not arch_check.exists():
         return {"violations": [], "total": 0, "error": "mms.analysis.arch_check.py 不存在"}
 
     try:
         result = subprocess.run(
             [sys.executable, str(arch_check), "--json"],
-            capture_output=True, text=True, cwd=str(_ROOT),
+            capture_output=True, text=True, cwd=str(root),
         )
         # arch_check 可能不支持 --json，则解析文本输出
         if result.returncode not in (0, 1):
@@ -168,15 +164,16 @@ def _parse_arch_check_text(text: str) -> Dict:
 
 # ── 影响范围分析 ─────────────────────────────────────────────────────────────
 
-def analyze_impact(scope_files: List[str]) -> Dict:
+def analyze_impact(scope_files: List[str], project_root: Optional[Path] = None) -> Dict:
     """
     分析涉及文件对 e2e_traceability.md 和 frontend_page_map.md 的影响范围。
     返回：{"api_endpoints": [...], "pages": [...], "stores": [...]}
     """
+    root = project_root or Path.cwd()
     result: Dict[str, List[str]] = {"api_endpoints": [], "pages": [], "stores": []}
 
-    traceability = _ROOT / "docs" / "architecture" / "e2e_traceability.md"
-    page_map = _ROOT / "docs" / "architecture" / "frontend_page_map.md"
+    traceability = root / "docs" / "architecture" / "e2e_traceability.md"
+    page_map = root / "docs" / "architecture" / "frontend_page_map.md"
 
     for scope_file in scope_files:
         stem = Path(scope_file).stem
@@ -213,10 +210,12 @@ def _extract_cell(table_row: str, col_idx: int) -> str:
 
 # ── 快照保存 ─────────────────────────────────────────────────────────────────
 
-def save_checkpoint(ep_id: str, data: Dict) -> Path:
+def save_checkpoint(ep_id: str, data: Dict, project_root: Optional[Path] = None) -> Path:
     """保存 precheck 基线快照到 checkpoint 文件"""
-    _CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
-    checkpoint_file = _CHECKPOINTS_DIR / f"precheck-{ep_id}.json"
+    root = project_root or Path.cwd()
+    checkpoints_dir = root / "docs" / "memory" / "_system" / "checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_file = checkpoints_dir / f"precheck-{ep_id}.json"
     checkpoint_file.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -224,9 +223,11 @@ def save_checkpoint(ep_id: str, data: Dict) -> Path:
     return checkpoint_file
 
 
-def load_checkpoint(ep_id: str) -> Optional[Dict]:
+def load_checkpoint(ep_id: str, project_root: Optional[Path] = None) -> Optional[Dict]:
     """加载 precheck 基线快照（供 postcheck 使用）"""
-    checkpoint_file = _CHECKPOINTS_DIR / f"precheck-{ep_id}.json"
+    root = project_root or Path.cwd()
+    checkpoints_dir = root / "docs" / "memory" / "_system" / "checkpoints"
+    checkpoint_file = checkpoints_dir / f"precheck-{ep_id}.json"
     if not checkpoint_file.exists():
         return None
     try:
@@ -237,7 +238,7 @@ def load_checkpoint(ep_id: str) -> Optional[Dict]:
 
 # ── 主检查逻辑 ───────────────────────────────────────────────────────────────
 
-def run_precheck(ep_id: str, strict: bool = False) -> int:
+def run_precheck(ep_id: str, strict: bool = False, project_root: Optional[Path] = None) -> int:
     """
     执行完整的前置检查流程。
 
@@ -252,7 +253,7 @@ def run_precheck(ep_id: str, strict: bool = False) -> int:
 
     # ── 1. 找到 EP 文件 ──────────────────────────────────────────────────────
     print(f"\n{_C}▶ Step 1 · 解析 EP 文件{_X}")
-    ep_file = find_ep_file(ep_norm)
+    ep_file = find_ep_file(ep_norm, project_root)
     if not ep_file:
         _err(f"找不到 EP 文件：{ep_norm}（在 docs/execution_plans/ 中搜索）")
         return 2
@@ -278,7 +279,7 @@ def run_precheck(ep_id: str, strict: bool = False) -> int:
 
     # ── 2. arch_check 基线 ───────────────────────────────────────────────────
     print(f"\n{_C}▶ Step 2 · arch_check 基线扫描{_X}")
-    arch_result = run_arch_check_baseline(scope_files)
+    arch_result = run_arch_check_baseline(scope_files, project_root)
 
     if "error" in arch_result:
         _warn(f"arch_check 运行异常：{arch_result['error']}")
@@ -300,7 +301,7 @@ def run_precheck(ep_id: str, strict: bool = False) -> int:
     # ── 3. 影响范围分析 ──────────────────────────────────────────────────────
     print(f"\n{_C}▶ Step 3 · 影响范围分析{_X}")
     if scope_files:
-        impact = analyze_impact(scope_files)
+        impact = analyze_impact(scope_files, project_root)
         if impact["api_endpoints"]:
             _info(f"关联 API Endpoint：{impact['api_endpoints']}")
         if impact["pages"]:
@@ -323,8 +324,8 @@ def run_precheck(ep_id: str, strict: bool = False) -> int:
         "arch_violations_count": len(arch_violations),
         "impact": impact,
     }
-    checkpoint_file = save_checkpoint(ep_norm, checkpoint_data)
-    _ok(f"基线快照已保存：{checkpoint_file.relative_to(_ROOT)}")
+    checkpoint_file = save_checkpoint(ep_norm, checkpoint_data, project_root)
+    _ok(f"基线快照已保存：{checkpoint_file.name}")
 
     # ── 5. 综合评级 ──────────────────────────────────────────────────────────
     print(f"\n{'─' * 60}")

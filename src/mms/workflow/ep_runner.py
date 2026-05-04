@@ -43,13 +43,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 _HERE = Path(__file__).resolve().parent
-try:
-    from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
-except ImportError:
-    _ROOT = _HERE.parent.parent
-_DAG_DIR = _ROOT / "docs" / "memory" / "_system" / "dag"
-_EP_RUN_DIR = _ROOT / "docs" / "memory" / "_system" / "ep_run"
-_EP_DIR = _ROOT / "docs" / "execution_plans"
 
 # ANSI 颜色
 _G = "\033[92m"
@@ -159,9 +152,11 @@ class EpRunState:
     postcheck_done: bool = False
     dry_run: bool = False
 
-    def save(self) -> None:
-        _EP_RUN_DIR.mkdir(parents=True, exist_ok=True)
-        path = _EP_RUN_DIR / f"{self.ep_id.upper()}.json"
+    def save(self, project_root: Optional[Path] = None) -> None:
+        root = project_root or Path.cwd()
+        ep_run_dir = root / "docs" / "memory" / "_system" / "ep_run"
+        ep_run_dir.mkdir(parents=True, exist_ok=True)
+        path = ep_run_dir / f"{self.ep_id.upper()}.json"
         self.updated_at = datetime.now(timezone.utc).isoformat()
         path.write_text(
             json.dumps(asdict(self), ensure_ascii=False, indent=2),
@@ -169,8 +164,10 @@ class EpRunState:
         )
 
     @classmethod
-    def load(cls, ep_id: str) -> Optional["EpRunState"]:
-        path = _EP_RUN_DIR / f"{ep_id.upper()}.json"
+    def load(cls, ep_id: str, project_root: Optional[Path] = None) -> Optional["EpRunState"]:
+        root = project_root or Path.cwd()
+        ep_run_dir = root / "docs" / "memory" / "_system" / "ep_run"
+        path = ep_run_dir / f"{ep_id.upper()}.json"
         if not path.exists():
             return None
         try:
@@ -346,12 +343,14 @@ def _normalize_ep_id(ep_id: str) -> str:
     return ep_id
 
 
-def _find_ep_file(ep_id: str) -> Optional[Path]:
+def _find_ep_file(ep_id: str, project_root: Optional[Path] = None) -> Optional[Path]:
     """在 docs/execution_plans/ 中查找 EP 文件（前缀匹配）"""
-    for path in _EP_DIR.glob(f"{ep_id}_*.md"):
+    root = project_root or Path.cwd()
+    ep_dir = root / "docs" / "execution_plans"
+    for path in ep_dir.glob(f"{ep_id}_*.md"):
         return path
     # 也支持不带尾缀的精确文件名
-    exact = _EP_DIR / f"{ep_id}.md"
+    exact = ep_dir / f"{ep_id}.md"
     if exact.exists():
         return exact
     return None
@@ -370,7 +369,7 @@ def _run_subprocess(
     try:
         result = subprocess.run(
             cmd,
-            cwd=str(cwd or _ROOT),
+            cwd=str(cwd or Path.cwd()),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -384,12 +383,12 @@ def _run_subprocess(
         return False, f"{description} 执行异常：{e}"
 
 
-def _load_dag_state(ep_id: str):
+def _load_dag_state(ep_id: str, project_root: Optional[Path] = None):
     """安全加载 DagState，失败时返回 None"""
     try:
         sys.path.insert(0, str(_HERE))
         from mms.dag.dag_model import DagState  # type: ignore[import]
-        return DagState.load(ep_id)
+        return DagState.load(ep_id, project_root)
     except FileNotFoundError:
         return None
     except Exception as e:
@@ -494,6 +493,7 @@ class EpRunPipeline:
         skip_precheck: bool = False,
         skip_postcheck: bool = False,
         model: str = "capable",
+        project_root: Optional[Path] = None,
     ) -> EpRunResult:
         """
         执行完整 EP Pipeline。
@@ -506,8 +506,10 @@ class EpRunPipeline:
             skip_precheck:   跳过 Phase 1 precheck
             skip_postcheck:  跳过 Phase 3 postcheck
             model:           默认执行模型（Unit 自身 model_hint 优先）
+            project_root:    项目根目录（可选）
         """
         ep_id = _normalize_ep_id(ep_id)
+        root = project_root or Path.cwd()
         t_start = time.monotonic()
         result = EpRunResult(ep_id=ep_id, success=False, dry_run=dry_run)
 
@@ -531,9 +533,10 @@ class EpRunPipeline:
         state.phase = "env_check"
         state.save()
 
-        ep_file = _find_ep_file(ep_id)
+        ep_file = _find_ep_file(ep_id, project_root)
         if ep_file is None:
-            _err(f"未找到 EP 文件：{ep_id}（在 {_EP_DIR} 中查找 {ep_id}_*.md）")
+            ep_dir = root / "docs" / "execution_plans"
+            _err(f"未找到 EP 文件：{ep_id}（在 {ep_dir} 中查找 {ep_id}_*.md）")
             state.phase = "failed"
             state.failure_error = f"EP 文件不存在：{ep_id}"
             state.save()
@@ -542,7 +545,7 @@ class EpRunPipeline:
         _ok(f"EP 文件：{ep_file.name}")
 
         # 检查 DAG 状态
-        dag_state = _load_dag_state(ep_id)
+        dag_state = _load_dag_state(ep_id, project_root)
         if dag_state is None:
             _warn(f"未找到 DAG 状态文件，请先运行：mms unit generate --ep {ep_id}")
             # 尝试从 EP 文件解析 Scope 作为临时 Unit 列表
@@ -589,10 +592,14 @@ class EpRunPipeline:
             state.phase = "precheck"
             state.save()
 
+            cmd = [sys.executable, str(_HERE / "cli.py"), "precheck", "--ep", ep_id]
+            if project_root:
+                cmd.extend(["--root", str(project_root)])
             ok, output = _run_subprocess(
-                [sys.executable, str(_HERE / "cli.py"), "precheck", "--ep", ep_id],
+                cmd,
                 description="precheck",
                 timeout=PRECHECK_TIMEOUT,
+                cwd=root,
             )
             if ok:
                 _ok("precheck 完成")
@@ -707,10 +714,14 @@ class EpRunPipeline:
             state.phase = "postcheck"
             state.save()
 
+            cmd = [sys.executable, str(_HERE / "cli.py"), "postcheck", "--ep", ep_id]
+            if project_root:
+                cmd.extend(["--root", str(project_root)])
             ok, output = _run_subprocess(
-                [sys.executable, str(_HERE / "cli.py"), "postcheck", "--ep", ep_id],
+                cmd,
                 description="postcheck",
                 timeout=POSTCHECK_TIMEOUT,
+                cwd=root,
             )
             if ok:
                 _ok("postcheck 完成")

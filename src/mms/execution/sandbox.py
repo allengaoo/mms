@@ -130,8 +130,14 @@ class GitSandbox:
             commit hash（短），失败返回 None
         """
         try:
+            # 精准 add：只提交沙箱声明的文件（self.files）和沙箱内新建的文件（self._new_files）。
+            # 绝对不允许使用 git add -A，否则会将开发者工作区中所有未提交的无关修改
+            # （含临时文件、API Key 等）强制混入 EP 的 commit，破坏沙箱隔离承诺。
+            precise_files = list(dict.fromkeys(self.files + self._new_files))
+            if not precise_files:
+                return None  # 无文件声明，跳过 commit
             subprocess.run(
-                ["git", "add", "-A"],
+                ["git", "add", "--"] + precise_files,
                 cwd=str(self.root), check=True, capture_output=True,
             )
             result = subprocess.run(

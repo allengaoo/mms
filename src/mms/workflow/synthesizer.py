@@ -28,17 +28,6 @@ from pathlib import Path
 from typing import List, Optional
 
 _HERE = Path(__file__).resolve().parent
-try:
-    from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
-except ImportError:
-    _ROOT = _HERE.parent.parent
-_MEMORY_ROOT = _ROOT / "docs" / "memory"
-_TEMPLATES_DIR = _MEMORY_ROOT / "templates"
-_SYSTEM_DIR = _MEMORY_ROOT / "_system"
-_CODEMAP_PATH = _SYSTEM_DIR / "mms.memory.codemap.md"
-_FUNCMAP_PATH = _SYSTEM_DIR / "mms.memory.funcmap.md"
-_QUICKMAP_PATH = _SYSTEM_DIR / "task_quickmap.yaml"
-_E2E_TRACE_PATH = _ROOT / "docs" / "architecture" / "e2e_traceability.md"
 
 try:
     import sys as _sys
@@ -53,12 +42,28 @@ _FUNCMAP_MAX_LINES = 40     # funcmap 关键词匹配最大行数
 _E2E_CONTEXT_LINES = 12     # e2e 降级扫描时的上下文行数
 
 
-def _load_synthesize_config() -> dict:
+def _get_paths(project_root: Optional[Path] = None) -> dict:
+    root = project_root or Path.cwd()
+    memory_root = root / "docs" / "memory"
+    system_dir = memory_root / "_system"
+    return {
+        "root": root,
+        "memory_root": memory_root,
+        "templates_dir": memory_root / "templates",
+        "system_dir": system_dir,
+        "codemap_path": system_dir / "mms.memory.codemap.md",
+        "funcmap_path": system_dir / "mms.memory.funcmap.md",
+        "quickmap_path": system_dir / "task_quickmap.yaml",
+        "e2e_trace_path": root / "docs" / "architecture" / "e2e_traceability.md",
+    }
+
+def _load_synthesize_config(project_root: Optional[Path] = None) -> dict:
     """
     从 config.yaml 读取 synthesize 节配置，返回扁平化字典。
     读取失败时返回空 dict，所有参数回退到调用方的默认值。
     """
-    config_path = _SYSTEM_DIR / "config.yaml"
+    paths = _get_paths(project_root)
+    config_path = paths["system_dir"] / "config.yaml"
     if not config_path.exists():
         return {}
     try:
@@ -216,6 +221,7 @@ def synthesize(
     top_k: int = 5,
     refresh_maps: bool = False,
     author: Optional[str] = None,
+    project_root: Optional[Path] = None,
 ) -> str:
     """
     核心合成函数（v3.0，架构图谱 + 三级检索漏斗）。
@@ -230,6 +236,7 @@ def synthesize(
         top_k:              第二级记忆检索数量
         refresh_maps:       True 时在合成前自动刷新 codemap + funcmap 快照
         author:             任务提交者标识（用于个人历史优先检索，可选）
+        project_root:       项目根目录（可选）
 
     返回：
         结构化的 Cursor 起手提示词字符串
@@ -237,11 +244,11 @@ def synthesize(
     sys.path.insert(0, str(_HERE.parent))
     sys.path.insert(0, str(_HERE))
 
-    cfg = _load_synthesize_config()
+    cfg = _load_synthesize_config(project_root)
 
     # ── 0. 可选：刷新代码库快照 ────────────────────────────────────────────
     if refresh_maps:
-        _refresh_maps()
+        _refresh_maps(project_root)
 
     # ── A. 架构意图分类 + 确定性路径解析（v3.0 新增）─────────────────────
     # 这是消除"路径幻觉"的核心机制：
@@ -334,6 +341,7 @@ def synthesize(
                 from mms.memory.task_matcher import TaskMatcher  # type: ignore[no-redef]
 
             matcher = TaskMatcher(
+                project_root=project_root,
                 history_top_x=history_cfg.get("history_top_x", 10),
                 shared_top_y=history_cfg.get("shared_top_y", 20),
                 similarity_threshold=history_cfg.get("similarity_threshold", 0.30),
@@ -362,7 +370,7 @@ def synthesize(
     memory_cfg = cfg.get("memory_search", {})
     effective_top_k = memory_cfg.get("top_k", top_k)
     effective_compress = memory_cfg.get("compress", True)
-    memory_context = _inject_memories(task_description, effective_top_k, effective_compress)
+    memory_context = _inject_memories(task_description, effective_top_k, effective_compress, project_root)
     if funnel_level == "L3" and memory_context and "（记忆检索失败" not in memory_context:
         funnel_level = "L2"
         print("  · [第二级] 记忆关键词匹配完成", flush=True)
@@ -371,16 +379,16 @@ def synthesize(
     quickmap_cfg = cfg.get("quickmap", {})
     quickmap_section = ""
     if quickmap_cfg.get("enabled", True):
-        quickmap_section = _load_quickmap(template_name)
+        quickmap_section = _load_quickmap(template_name, project_root)
         print("  · [第三级] 极简知识索引已加载", flush=True)
 
     # ── 结构化代码库上下文（codemap + funcmap + e2e） ─────────────────────
-    codemap_ctx = _load_codemap(template_name)
-    funcmap_ctx = _extract_funcmap(task_description, template_name)
-    e2e_ctx = _extract_e2e_traceability(task_description, template_name)
+    codemap_ctx = _load_codemap(template_name, project_root)
+    funcmap_ctx = _extract_funcmap(task_description, template_name, project_root)
+    e2e_ctx = _extract_e2e_traceability(task_description, template_name, project_root)
 
     # ── 加载 EP 模板 ────────────────────────────────────────────────────────
-    template_content = _load_template(template_name)
+    template_content = _load_template(template_name, project_root)
 
     # ── 构建 Prompt ─────────────────────────────────────────────────────────
     user_msg = _SYNTHESIS_USER.format(
@@ -455,21 +463,23 @@ def _build_history_hit_section(hit: "object") -> str:  # type: ignore[type-arg]
     return "\n".join(lines)
 
 
-def _load_quickmap(template_name: Optional[str]) -> str:
+def _load_quickmap(template_name: Optional[str], project_root: Optional[Path] = None) -> str:
     """
     从 task_quickmap.yaml 加载第三级极简知识索引。
     按 template_name 匹配任务类型，兜底使用 universal_context。
     不依赖 LLM，毫秒级返回，永远不为空。
     """
-    if not _QUICKMAP_PATH.exists():
+    paths = _get_paths(project_root)
+    quickmap_path = paths["quickmap_path"]
+    if not quickmap_path.exists():
         return "（task_quickmap.yaml 不存在，请检查 docs/memory/_system/ 目录）"
 
     try:
         import yaml  # type: ignore[import]
-        data = yaml.safe_load(_QUICKMAP_PATH.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(quickmap_path.read_text(encoding="utf-8")) or {}
     except Exception:  # noqa: BLE001
         # yaml 不可用时返回文件头部文本
-        raw = _QUICKMAP_PATH.read_text(encoding="utf-8")
+        raw = quickmap_path.read_text(encoding="utf-8")
         return raw[:800]
 
     task_types = data.get("task_types", {})
@@ -515,26 +525,30 @@ def _load_quickmap(template_name: Optional[str]) -> str:
     return "\n".join(lines)
 
 
-def _extract_quickmap_files(template_name: Optional[str]) -> List[str]:
+def _extract_quickmap_files(template_name: Optional[str], project_root: Optional[Path] = None) -> List[str]:
     """从 task_quickmap.yaml 提取该任务类型的 must_read_files（供历史记录写入）。"""
-    if not _QUICKMAP_PATH.exists():
+    paths = _get_paths(project_root)
+    quickmap_path = paths["quickmap_path"]
+    if not quickmap_path.exists():
         return []
     try:
         import yaml  # type: ignore[import]
-        data = yaml.safe_load(_QUICKMAP_PATH.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(quickmap_path.read_text(encoding="utf-8")) or {}
         task_cfg = data.get("task_types", {}).get(template_name or "", {})
         return task_cfg.get("must_read_files", [])
     except Exception:  # noqa: BLE001
         return []
 
 
-def _extract_quickmap_memories(template_name: Optional[str]) -> List[str]:
+def _extract_quickmap_memories(template_name: Optional[str], project_root: Optional[Path] = None) -> List[str]:
     """从 task_quickmap.yaml 提取该任务类型的 hot_memories（供历史记录写入）。"""
-    if not _QUICKMAP_PATH.exists():
+    paths = _get_paths(project_root)
+    quickmap_path = paths["quickmap_path"]
+    if not quickmap_path.exists():
         return []
     try:
         import yaml  # type: ignore[import]
-        data = yaml.safe_load(_QUICKMAP_PATH.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(quickmap_path.read_text(encoding="utf-8")) or {}
         task_cfg = data.get("task_types", {}).get(template_name or "", {})
         universal = data.get("universal_context", {}).get("universal_memories", [])
         return list(dict.fromkeys(task_cfg.get("hot_memories", []) + universal))
@@ -542,12 +556,14 @@ def _extract_quickmap_memories(template_name: Optional[str]) -> List[str]:
         return []
 
 
-def _refresh_maps() -> None:
+def _refresh_maps(project_root: Optional[Path] = None) -> None:
     """调用 codemap.py 和 funcmap.py 刷新快照文件（--refresh-maps 触发）"""
     import subprocess  # noqa: PLC0415
+    paths = _get_paths(project_root)
+    system_dir = paths["system_dir"]
     for script, label in [
-        (_HERE / "mms.memory.codemap.py", "codemap"),
-        (_HERE / "mms.memory.funcmap.py", "funcmap"),
+        (system_dir / "mms.memory.codemap.py", "codemap"),
+        (system_dir / "mms.memory.funcmap.py", "funcmap"),
     ]:
         if script.exists():
             try:
@@ -558,6 +574,7 @@ def _refresh_maps() -> None:
                     check=True,
                     capture_output=True,
                     text=True,
+                    cwd=str(paths["root"]),
                     timeout=_idx_timeout,
                 )
                 print(f"  ✓ {label} 已刷新", flush=True)
@@ -589,15 +606,17 @@ _TEMPLATE_E2E_KEYWORDS = {
 }
 
 
-def _load_codemap(template_name: Optional[str]) -> str:
+def _load_codemap(template_name: Optional[str], project_root: Optional[Path] = None) -> str:
     """
     加载 codemap.md 快照，按模板类型选择相关章节。
     codemap.md 是 codemap.py 自动生成的目录树，是文件路径的唯一可信来源。
     """
-    if not _CODEMAP_PATH.exists():
+    paths = _get_paths(project_root)
+    codemap_path = paths["codemap_path"]
+    if not codemap_path.exists():
         return "（codemap 尚未生成，请先运行 `mulan codemap` 建立项目目录索引，再执行 synthesize）"
 
-    raw = _CODEMAP_PATH.read_text(encoding="utf-8")
+    raw = codemap_path.read_text(encoding="utf-8")
 
     # 按模板类型决定截取哪些 ## 章节
     target_sections = _TEMPLATE_CODEMAP_SECTIONS.get(template_name or "", [])
@@ -605,7 +624,11 @@ def _load_codemap(template_name: Optional[str]) -> str:
         # 无模板时截取全量（但限制字符数）
         trimmed = raw[:_CODEMAP_MAX_CHARS]
         if len(raw) > _CODEMAP_MAX_CHARS:
-            trimmed += f"\n\n...（codemap 已截断，完整内容见 {_CODEMAP_PATH.relative_to(_ROOT)}）"
+            try:
+                rel_path = codemap_path.relative_to(paths["root"])
+            except ValueError:
+                rel_path = codemap_path.name
+            trimmed += f"\n\n...（codemap 已截断，完整内容见 {rel_path}）"
         return trimmed
 
     # 提取目标章节
@@ -630,15 +653,17 @@ def _load_codemap(template_name: Optional[str]) -> str:
     return "\n".join(result_lines)
 
 
-def _extract_funcmap(task: str, template_name: Optional[str]) -> str:
+def _extract_funcmap(task: str, template_name: Optional[str], project_root: Optional[Path] = None) -> str:
     """
     从 funcmap.md 中提取与任务关键词匹配的函数签名行。
     用于告知 LLM 哪些函数已存在（避免重复实现或猜错签名）。
     """
-    if not _FUNCMAP_PATH.exists():
+    paths = _get_paths(project_root)
+    funcmap_path = paths["funcmap_path"]
+    if not funcmap_path.exists():
         return "（funcmap.md 尚未生成，请先运行：`python3 scripts/mms/funcmap.py`）"
 
-    raw = _FUNCMAP_PATH.read_text(encoding="utf-8")
+    raw = funcmap_path.read_text(encoding="utf-8")
     lines = raw.splitlines()
 
     # 从任务描述和模板类型中提取关键词
@@ -664,15 +689,17 @@ def _extract_funcmap(task: str, template_name: Optional[str]) -> str:
     return header + "\n" + "\n".join(matched)
 
 
-def _extract_e2e_traceability(task: str, template_name: Optional[str]) -> str:
+def _extract_e2e_traceability(task: str, template_name: Optional[str], project_root: Optional[Path] = None) -> str:
     """
     从 e2e_traceability.md 中提取与任务/模板相关的追踪切片。
     让 LLM 知道端到端模块对应的真实文件路径。
     """
-    if not _E2E_TRACE_PATH.exists():
+    paths = _get_paths(project_root)
+    e2e_path = paths["e2e_trace_path"]
+    if not e2e_path.exists():
         return "（e2e_traceability.md 不存在）"
 
-    raw = _E2E_TRACE_PATH.read_text(encoding="utf-8")
+    raw = e2e_path.read_text(encoding="utf-8")
     lines = raw.splitlines()
 
     # 模板内置关键词 + 任务关键词合并
@@ -764,7 +791,7 @@ def _extract_keywords(task: str, template_name: Optional[str]) -> list:
     return [k for k in all_kws if len(k) >= 3 and k.lower() not in stop]
 
 
-def _inject_memories(task: str, top_k: int, compress: bool = True) -> str:
+def _inject_memories(task: str, top_k: int, compress: bool = True, project_root: Optional[Path] = None) -> str:
     """调用 MemoryInjector 检索相关记忆，返回压缩后的上下文文本"""
     try:
         try:
@@ -772,21 +799,22 @@ def _inject_memories(task: str, top_k: int, compress: bool = True) -> str:
         except ImportError:
             from mms.memory.injector import MemoryInjector  # type: ignore[no-redef]
 
-        injector = MemoryInjector()
+        injector = MemoryInjector(project_root=project_root)
         result = injector.inject(task_description=task, top_k=top_k, compress=compress)
         return result.to_prompt_prefix()
     except Exception as exc:
         return f"（记忆检索失败：{exc}；将基于模板继续合成）"
 
 
-def _load_template(template_name: Optional[str]) -> str:
+def _load_template(template_name: Optional[str], project_root: Optional[Path] = None) -> str:
     """加载指定的 EP 类型模板内容"""
     if not template_name:
         return "（未指定 EP 类型模板，请使用 --template 参数选择场景）"
 
     # 支持带或不带 .md 后缀
     name = template_name if template_name.endswith(".md") else f"{template_name}.md"
-    tpl_path = _TEMPLATES_DIR / name
+    paths = _get_paths(project_root)
+    tpl_path = paths["templates_dir"] / name
     if not tpl_path.exists():
         available = ", ".join(SUPPORTED_TEMPLATES.keys())
         return f"（模板文件不存在：{name}。可用模板：{available}）"

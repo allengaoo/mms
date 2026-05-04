@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 
 _HERE = Path(__file__).resolve().parent
 try:
@@ -186,9 +186,9 @@ def estimate_token_for_file(file_path: str, ratio: float = 0.3) -> int:
 
 # ── 历史成功率查询 ────────────────────────────────────────────────────────────
 
-def get_historical_success_rate(aiu_type: str) -> float:
+def _default_success_rate_provider(aiu_type: str) -> float:
     """
-    查询某 AIU 类型的历史执行成功率。
+    查询某 AIU 类型的历史执行成功率（默认实现）。
     通过 AIUFeedbackStore（内存缓存）查询，避免 O(N) 全表扫描。
 
     返回：成功率 [0.0, 1.0]，无历史数据时返回 0.8（乐观估计）
@@ -203,7 +203,7 @@ def get_historical_success_rate(aiu_type: str) -> float:
             return stats.success_rate
         return _DEFAULT_SUCCESS_RATE
     except Exception as exc:
-        _logger.debug("get_historical_success_rate 查询失败: %s", exc)
+        _logger.debug("_default_success_rate_provider 查询失败: %s", exc)
         return _DEFAULT_SUCCESS_RATE
 
 
@@ -223,6 +223,7 @@ class AIUCostEstimator:
         self,
         step: AIUStep,
         all_unit_files: Optional[List[str]] = None,
+        success_rate_provider: Optional[Callable[[str], float]] = None,
     ) -> AIUStep:
         """
         为单个 AIU 步骤估算代价，更新 token_budget 和 model_hint。
@@ -230,6 +231,7 @@ class AIUCostEstimator:
         Args:
             step: 待估算的 AIU 步骤
             all_unit_files: DagUnit 的全部文件（用于文件排序）
+            success_rate_provider: 注入的成功率查询函数（解耦磁盘 I/O）
 
         Returns:
             更新后的 AIUStep（原地修改并返回）
@@ -247,7 +249,8 @@ class AIUCostEstimator:
         # 4. 历史成功率调整（修复毒性正反馈）
         # 原方案：成功率 50% → +25% token → 更长上下文 → LLM 更难聚焦 → 成功率更低（恶性循环）
         # 新方案：最多 +10% token 缓冲；低成功率由 suggest() 切换 capable 模型来解决，而非堆 token
-        success_rate = get_historical_success_rate(step.aiu_type)
+        provider = success_rate_provider or _default_success_rate_provider
+        success_rate = provider(step.aiu_type)
         history_factor = min(1.0 + (1.0 - success_rate) * 0.1, 1.1)  # 上限 +10%，避免毒性正反馈
 
         # 综合计算
@@ -269,13 +272,14 @@ class AIUCostEstimator:
         self,
         steps: List[AIUStep],
         all_unit_files: Optional[List[str]] = None,
+        success_rate_provider: Optional[Callable[[str], float]] = None,
     ) -> List[AIUStep]:
         """
         为 AIUPlan 的全部步骤估算代价。
         同时对 context_files 进行优先级排序（高复杂度文件排前）。
         """
         for step in steps:
-            self.estimate_step(step, all_unit_files)
+            self.estimate_step(step, all_unit_files, success_rate_provider)
 
         # 对 target_files 按复杂度降序排序（让 LLM 先看到最复杂的文件）
         for step in steps:

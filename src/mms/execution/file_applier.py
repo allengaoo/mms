@@ -267,15 +267,41 @@ def pre_validate(change: FileChange) -> Optional[str]:
 
 
 def _validate_python_syntax(content: str, path: str) -> Optional[str]:
-    """用 ast.parse() 检查 Python 语法"""
+    """
+    检查 Python 语法（ast.parse + pyflakes 高级检查）。
+    """
+    # 1. 基础 AST 检查 (捕获 SyntaxError)
     try:
         ast.parse(content)
-        return None
     except SyntaxError as e:
         return (
             f"Python 语法错误（{path}）：{e.msg}\n"
             f"  行 {e.lineno}：{e.text.strip() if e.text else '（无）'}"
         )
+
+    # 2. 高级静态分析 (捕获 NameError, ImportError)
+    try:
+        from pyflakes.api import check
+        from pyflakes.reporter import Reporter
+        import io
+
+        err_stream = io.StringIO()
+        warn_stream = io.StringIO()
+        reporter = Reporter(warn_stream, err_stream)
+
+        # check 返回非 0 表示有错误
+        check(content, path, reporter)
+
+        errors = err_stream.getvalue().strip()
+        if errors:
+            # 过滤掉无关紧要的警告，只关注 undefined name 等致命错误
+            fatal_errors = [line for line in errors.splitlines() if "undefined name" in line or "syntax error" in line]
+            if fatal_errors:
+                return f"Static Analysis Error:\n" + "\n".join(fatal_errors)
+    except ImportError:
+        pass # 未安装 pyflakes，优雅降级，仅依赖 ast.parse
+
+    return None
 
 
 def _validate_yaml_syntax(content: str, path: str) -> Optional[str]:

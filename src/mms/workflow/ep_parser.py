@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-_ROOT = Path(__file__).resolve().parents[2]
-_EP_DIR = _ROOT / "docs" / "execution_plans"
+# 移除硬编码 _ROOT
+# _ROOT = Path(__file__).resolve().parents[2]
+# _EP_DIR = _ROOT / "docs" / "execution_plans"
 
 
 # ── 数据结构 ──────────────────────────────────────────────────────────────────
@@ -270,18 +271,20 @@ def _extract_title(content: str) -> str:
 
 # ── 主入口 ────────────────────────────────────────────────────────────────────
 
-def parse_ep_file(ep_path: Path) -> ParsedEP:
+def parse_ep_file(ep_path: Path, project_root: Optional[Path] = None) -> ParsedEP:
     """
     解析 EP Markdown 文件，返回 ParsedEP 数据结构。
 
     Args:
         ep_path: EP 文件路径（绝对或相对于项目根）
+        project_root: 项目根路径（可选）
 
     Returns:
         ParsedEP 实例
     """
+    root = project_root or Path.cwd()
     if not ep_path.is_absolute():
-        ep_path = _ROOT / ep_path
+        ep_path = root / ep_path
     if not ep_path.exists():
         raise FileNotFoundError(f"EP 文件不存在：{ep_path}")
 
@@ -332,30 +335,33 @@ def _parse_scope_fallback(content: str) -> List[ScopeUnit]:
     return units
 
 
-def find_ep_file(ep_id: str) -> Optional[Path]:
+def find_ep_file(ep_id: str, project_root: Optional[Path] = None) -> Optional[Path]:
     """
     在 docs/execution_plans/ 目录中查找匹配 EP ID 的文件。
     支持 "EP-116"、"ep-116"、"116" 等输入格式。
     """
+    root = project_root or Path.cwd()
+    ep_dir = root / "docs" / "execution_plans"
+    
     ep_norm = ep_id.upper()
     if not ep_norm.startswith("EP-"):
         ep_norm = f"EP-{ep_norm}"
 
-    if not _EP_DIR.exists():
+    if not ep_dir.exists():
         return None
 
-    for f in _EP_DIR.glob("*.md"):
+    for f in ep_dir.glob("*.md"):
         if ep_norm in f.name.upper():
             return f
     return None
 
 
-def parse_ep_by_id(ep_id: str) -> ParsedEP:
+def parse_ep_by_id(ep_id: str, project_root: Optional[Path] = None) -> ParsedEP:
     """
     按 EP ID 查找并解析 EP 文件。
     ep_id 支持 "EP-116"、"116" 等格式。
     """
-    path = find_ep_file(ep_id)
+    path = find_ep_file(ep_id, project_root)
     if path is None:
         ep_norm = ep_id.upper()
         if not ep_norm.startswith("EP-"):
@@ -364,4 +370,4 @@ def parse_ep_by_id(ep_id: str) -> ParsedEP:
             f"未找到 {ep_norm} 的执行计划文件\n"
             f"请确认 docs/execution_plans/ 目录下存在对应文件"
         )
-    return parse_ep_file(path)
+    return parse_ep_file(path, project_root)

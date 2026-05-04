@@ -177,14 +177,17 @@ class MemoryInjector:
         print(result.to_prompt_prefix())
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: Optional[Path] = None) -> None:
         self._index: Optional[Dict] = None
+        self._root = project_root or Path.cwd()
+        self._index_file = self._root / "docs" / "memory" / "_system" / "memory_index.json"
+        self._memory_dir = self._root / "docs" / "memory"
 
     def _load_index(self) -> Dict:
         if self._index is None:
             import json
-            if _INDEX_FILE.exists():
-                self._index = json.loads(_INDEX_FILE.read_text(encoding="utf-8"))
+            if self._index_file.exists():
+                self._index = json.loads(self._index_file.read_text(encoding="utf-8"))
             else:
                 self._index = {}
         return self._index
@@ -380,7 +383,7 @@ class MemoryInjector:
         if not snippet.file_path:
             snippet.how_section = "(file 路径未配置，请检查 MEMORY_INDEX.json 中的 file 字段)"
             return
-        fpath = _MEMORY_ROOT / snippet.file_path
+        fpath = self._memory_dir / snippet.file_path
         if not fpath.exists() or fpath.is_dir():
             snippet.how_section = "(文件不存在或路径指向目录，请检查 MEMORY_INDEX.json)"
             return

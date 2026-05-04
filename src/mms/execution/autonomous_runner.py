@@ -286,8 +286,22 @@ def run_autonomous(
 
                 try:
                     tool_args = json.loads(tool_args_str)
-                except json.JSONDecodeError:
-                    tool_args = {}
+                except json.JSONDecodeError as _json_err:
+                    # 不静默吞咽：将解析错误作为 Observation 退回给 LLM，
+                    # 强制其在下一轮修正 JSON 格式，而非向下传递空 {} 导致
+                    # tool_registry.call() 因缺少必填参数抛出不受控的 TypeError。
+                    _err_msg = (
+                        f"[JSON_PARSE_ERROR] 工具参数解析失败，请修复后重新调用。"
+                        f"\n原始参数：{tool_args_str[:200]}"
+                        f"\n错误详情：{_json_err}"
+                    )
+                    log(f"  ⚠️ 工具参数 JSON 解析失败，已反馈 LLM 修正: {_json_err}")
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": _err_msg,
+                    })
+                    continue  # 跳过本工具调用，进入下一轮 LLM 纠错
 
                 log(f"  🔧 调用工具: {tool_name}({json.dumps(tool_args, ensure_ascii=False)[:80]})")
 
@@ -295,11 +309,43 @@ def run_autonomous(
                 if tool_name == "tool_finish":
                     status = tool_args.get("status", "success")
                     summary = tool_args.get("summary", "")
+                    log(f"\n  ✅ LLM 声明任务完成（{status}）: {summary[:100]}")
+
+                    # ── 内置 Postcheck 反馈循环 ────────────────────────────
+                    # 当 LLM 声明 success/partial 时，在 tool_finish 内部隐式运行
+                    # 全局 postcheck。若 arch_check 发现新增违规，将完整报告作为
+                    # Observation 反馈给 LLM，强制其继续修复，而非盲目退出循环。
+                    # 这解决了"大模型局部验证通过但全局 arch_check 失败"的长事务
+                    # 回滚问题。
+                    if status == "success" and not skip_postcheck:
+                        log(f"  🔍 运行内置 postcheck 验证全局合规性...")
+                        postcheck_ok, postcheck_obs = _run_inline_postcheck(ep_id)
+                        if not postcheck_ok:
+                            # postcheck 不通过 → 将报告反馈给 LLM，不退出循环
+                            log(f"  ⚠️  postcheck 发现全局违规，反馈给 LLM 继续修复")
+                            _inline_postcheck_obs = (
+                                f"[POSTCHECK_FAIL] tool_finish 触发了全局架构检查，发现以下问题：\n\n"
+                                f"{postcheck_obs}\n\n"
+                                f"请修复上述问题后重新调用 tool_finish(status='success')。"
+                            )
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": _inline_postcheck_obs,
+                            })
+                            turn_record.action_type = "tool_call"
+                            turn_record.tool_name = tool_name
+                            turn_record.tool_args = tool_args
+                            turn_record.tool_result = _inline_postcheck_obs[:500]
+                            turn_record.elapsed_s = time.monotonic() - turn_start
+                            result.turns.append(turn_record)
+                            continue  # 继续下一轮，不退出循环
+                        log(f"  ✅ 全局 postcheck 通过，任务确认完成")
+
                     result.success = status in ("success", "partial")
                     result.finish_reason = "tool_finish"
                     result.final_summary = summary
                     result.turns_used = turn
-                    log(f"\n  ✅ 任务完成（{status}）: {summary[:100]}")
                     result.elapsed_s = time.monotonic() - start
                     return result
 
@@ -360,6 +406,51 @@ def run_autonomous(
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────
+
+def _run_inline_postcheck(ep_id: str) -> tuple:
+    """
+    在 tool_finish 内部运行轻量级 arch_check（仅检查新增违规）。
+
+    Returns:
+        (ok: bool, observation: str)
+        - ok=True:  无新增架构违规，可以退出循环
+        - ok=False: 有新增违规，observation 包含详细报告供 LLM 修复
+    """
+    try:
+        from mms.workflow.postcheck import run_arch_check_post, load_checkpoint_for_ep  # type: ignore
+    except ImportError:
+        try:
+            from mms.workflow.postcheck import run_arch_check_post  # type: ignore
+            def load_checkpoint_for_ep(ep_id: str):  # type: ignore
+                return None
+        except ImportError:
+            return True, "（postcheck 模块不可用，跳过验证）"
+
+    try:
+        # 加载 precheck 时的 baseline 违规
+        baseline_violations: list = []
+        try:
+            from mms.workflow.precheck import load_checkpoint  # type: ignore
+            ckpt = load_checkpoint(ep_id.upper())
+            if ckpt:
+                baseline_violations = ckpt.get("arch_violations_baseline", [])
+        except Exception:
+            pass
+
+        ok, new_count, new_violations = run_arch_check_post(baseline_violations)
+
+        if ok:
+            return True, "全局架构检查通过，无新增违规"
+
+        # 格式化违规列表
+        lines = [f"- {v.get('message', str(v))}" for v in new_violations[:10]]
+        obs = f"发现 {new_count} 处新增架构违规：\n" + "\n".join(lines)
+        return False, obs
+
+    except Exception as exc:
+        # postcheck 本身异常时，视为通过（不阻塞），记录警告
+        return True, f"（arch_check 执行异常，已跳过：{exc}）"
+
 
 def _read_ep_task_desc(ep_id: str) -> str:
     """从 EP Markdown 文件中读取任务描述（首行 # 标题）。"""

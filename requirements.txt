@@ -12,3 +12,4 @@ filelock>=3.12         # 跨进程文件锁（aiu_feedback.py WAL 写入）
 # ── 可选：开发与测试 ──────────────────────────────────────
 # pytest>=7.4          # 测试框架
 # pytest-mock>=3.12    # Mock 工具
+pyflakes>=3.2.0

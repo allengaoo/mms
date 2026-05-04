@@ -27,10 +27,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 _HERE = Path(__file__).resolve().parent
-try:
-    from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
-except ImportError:
-    _ROOT = _HERE.parent.parent
 
 try:
     import sys as _sys
@@ -38,8 +34,6 @@ try:
     from mms.utils.mms_config import cfg as _cfg  # type: ignore[import]
 except Exception:
     _cfg = None  # type: ignore[assignment]
-_MEMORY_ROOT = _ROOT / "docs" / "memory"
-_CHECKPOINTS_DIR = _MEMORY_ROOT / "_system" / "checkpoints"
 
 # ANSI 颜色
 _G = "\033[92m"
@@ -59,7 +53,7 @@ def _info(msg: str) -> None: print(f"  {_D}ℹ️  {msg}{_X}")
 
 # ── pytest 执行 ──────────────────────────────────────────────────────────────
 
-def run_pytest(test_paths: List[str]) -> Tuple[bool, str]:
+def run_pytest(test_paths: List[str], project_root: Optional[Path] = None) -> Tuple[bool, str]:
     """
     运行指定路径的 pytest 测试。
 
@@ -68,8 +62,9 @@ def run_pytest(test_paths: List[str]) -> Tuple[bool, str]:
     if not test_paths:
         return True, "（无测试文件声明，跳过）"
 
+    root = project_root or Path.cwd()
     # 过滤只保留实际存在的路径
-    existing = [p for p in test_paths if (_ROOT / p).exists()]
+    existing = [p for p in test_paths if (root / p).exists()]
     missing = [p for p in test_paths if p not in existing]
 
     if missing:
@@ -91,7 +86,7 @@ def run_pytest(test_paths: List[str]) -> Tuple[bool, str]:
         _test_timeout = int(getattr(_cfg, "runner_timeout_postcheck_test", 300)) if _cfg else 300
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, cwd=str(_ROOT),
+            capture_output=True, text=True, cwd=str(root),
             timeout=_test_timeout,
         )
         output = result.stdout + result.stderr
@@ -116,12 +111,74 @@ def run_pytest(test_paths: List[str]) -> Tuple[bool, str]:
 
 # ── arch_check 对比 ──────────────────────────────────────────────────────────
 
-def run_arch_check_post(baseline_violations: List[Dict]) -> Tuple[bool, int, List[Dict]]:
+import re
+
+def _extract_violation_context(msg: str) -> Optional[str]:
+    """
+    从违规消息中提取函数/类上下文名称（用于精准签名生成）。
+    例如："src/main.py:10: in class UserService.get_user: ..." -> "UserService.get_user"
+    """
+    # 常见格式：in function foo / in class Bar / in Bar.foo
+    context_patterns = [
+        r'\bin (?:class )?(\w+\.\w+)',   # "in class Foo.bar" 或 "in Foo.bar"
+        r'\bin function (\w+)',           # "in function foo"
+        r'\bin class (\w+)',              # "in class Foo"
+        r'(?:def |class )(\w+)',          # "def foo" 或 "class Bar"
+    ]
+    for pat in context_patterns:
+        m = re.search(pat, msg)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _get_semantic_signature(msg: str) -> str:
+    """
+    生成架构违规的语义签名，用于区分"同类型旧违规"与"新增违规"。
+
+    与旧实现（单纯剥行号）相比，此版本引入了"函数/类上下文"维度：
+    - 签名 = [文件路径] + [所在函数/类] + [违规类型关键词]
+    - 行号被剥离，因此同一函数内的违规即使行号变化也视为同一违规
+    - 不同函数内出现的同类型违规，因上下文不同会生成不同签名，从而正确
+      判定为新增违规（解决"修旧引新"的漏报问题）
+
+    示例（新逻辑）：
+      原消息：  "src/main.py:10: in class UserService: 依赖污染"
+      v1 签名：  "src/main.py::: 依赖污染"         ← 只去行号，丢失函数上下文
+      v2 签名：  "src/main.py|UserService|依赖污染"  ← 保留类名，可区分位置
+    """
+    # Step 1: 提取文件路径（第一个路径片段）
+    file_match = re.match(r'^([\w./\\-]+\.(?:py|java|go|ts|js|kt|scala))', msg.strip())
+    file_part = file_match.group(1) if file_match else ""
+
+    # Step 2: 提取函数/类上下文（在剥行号之前做，因为行号后面可能跟着 "in class Foo"）
+    ctx = _extract_violation_context(msg) or ""
+
+    # Step 3: 剥离行号后提取违规类型关键词（最后一段非数字词组）
+    stripped = re.sub(r':\d+:', ' ', msg)
+    stripped = re.sub(r'\[\d+\]', ' ', stripped)
+    stripped = re.sub(r'\bline\s+\d+\b', ' ', stripped, flags=re.IGNORECASE)
+    stripped = re.sub(r'\s+', ' ', stripped).strip()
+
+    # Step 4: 提取"违规描述"关键词（去掉文件路径和上下文后的核心词）
+    desc = stripped
+    if file_part:
+        desc = desc.replace(file_part, "").strip(": ")
+    if ctx:
+        desc = re.sub(rf'\b{re.escape(ctx)}\b', '', desc).strip(": ")
+    # 只保留前 80 个字符，避免过长导致误差
+    desc = desc[:80].strip()
+
+    # Step 5: 拼接三段签名
+    return "|".join(filter(None, [file_part, ctx, desc]))
+
+def run_arch_check_post(baseline_violations: List[Dict], project_root: Optional[Path] = None) -> Tuple[bool, int, List[Dict]]:
     """
     运行 arch_check，与基线对比，返回新增违反。
 
     返回：(no_new_violations: bool, new_count: int, new_violations: List)
     """
+    root = project_root or Path.cwd()
     arch_check = _HERE.parent / "analysis" / "arch_check.py"
     if not arch_check.exists():
         return True, 0, []
@@ -129,7 +186,7 @@ def run_arch_check_post(baseline_violations: List[Dict]) -> Tuple[bool, int, Lis
     try:
         result = subprocess.run(
             [sys.executable, str(arch_check), "--json"],
-            capture_output=True, text=True, cwd=str(_ROOT),
+            capture_output=True, text=True, cwd=str(root),
         )
         try:
             post_data = json.loads(result.stdout)
@@ -142,15 +199,15 @@ def run_arch_check_post(baseline_violations: List[Dict]) -> Tuple[bool, int, Lis
         # 执行异常时视为无法校验，返回特殊标记而非静默通过
         return False, -1, [{"message": f"arch_check 执行异常（无法校验）：{exc}"}]
 
-    # 基线违反的消息集合
-    baseline_msgs = {v.get("message", str(v)) for v in baseline_violations}
-    post_msgs = [v.get("message", str(v)) for v in post_violations]
+    # 基线违反的消息集合（使用语义签名免疫行号漂移）
+    baseline_sigs = {_get_semantic_signature(v.get("message", str(v))) for v in baseline_violations}
 
-    new_violations = [
-        {"message": msg}
-        for msg in post_msgs
-        if msg not in baseline_msgs
-    ]
+    new_violations = []
+    for v in post_violations:
+        msg = v.get("message", str(v))
+        sig = _get_semantic_signature(msg)
+        if sig not in baseline_sigs:
+            new_violations.append({"message": msg})
 
     return len(new_violations) == 0, len(new_violations), new_violations
 
@@ -166,13 +223,14 @@ def _parse_arch_check_text(text: str) -> List[Dict]:
 
 # ── doc_drift 检测 ───────────────────────────────────────────────────────────
 
-def run_doc_drift() -> Tuple[bool, str]:
+def run_doc_drift(project_root: Optional[Path] = None) -> Tuple[bool, str]:
     """
     运行 doc_drift.py 检测文档漂移。
 
     返回：(clean: bool, summary: str)
     """
-    doc_drift = _HERE / "mms.analysis.doc_drift.py"
+    root = project_root or Path.cwd()
+    doc_drift = _HERE.parent / "analysis" / "doc_drift.py"
     if not doc_drift.exists():
         return True, "（doc_drift.py 不存在，跳过）"
 
@@ -181,7 +239,7 @@ def run_doc_drift() -> Tuple[bool, str]:
         _drift_timeout = int(getattr(_cfg, "runner_timeout_postcheck_drift", 60)) if _cfg else 60
         result = subprocess.run(
             [sys.executable, str(doc_drift), "--ci"],
-            capture_output=True, text=True, cwd=str(_ROOT),
+            capture_output=True, text=True, cwd=str(root),
             timeout=_drift_timeout,
         )
         output = (result.stdout + result.stderr).strip()
@@ -196,10 +254,12 @@ def run_doc_drift() -> Tuple[bool, str]:
 
 # ── 报告保存 ─────────────────────────────────────────────────────────────────
 
-def save_postcheck_report(ep_id: str, data: Dict) -> Path:
+def save_postcheck_report(ep_id: str, data: Dict, project_root: Optional[Path] = None) -> Path:
     """保存后校验报告"""
-    _CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
-    report_file = _CHECKPOINTS_DIR / f"postcheck-{ep_id}.json"
+    root = project_root or Path.cwd()
+    checkpoints_dir = root / "docs" / "memory" / "_system" / "checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    report_file = checkpoints_dir / f"postcheck-{ep_id}.json"
     report_file.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -209,7 +269,7 @@ def save_postcheck_report(ep_id: str, data: Dict) -> Path:
 
 # ── 主检查逻辑 ───────────────────────────────────────────────────────────────
 
-def _ast_sync_check(ep_norm: str, scope_files: List[str]) -> Dict:
+def _ast_sync_check(ep_norm: str, scope_files: List[str], project_root: Optional[Path] = None) -> Dict:
     """
     EP-130 新增：AST 契约变更检测 + 本体同步钩子。
     比对 precheck 时保存的 AST 快照 vs 当前 AST 状态。
@@ -218,25 +278,27 @@ def _ast_sync_check(ep_norm: str, scope_files: List[str]) -> Dict:
     """
     import time
     result: Dict = {"status": "SKIPPED", "summary": "（未执行）"}
+    root = project_root or Path.cwd()
 
     try:
         start = time.time()
 
         # 加载 precheck 时保存的 AST 快照
-        checkpoint_dir = _ROOT / "docs" / "memory" / "_system" / "checkpoints"
+        checkpoint_dir = root / "docs" / "memory" / "_system" / "checkpoints"
         before_path = checkpoint_dir / f"precheck-{ep_norm}-ast.json"
         if not before_path.exists():
             result["summary"] = "无 precheck AST 快照，跳过（提示：precheck 已自动生成快照）"
             return result
 
         # 读取当前 ast_index
-        ast_index_path = _ROOT / "docs" / "memory" / "_system" / "ast_index.json"
+        ast_index_path = root / "docs" / "memory" / "_system" / "ast_index.json"
 
         # 如果 ast_index.json 不存在，先重新生成（但有超时保护）
         if not ast_index_path.exists():
             try:
                 sys.path.insert(0, str(_HERE))
                 from mms.analysis.ast_skeleton import build_ast_index  # type: ignore[import]
+                build_ast_index(str(root), str(ast_index_path))
                 build_ast_index()
             except Exception:
                 result["summary"] = "ast_index.json 不存在且无法生成，跳过"
@@ -291,6 +353,7 @@ def run_postcheck(
     ep_id: str,
     skip_tests: bool = False,
     extra_test_paths: Optional[List[str]] = None,
+    project_root: Optional[Path] = None,
 ) -> int:
     """
     执行完整的后校验流程。
@@ -311,7 +374,7 @@ def run_postcheck(
     except ImportError:
         from mms.workflow.precheck import load_checkpoint  # type: ignore[no-redef]
 
-    checkpoint = load_checkpoint(ep_norm)
+    checkpoint = load_checkpoint(ep_norm, project_root)
     if checkpoint:
         _ok(f"基线快照已加载（{checkpoint.get('timestamp', 'N/A')[:10]}）")
         scope_files = checkpoint.get("scope_files", [])
@@ -358,7 +421,7 @@ def run_postcheck(
         _info(f"运行测试文件（{len(all_test_paths)} 个）：")
         for p in all_test_paths:
             print(f"    {_D}{p}{_X}")
-        passed, summary = run_pytest(all_test_paths)
+        passed, summary = run_pytest(all_test_paths, project_root)
         if passed:
             _ok(f"pytest：{summary}")
             results["tests"] = {"status": "PASS", "summary": summary}
@@ -371,7 +434,7 @@ def run_postcheck(
     print(f"\n{_C}▶ Step 2 · 架构合规检查（arch_check diff）{_X}")
     _info(f"基线：{baseline_count} 处已知违反")
     try:
-        no_new, new_count, new_violations = run_arch_check_post(baseline_violations)
+        no_new, new_count, new_violations = run_arch_check_post(baseline_violations, project_root)
     except Exception as exc:
         _err(f"arch_check diff：工具抛出未预期异常：{exc}")
         no_new, new_count, new_violations = False, -1, [{"message": str(exc)}]
@@ -405,7 +468,7 @@ def run_postcheck(
     print(f"\n{_C}▶ Step 2.5 · DB 迁移脚本门控（MigrationGate）{_X}")
     try:
         from mms.analysis.migration_gate import run_migration_gate
-        mig_result = run_migration_gate(scope_files, project_root=_ROOT)
+        mig_result = run_migration_gate(scope_files, project_root=project_root)
         mig_status = mig_result.get("status", "SKIPPED")
         mig_summary = mig_result.get("summary", "")
         results["migration_gate"] = mig_result
@@ -430,7 +493,7 @@ def run_postcheck(
 
     # ── 3. AST 契约变更检测（EP-130）────────────────────────────────────────────
     print(f"\n{_C}▶ Step 3 · AST 契约变更检测（ast_sync）{_X}")
-    ast_sync_result = _ast_sync_check(ep_norm, scope_files)
+    ast_sync_result = _ast_sync_check(ep_norm, scope_files, project_root)
     ast_status = ast_sync_result.get("status", "SKIPPED")
     ast_summary = ast_sync_result.get("summary", "")
     results["ast_sync"] = ast_sync_result
@@ -503,7 +566,7 @@ def run_postcheck(
 
     # ── 6. 综合评级 ──────────────────────────────────────────────────────────
     print(f"\n{'─' * 60}")
-    print(f"  报告已保存：{report_file.relative_to(_ROOT)}")
+    print(f"  报告已保存：{report_file.name}")
 
     if failures > 0:
         print(f"\n{_R}{_B}❌  FAIL — 有 {failures} 项检查未通过，请修复后重新运行 postcheck{_X}")
@@ -516,19 +579,20 @@ def run_postcheck(
 
     elif warnings > 0:
         print(f"\n{_Y}{_B}⚠️   WARN — 检查通过，但有 {warnings} 条警告需关注{_X}")
-        _print_distill_reminder(ep_norm, results)
+        _print_distill_reminder(ep_norm, results, project_root)
         return 1
 
     else:
         print(f"\n{_G}{_B}✅  PASS — 所有检查通过！{_X}")
-        _print_distill_reminder(ep_norm, results)
+        _print_distill_reminder(ep_norm, results, project_root)
         return 0
 
 
-def _print_distill_reminder(ep_norm: str, results: Dict) -> None:
+def _print_distill_reminder(ep_norm: str, results: Dict, project_root: Optional[Path] = None) -> None:
     """打印知识沉淀提示，含距上次 distill 的天数和判断框架"""
+    root = project_root or Path.cwd()
     # 尝试读取上次 GC 日期（distill 时间的近似值）
-    memory_index = _ROOT / "docs" / "memory" / "MEMORY_INDEX.json"
+    memory_index = root / "docs" / "memory" / "_system" / "memory_index.json"
     last_gc_str = "unknown"
     days_since: object = "?"
     try:
@@ -549,13 +613,14 @@ def _print_distill_reminder(ep_norm: str, results: Dict) -> None:
     print(f"    ❌ Bug 修复，根因已在记忆库中 → 可跳过")
     print(f"\n  {_C}mms distill --ep {ep_norm}{_X}")
 
-    _print_dream_reminder(ep_norm)
+    _print_dream_reminder(ep_norm, project_root)
 
 
-def _print_dream_reminder(ep_norm: str) -> None:
+def _print_dream_reminder(ep_norm: str, project_root: Optional[Path] = None) -> None:
     """打印 autoDream 建议（EP-118 新增）"""
+    root = project_root or Path.cwd()
     # 检查 EP 文件是否含有 Surprises & Discoveries 或 Decision Log 章节
-    ep_dir = _ROOT / "docs" / "execution_plans"
+    ep_dir = root / "docs" / "execution_plans"
     ep_norm_upper = ep_norm.upper()
 
     ep_files = list(ep_dir.glob(f"*{ep_norm_upper}*.md"))
@@ -579,7 +644,7 @@ def _print_dream_reminder(ep_norm: str) -> None:
             pass
 
     # 检查草稿目录中是否已有该 EP 的草稿
-    dream_dir = _ROOT / "docs" / "memory" / "private" / "dream"
+    dream_dir = root / "docs" / "memory" / "private" / "dream"
     existing_drafts = 0
     if dream_dir.exists():
         try:

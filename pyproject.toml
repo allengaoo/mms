@@ -97,6 +97,7 @@ markers = [
     "slow: 慢速测试（需要 LLM API）",
     "integration: 集成测试（需要外部服务）",
     "benchmark: Benchmark 评估测试",
+    "eval: Layer 1 E2E Eval 测试（可在 CI Mock 模式或本地真实模式下运行）",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

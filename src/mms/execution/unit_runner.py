@@ -465,14 +465,14 @@ def _run_tests(test_files: List[str]) -> tuple:
         return False, f"pytest 执行异常：{e}"
 
 
-def _load_unit(ep_id: str, unit_id: str):
+def _load_unit(ep_id: str, unit_id: str, project_root: Optional[Path] = None):
     """加载 DagUnit，失败时抛出 ValueError"""
     try:
         from mms.dag.dag_model import DagState  # type: ignore[import]
     except ImportError:
         from mms.dag.dag_model import DagState  # type: ignore[import]
 
-    state = DagState.load(ep_id.upper())
+    state = DagState.load(ep_id.upper(), project_root=project_root)
     if state is None:
         raise ValueError(f"未找到 EP {ep_id} 的 DAG 状态文件，请先运行 mms unit generate --ep {ep_id}")
 
@@ -684,6 +684,7 @@ class UnitRunner:
         dry_run: bool = False,
         confirm: bool = False,
         save_output: bool = False,
+        project_root: Optional[Path] = None,
     ) -> RunResult:
         """
         执行单个 Unit（3-Strike 重试循环）。
@@ -713,7 +714,7 @@ class UnitRunner:
 
         # ── 加载 Unit 信息 ────────────────────────────────────────────────────
         try:
-            state, unit = _load_unit(ep_id, unit_id)
+            state, unit = _load_unit(ep_id, unit_id, project_root=project_root)
         except (ValueError, FileNotFoundError) as e:
             result.error = str(e)
             print(f"  {_R}❌{_X} {e}")
@@ -1217,6 +1218,7 @@ class BatchRunner:
         model: str = "capable",
         dry_run: bool = False,
         confirm: bool = False,
+        project_root: Optional[Path] = None,
     ) -> List[RunResult]:
         """执行当前批次中所有 pending Unit（按 order 顺序）"""
         try:
@@ -1225,7 +1227,7 @@ class BatchRunner:
             from mms.dag.dag_model import DagState  # type: ignore[import]
 
         try:
-            state = DagState.load(ep_id.upper())
+            state = DagState.load(ep_id.upper(), project_root=project_root)
         except (FileNotFoundError, ValueError):
             state = None
         if state is None:
@@ -1267,6 +1269,7 @@ class BatchRunner:
         dry_run: bool = False,
         confirm: bool = False,
         max_failures: int = 1,
+        project_root: Optional[Path] = None,
     ) -> List[RunResult]:
         """顺序执行 EP 全部 pending Unit"""
         try:
@@ -1279,7 +1282,7 @@ class BatchRunner:
 
         while True:
             try:
-                state = DagState.load(ep_id.upper())
+                state = DagState.load(ep_id.upper(), project_root=project_root)
             except (FileNotFoundError, ValueError):
                 state = None
             if state is None:

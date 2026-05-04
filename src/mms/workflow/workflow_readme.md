@@ -48,10 +48,11 @@
 
 将 EP Markdown 文件解析为内存中的数据结构。
 
-- `def parse_ep_file(ep_path: Path) -> EpDocument`
+- `def parse_ep_file(ep_path: Path, project_root: Optional[Path] = None) -> EpDocument`
 - `def extract_scope_and_testing(ep_doc: EpDocument) -> Tuple[List[str], List[str]]`
 
 > **表格格式兼容性**：`_extract_table_rows()` 通过统一的 `_TABLE_ROW_ANY_RE`（行中至少含 2 个 `|`）同时支持以下格式：
+>
 > - 有外侧边框（GFM 标准）：`\| U1 \| 修改逻辑 \| file.py \|`
 > - 无外侧边框（大模型常见输出）：`U1 \| 修改逻辑 \| file.py`
 > - 加粗 Unit ID：`\| **U1** \| ... \|`
@@ -62,30 +63,34 @@
 
 在生成代码前，快照当前 AST，并进行初步的架构合规性检查。
 
-- `def run_precheck(ep_id: str, strict: bool = False) -> int`
-- `def run_arch_check_baseline(scope_files: List[str]) -> Dict`
-- `def save_checkpoint(ep_id: str, data: Dict) -> Path`
+- `def run_precheck(ep_id: str, strict: bool = False, project_root: Optional[Path] = None) -> int`
+- `def run_arch_check_baseline(scope_files: List[str], project_root: Optional[Path] = None) -> Dict`
+- `def save_checkpoint(ep_id: str, data: Dict, project_root: Optional[Path] = None) -> Path`
 
 #### 4. `ep_runner.py` (核心引擎)
 
 全自动 Pipeline 编排，包含 Capability Router，负责触发 precheck（Phase 1）、在 Phase 2 路由到 Track A/B、以及触发 postcheck（Phase 3）。
 
 - `class EpRunPipeline:`
-  - `def run(self, ep_id: str, dry_run: bool = False, model: str = "capable", from_unit: str = None, only_units: List[str] = None, skip_precheck: bool = False, skip_postcheck: bool = False) -> EpRunResult`
+  - `def run(self, ep_id: str, dry_run: bool = False, model: str = "capable", from_unit: str = None, only_units: List[str] = None, skip_precheck: bool = False, skip_postcheck: bool = False, project_root: Optional[Path] = None) -> EpRunResult`
   - `def _run_autonomous_units(self, ep_id: str, model: str, dry_run: bool) -> EpRunResult`
     - **仅负责 Phase 2 的 Unit 执行环**，不包含 pre/post-check（由外层 `run()` 统一管控）
 
 > **断点续跑**：`run()` 支持 `from_unit` 参数从指定 Unit 恢复执行。Unit 失败时，`EpRunState.resume_unit` 自动记录断点，下次运行时可从该点继续。
 >
 > **报告数字一致性**：`result.units_done + result.units_skipped + result.units_failed == result.total_units` 恒成立。已完成（`status=done`）但被预过滤出执行范围的 Unit，会自动计入 `units_skipped` 和 `unit_summaries`，避免数字对不上。
+>
+> **全局路径解耦 (2026-05)**：`ep_runner.py` 及其调用的所有生命周期组件（`precheck`, `postcheck`, `synthesizer` 等）现已全面支持 `project_root` 参数，移除了硬编码的 `_ROOT` 依赖，实现了完全的环境隔离。
 
 #### 5. `postcheck.py` (后置质量门)
 
 在代码生成后，运行全局测试 (`pytest`)、架构约束 (`arch_check`) 和 DB 迁移门控 (`migration_gate`)。
 
-- `def run_postcheck(ep_id: str, skip_tests: bool = False, ...) -> int`
-- `def run_arch_check_post(baseline_violations: List[Dict]) -> Tuple[bool, int, List[Dict]]`
+- `def run_postcheck(ep_id: str, skip_tests: bool = False, project_root: Optional[Path] = None) -> int`
+- `def run_arch_check_post(baseline_violations: List[Dict], project_root: Optional[Path] = None) -> Tuple[bool, int, List[Dict]]`
 
+> **语义签名比对 (2026-05)**：`run_arch_check_post` 引入了 `_get_semantic_signature` 函数。在对比 baseline 和当前的架构违规时，会自动剔除行号信息（如 `[Line 10]`），仅比较违规的语义内容。这彻底解决了因代码修改导致无关行号漂移而产生的误报问题。
+>
 > **容错**：`run_arch_check_post()` 若抛出 Python 级别异常（如工具崩溃、OOM），`run_postcheck` 会捕获并将 arch_check 状态标记为 ERROR（返回码 2），保证整体报告仍能生成，不会向上传播崩溃。
 
 ## 5. 状态机流转图 (统一安全门控视角)
@@ -135,31 +140,35 @@ stateDiagram-v2
 
 当前任务工程层整体测试覆盖率已提升至 **65%+**（包含多语言 E2E 测试、各模块独立集成测试、状态机回归测试，以及降级容错测试）。
 
-| 模块 | 覆盖率 | 本次新增覆盖 |
-|:---|:---:|:---|
-| `ep_parser.py` | 85% | 无边框表格解析、混合格式、降级兜底（T-P1 修复验收） |
-| `ep_runner.py` | 81% | already-done 幂等跳过 + 计数一致性（Test-R4） |
-| `precheck.py` | 68% | 多语言快照逻辑 + 异常处理 |
-| `postcheck.py` | 53% | arch_check 异常容错（Test-PC2） |
-| `synthesizer.py` | 50% | codemap 缺失降级 + 安全性验证（Test-S1a/b） |
+
+| 模块               | 覆盖率 | 本次新增覆盖                             |
+| ---------------- | --- | ---------------------------------- |
+| `ep_parser.py`   | 85% | 无边框表格解析、混合格式、降级兜底（T-P1 修复验收）       |
+| `ep_runner.py`   | 81% | already-done 幂等跳过 + 计数一致性（Test-R4） |
+| `precheck.py`    | 68% | 多语言快照逻辑 + 异常处理                     |
+| `postcheck.py`   | 53% | arch_check 异常容错（Test-PC2）          |
+| `synthesizer.py` | 50% | codemap 缺失降级 + 安全性验证（Test-S1a/b）   |
 
 
 关键状态机测试（`tests/integration/test_ep_runner_state_machine.py`）：
 
-| 测试 | 覆盖场景 |
-|:---|:---|
-| `test_r1_breakpoint_resume` | Unit 失败后 `resume_unit` 存盘，下次从断点恢复 |
-| `test_r2_precheck_blocker_aborts_pipeline` | precheck 失败时的当前行为基线（WARN 并继续）文档化 |
-| `test_r2_precheck_strict_short_circuit` | `skip_precheck=True` 时 postcheck 正常独立运行 |
-| `test_r3_track_b_must_run_precheck` | **架构回归**：Track B 模式下 precheck 和 postcheck 均被调用 |
-| `test_r4_already_done_unit_is_skipped` | already-done Unit 幂等跳过，`units_skipped` 计数正确 |
+
+| 测试                                         | 覆盖场景                                           |
+| ------------------------------------------ | ---------------------------------------------- |
+| `test_r1_breakpoint_resume`                | Unit 失败后 `resume_unit` 存盘，下次从断点恢复              |
+| `test_r2_precheck_blocker_aborts_pipeline` | precheck 失败时的当前行为基线（WARN 并继续）文档化               |
+| `test_r2_precheck_strict_short_circuit`    | `skip_precheck=True` 时 postcheck 正常独立运行        |
+| `test_r3_track_b_must_run_precheck`        | **架构回归**：Track B 模式下 precheck 和 postcheck 均被调用 |
+| `test_r4_already_done_unit_is_skipped`     | already-done Unit 幂等跳过，`units_skipped` 计数正确    |
+
 
 Synthesizer 降级测试（`tests/integration/test_synthesizer_multilang.py`）：
 
-| 测试 | 覆盖场景 |
-|:---|:---|
-| `test_s1_synthesizer_codemap_missing_no_crash` | codemap 缺失时不崩溃，提示正确，无假路径注入 |
-| `test_s1_synthesizer_codemap_missing_prompt_is_safe` | 降级提示不含具体文件路径，可安全注入 Prompt |
+
+| 测试                                                   | 覆盖场景                       |
+| ---------------------------------------------------- | -------------------------- |
+| `test_s1_synthesizer_codemap_missing_no_crash`       | codemap 缺失时不崩溃，提示正确，无假路径注入 |
+| `test_s1_synthesizer_codemap_missing_prompt_is_safe` | 降级提示不含具体文件路径，可安全注入 Prompt  |
 
 
 ## 7. 自动化执行理念

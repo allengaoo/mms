@@ -241,11 +241,13 @@ class DagState:
 
     # ── 持久化 ──────────────────────────────────────────────────────────────
 
-    def save(self) -> Path:
+    def save(self, project_root: Optional[Path] = None) -> Path:
         """持久化到 docs/memory/_system/dag/{EP-NNN}.json"""
-        _DAG_DIR.mkdir(parents=True, exist_ok=True)
+        root = project_root or Path.cwd()
+        dag_dir = root / "docs" / "memory" / "_system" / "dag"
+        dag_dir.mkdir(parents=True, exist_ok=True)
         ep_norm = self.ep_id.upper()
-        path = _DAG_DIR / f"{ep_norm}.json"
+        path = dag_dir / f"{ep_norm}.json"
         data = {
             "ep_id": self.ep_id,
             "generated_at": self.generated_at,
@@ -257,10 +259,12 @@ class DagState:
         return path
 
     @classmethod
-    def load(cls, ep_id: str) -> "DagState":
+    def load(cls, ep_id: str, project_root: Optional[Path] = None) -> "DagState":
         """从磁盘加载 DAG 状态"""
         ep_norm = ep_id.upper()
-        path = _DAG_DIR / f"{ep_norm}.json"
+        root = project_root or Path.cwd()
+        dag_dir = root / "docs" / "memory" / "_system" / "dag"
+        path = dag_dir / f"{ep_norm}.json"
         if not path.exists():
             raise FileNotFoundError(
                 f"DAG 状态文件不存在：{path}\n"
@@ -277,9 +281,11 @@ class DagState:
         )
 
     @classmethod
-    def exists(cls, ep_id: str) -> bool:
+    def exists(cls, ep_id: str, project_root: Optional[Path] = None) -> bool:
         ep_norm = ep_id.upper()
-        return (_DAG_DIR / f"{ep_norm}.json").exists()
+        root = project_root or Path.cwd()
+        dag_dir = root / "docs" / "memory" / "_system" / "dag"
+        return (dag_dir / f"{ep_norm}.json").exists()
 
     def to_dict(self) -> dict:
         return {

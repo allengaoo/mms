@@ -459,12 +459,12 @@ class TaskDecomposer:
             exec_order = AIU_EXEC_ORDER.get(aiu_type_val, 3)
 
             step = AIUStep(
-                aiu_id="",  # 由 _assign_ids_and_order 按 exec_order 排序后统一分配
+                aiu_id=s.get("aiu_id", ""),  # 暂存 LLM 输出的 ID
                 aiu_type=aiu_type_str,
                 description=s.get("description", f"执行 {aiu_type_str}"),
                 layer=layer,
                 target_files=s.get("target_files", []),
-                depends_on=[],  # depends_on 始终清空；执行顺序由 exec_order 表达
+                depends_on=s.get("depends_on", []),  # 暂存 LLM 输出的依赖，由 _assign_ids_and_order 映射
                 exec_order=exec_order,
                 token_budget=int(s.get("token_budget", 3000)),
                 model_hint=s.get("model_hint", "fast"),
@@ -500,19 +500,57 @@ class TaskDecomposer:
     @staticmethod
     def _assign_ids_and_order(steps: List[AIUStep]) -> List[AIUStep]:
         """
-        按 exec_order 排序后分配顺序 aiu_id；depends_on 始终清空。
-
-        AIUStep 已是纯规划提示层（half-preserve 策略），执行顺序由 exec_order 字段
-        唯一表达，不再需要 depends_on 来描述 DAG 边。清空 depends_on 可避免
-        LLM 生成的幻觉依赖和 BSP 全同步屏障带来的不必要串行化。
+        按 exec_order 排序后分配顺序 aiu_id，并保留合法的 depends_on。
         """
         if not steps:
             return steps
 
         steps.sort(key=lambda s: s.exec_order)
+        
+        # 1. 建立旧 ID 到新 ID 的映射
+        id_map = {}
         for i, step in enumerate(steps, 1):
-            step.aiu_id = f"aiu_{i}"
-            step.depends_on = []
+            old_id = getattr(step, 'aiu_id', f"old_{i}")
+            if not old_id:
+                old_id = f"old_{i}"
+            new_id = f"aiu_{i}"
+            id_map[old_id] = new_id
+            step.aiu_id = new_id
+            
+        # 2. 更新 depends_on 并验证
+        valid_ids = {s.aiu_id for s in steps}
+        for step in steps:
+            new_deps = []
+            for dep in getattr(step, 'depends_on', []):
+                mapped_dep = id_map.get(dep, dep)
+                if mapped_dep in valid_ids and mapped_dep != step.aiu_id:
+                    new_deps.append(mapped_dep)
+            step.depends_on = new_deps
+            
+        # 3. 简单环路检测（如果有环则清空 depends_on 降级）
+        def has_cycle(node_id: str, visited: set, path: set) -> bool:
+            visited.add(node_id)
+            path.add(node_id)
+            node = next((s for s in steps if s.aiu_id == node_id), None)
+            if node:
+                for dep in node.depends_on:
+                    if dep in path:
+                        return True
+                    if dep not in visited:
+                        if has_cycle(dep, visited, path):
+                            return True
+            path.remove(node_id)
+            return False
+
+        visited_nodes = set()
+        for step in steps:
+            if step.aiu_id not in visited_nodes:
+                if has_cycle(step.aiu_id, visited_nodes, set()):
+                    # 发现环路，清空所有依赖
+                    for s in steps:
+                        s.depends_on = []
+                    break
+
         return steps
 
 

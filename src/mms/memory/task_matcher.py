@@ -117,7 +117,7 @@ class TaskMatcher:
 
     def __init__(
         self,
-        history_file: Path = _HISTORY_FILE,
+        history_file: Optional[Path] = None,
         history_top_x: int = 10,
         shared_top_y: int = 20,
         similarity_threshold: float = 0.30,
@@ -126,8 +126,13 @@ class TaskMatcher:
         medium_weight: float = 0.7,
         old_weight: float = 0.4,
         max_history_records: int = 500,
+        project_root: Optional[Path] = None,
     ) -> None:
-        self.history_file = history_file
+        if history_file is None:
+            root = project_root or Path.cwd()
+            self.history_file = root / "docs" / "memory" / "_system" / "task_history.jsonl"
+        else:
+            self.history_file = history_file
         self.history_top_x = history_top_x
         self.shared_top_y = shared_top_y
         self.threshold = similarity_threshold
