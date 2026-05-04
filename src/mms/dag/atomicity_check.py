@@ -131,6 +131,28 @@ def _normalize_path(file_path: str) -> str:
     return p
 
 
+def _dir_of(file_path: str) -> str:
+    """返回文件的规范化父目录路径。"""
+    return str(Path(_normalize_path(file_path)).parent).replace("\\", "/")
+
+
+def _classify_files(
+    files: List[str], graph: Dict[str, Set[str]]
+) -> Tuple[List[str], List[str]]:
+    """
+    将文件列表分为两类：
+      existing: 在 code_graph.json 中已有记录的文件（旧文件 / 已索引文件）
+      new_files: 不在图中的文件（新建文件，EP 执行后才会出现）
+
+    新文件在连通性判断时享有"目录内聚豁免"——如果新文件与某个已有连通文件
+    同处于同一目录，则推断它属于同一模块，视为内聚连通，不触发孤立警告。
+    """
+    norm_to_orig = {_normalize_path(f): f for f in files}
+    existing = [orig for norm, orig in norm_to_orig.items() if norm in graph]
+    new_files = [orig for norm, orig in norm_to_orig.items() if norm not in graph]
+    return existing, new_files
+
+
 def _are_files_connected(files: List[str], graph: Dict[str, Set[str]]) -> Tuple[bool, List[str]]:
     """
     使用 BFS 检查文件列表中所有文件是否属于同一连通分量。
@@ -230,43 +252,71 @@ def check_a3_layer_consistency(
     A3：评估文件集合的内聚性（Cohesion）。
 
     策略（双轨，优先使用代码图谱）：
-      Track A（优先）：代码图谱连通性检查
-        - 从 code_graph.json 构建文件级无向邻接表
-        - 检查所有文件是否属于同一连通分量
-        - 优点：精确反映实际代码耦合，不依赖路径规则
-        - 若 code_graph.json 不存在或文件不在图中，降级至 Track B
 
-      Track B（Fallback）：架构层路径前缀检查
-        - 原有逻辑：所有文件属于同一架构层
-        - 层不一致为警告（is_warning=True），不硬性阻断
+      Track A（优先，code_graph.json 存在且含锚点文件时）：
+        1. 将文件分为 existing（已在图中）和 new_files（新建，不在图中）
+        2. 检查 existing 文件之间的连通性
+        3. 对 new_files 使用"目录内聚豁免"：
+           - 新文件与某 existing 文件同目录 → 视为内聚连通（不报警）
+           - 新文件目录与所有 existing 文件均不同 → 孤立新模块，触发警告
+        4. 若无 existing 文件（全部为新文件）→ 降级至 Track B
+
+      Track B（Fallback）：架构层路径前缀检查（原有逻辑）
+        - 所有业务层文件属于同一架构层 → 通过
+        - 层不一致 → is_warning=True（不硬性阻断）
+
+    背景：code_graph.json 是历史快照。EP 的核心任务是写新代码，新建文件在
+    快照中必然缺席。若不做区分直接判定孤立，会对每个含新文件的 Unit 产生
+    100% 的假阳性（False Positive），使 A3 告警彻底失效（"狼来了"效应）。
     """
     if not files:
         return CheckResult(passed=True, label="A3 内聚性", detail="无文件")
 
     graph = _build_file_graph(code_graph_path or _CODE_GRAPH_PATH)
 
-    # Track A：代码图谱连通性（仅当图已加载且包含本次文件中至少一个文件时激活）
-    norm_files = [_normalize_path(f) for f in files]
-    files_in_graph = [nf for nf in norm_files if nf in graph]
+    # ── Track A：代码图谱双分类连通性检查 ─────────────────────────────────────
+    existing, new_files = _classify_files(files, graph)
 
-    if graph and len(files) > 1 and files_in_graph:
-        is_connected, isolated = _are_files_connected(files, graph)
-        if is_connected:
-            return CheckResult(
-                passed=True,
-                label="A3 内聚性",
-                detail=f"代码图谱连通（{len(files)} 个文件属同一连通分量）",
-            )
-        else:
-            isolated_names = [Path(f).name for f in isolated]
+    if graph and existing:
+        # Step 1：检查 existing 文件之间的连通性
+        if len(existing) > 1:
+            is_conn, isolated_existing = _are_files_connected(existing, graph)
+            if not is_conn:
+                isolated_names = [Path(f).name for f in isolated_existing]
+                return CheckResult(
+                    passed=False,
+                    label="A3 内聚性",
+                    detail=f"代码图谱不连通，孤立的现有文件：{', '.join(isolated_names)}",
+                    is_warning=True,
+                )
+
+        # Step 2：对 new_files 应用目录内聚豁免
+        existing_dirs = {_dir_of(f) for f in existing}
+        orphan_new = [f for f in new_files if _dir_of(f) not in existing_dirs]
+
+        total = len(existing) + len(new_files)
+        new_count = len(new_files)
+
+        if orphan_new:
+            orphan_names = [Path(f).name for f in orphan_new]
             return CheckResult(
                 passed=False,
                 label="A3 内聚性",
-                detail=f"代码图谱不连通，孤立文件：{', '.join(isolated_names)}",
-                is_warning=True,  # 不连通为警告，不硬性阻断
+                detail=(
+                    f"新文件目录与现有文件无关联：{', '.join(orphan_names)}"
+                    f"（可能是孤立新模块，建议确认是否应拆分为独立 DagUnit）"
+                ),
+                is_warning=True,
             )
 
-    # Track B：架构层路径前缀检查（Fallback）
+        suffix = f"（含 {new_count} 个新文件，按目录内聚推断连通）" if new_files else ""
+        return CheckResult(
+            passed=True,
+            label="A3 内聚性",
+            detail=f"代码图谱连通（{total} 个文件属同一连通分量{suffix}）",
+        )
+
+    # ── Track B：架构层路径前缀检查（Fallback：全为新文件或图不可用）──────────
     layers = [infer_layer(f) for f in files]
     business_layers = [lyr for lyr in layers if lyr not in ("testing", "docs", "unknown")]
 
@@ -281,12 +331,12 @@ def check_a3_layer_consistency(
     passed = len(unique_layers) <= 1
     layer_map = {f: infer_layer(f) for f in files}
     detail_parts = [f"{Path(f).name}→{lyr}" for f, lyr in layer_map.items()]
-    suffix = "" if graph else "（图谱不可用，使用层一致性 fallback）"
+    reason = "全部为新文件，使用层一致性 fallback" if not graph or not existing else "图谱不可用，使用层一致性 fallback"
 
     return CheckResult(
         passed=passed,
         label="A3 内聚性",
-        detail=f"{', '.join(detail_parts)}{suffix}",
+        detail=f"{', '.join(detail_parts)}（{reason}）",
         is_warning=not passed,
     )
 
