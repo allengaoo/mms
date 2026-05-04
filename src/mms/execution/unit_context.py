@@ -355,9 +355,9 @@ def generate_from_dag(ep_id: str, unit_id: str, model: str = "capable") -> str:
         from mms.dag.dag_model import DagState  # type: ignore[import]
 
     try:
-        from mms.workflow.ep_parser import parse_ep_by_id  # type: ignore[import]
+        from mms.utils.ep_parser import parse_ep_by_id  # type: ignore[import]
     except ImportError:
-        from mms.workflow.ep_parser import parse_ep_by_id  # type: ignore[import]
+        from mms.utils.ep_parser import parse_ep_by_id  # type: ignore[import]
 
     dag = DagState.load(ep_id)
     unit = dag._get_unit(unit_id)

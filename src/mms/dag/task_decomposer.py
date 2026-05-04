@@ -610,18 +610,19 @@ def build_constrained_context(
         try:
             sys.path.insert(0, str(_HERE))
             from mms.analysis.arch_resolver import ArchResolver  # type: ignore[import]
+            from mms.memory.repo_map import RepoMap  # type: ignore[import]
             resolver = ArchResolver()
+            rm = RepoMap()
 
             if intent_result is not None:
                 dual_result = resolver.resolve_with_ast_skeleton(
                     intent_result,
                     token_budget=actual_budget // 2,
+                    repo_map=rm,        # 注入 RepoMap，避免 arch_resolver 内部依赖 memory 层
                 )
                 ast_direct = dual_result.get("ast_skeleton", "")
                 ontology_hints = dual_result.get("ontology_constraints", [])
             else:
-                from mms.memory.repo_map import RepoMap  # type: ignore[import]
-                rm = RepoMap()
                 ast_direct = rm.build_context(
                     target_files=target_files,
                     token_budget=actual_budget // 2,

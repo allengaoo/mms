@@ -343,10 +343,19 @@ class ArchResolver:
         intent_result,
         token_budget: int = 1500,
         include_neighbors: bool = True,
+        repo_map=None,
     ) -> dict:
         """
         EP-130 双轨路由：在现有路径解析基础上，
         额外从 ast_index.json 提取对应文件的骨架片段。
+
+        参数：
+            intent_result:    IntentClassifier.classify() 的返回值
+            token_budget:     AST 骨架文本的最大 token 数
+            include_neighbors: 是否包含邻接文件的骨架
+            repo_map:         可选注入的 RepoMap 实例（dependency injection）。
+                              若不提供，则尝试内部懒加载 mms.memory.repo_map.RepoMap。
+                              推荐由调用方注入，以避免 analysis 层对 memory 层的直接依赖。
 
         返回：{
             "files": [str, ...],           # 现有 arch_resolver 逻辑的文件列表
@@ -357,13 +366,15 @@ class ArchResolver:
         # 第一步：用现有逻辑解析文件
         files = self.resolve_from_intent(intent_result)
 
-        # 第二步：加载 repo_map（惰性导入，避免循环依赖）
+        # 第二步：加载 repo_map（优先使用注入的实例，降级时才内部懒加载）
         ast_skeleton_text = ""
         try:
-            sys.path.insert(0, str(_HERE))
-            from mms.memory.repo_map import RepoMap  # type: ignore[import]
-            rm = RepoMap()
-            if files:
+            rm = repo_map
+            if rm is None:
+                # 兜底：尝试内部懒加载（保留向后兼容性）
+                from mms.memory.repo_map import RepoMap  # type: ignore[import]
+                rm = RepoMap()
+            if rm is not None and files:
                 ast_skeleton_text = rm.build_context(
                     target_files=files,
                     token_budget=token_budget,

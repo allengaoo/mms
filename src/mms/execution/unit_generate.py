@@ -515,10 +515,10 @@ def run_unit_generate(
     """
     try:
         from mms.dag.dag_model import DagState, make_dag_state  # type: ignore[import]
-        from mms.workflow.ep_parser import parse_ep_by_id  # type: ignore[import]
+        from mms.utils.ep_parser import parse_ep_by_id  # type: ignore[import]
     except ImportError:
         from mms.dag.dag_model import DagState, make_dag_state  # type: ignore[import]
-        from mms.workflow.ep_parser import parse_ep_by_id  # type: ignore[import]
+        from mms.utils.ep_parser import parse_ep_by_id  # type: ignore[import]
 
     ep_norm = ep_id.upper()
     if not ep_norm.startswith("EP-"):
