@@ -90,7 +90,7 @@ jobs:
         continue-on-error: true
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Benchmark 数据集完整性检查（快速，不运行 LLM）
+  # Benchmark 完整性检查（快速，不运行 LLM）
   # ──────────────────────────────────────────────────────────────────────────
   benchmark-integrity:
     name: Benchmark Integrity
@@ -107,14 +107,15 @@ jobs:
       - name: Install deps
         run: pip install pyyaml>=6.0 pytest>=8.0 pytest-mock>=3.12
 
-      - name: Run benchmark dataset validation
+      - name: Run benchmark unit tests (数据结构与计算逻辑，无 LLM)
         env:
+          MMS_CI_MODE: "1"
           MMS_EVAL_SKIP_LEVELS: "3,4"
         run: |
-          python -m pytest tests/test_codegen_evaluator.py \
+          python -m pytest tests/benchmark/test_layer1_cost_efficiency.py \
             -v \
             --tb=short \
-            -k "TestLoadCodegenTasks or TestCodegenQualityMetrics or TestRepairAndParseJson" \
+            -k "TestCostEfficiencyReport" \
             -q
 
   # ──────────────────────────────────────────────────────────────────────────
