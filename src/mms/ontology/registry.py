@@ -31,7 +31,7 @@ try:
 except ImportError:
     _ROOT = _HERE.parent.parent.parent
 
-_ONTOLOGY_DIR = _ROOT / "docs" / "memory" / "ontology"
+_ONTOLOGY_DIR = _ROOT / "assets" / "ontology_schema"
 _OBJECTS_DIR  = _ONTOLOGY_DIR / "objects"
 _LINKS_DIR    = _ONTOLOGY_DIR / "links"
 _FUNCS_DIR    = _ONTOLOGY_DIR / "functions"

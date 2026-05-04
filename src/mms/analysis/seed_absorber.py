@@ -560,11 +560,11 @@ def _write_v2_format(
     sections: dict,
     dry_run: bool = False,
 ) -> Path:
-    """写入旧版 seed_packs/{name}/ 格式（向后兼容）。"""
-    seed_dir = _ROOT / 'seed_packs' / seed_name
+    """写入旧版 seed_packs/{name}/ 格式（向后兼容，目录已迁移至 src/mms/bootstrap/seed_packs/）。"""
+    seed_dir = _ROOT / 'src' / 'mms' / 'bootstrap' / 'seed_packs' / seed_name
 
     if dry_run:
-        print(f"\n  [dry-run v2 格式] 目标目录：seed_packs/{seed_name}/")
+        print(f"\n  [dry-run v2 格式] 目标目录：src/mms/bootstrap/seed_packs/{seed_name}/")
         for sec, content in sections.items():
             print(f"\n  --- {sec} ---")
             print((content or '（空）')[:300] + ('...' if len(content or '') > 300 else ''))
@@ -641,7 +641,7 @@ def ingest(
     if output_format == "v31":
         target_dir = _ROOT / 'docs' / 'memory' / 'seed_packs' / seed_name
     else:
-        target_dir = _ROOT / 'seed_packs' / seed_name
+        target_dir = _ROOT / 'src' / 'mms' / 'bootstrap' / 'seed_packs' / seed_name
 
     if target_dir.exists() and not force and not dry_run:
         print(f"  ⏭️  种子包已存在，跳过：{target_dir.relative_to(_ROOT)}")

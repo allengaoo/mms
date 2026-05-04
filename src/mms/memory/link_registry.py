@@ -29,8 +29,8 @@ try:
 except ImportError:
     _ROOT = _HERE.parent.parent.parent
 
-_LINKS_DIR = _ROOT / "docs" / "memory" / "ontology" / "links"
-_CONFIG_DIR = _ROOT / "docs" / "memory" / "ontology" / "_config"
+_LINKS_DIR = _ROOT / "assets" / "ontology_schema" / "links"
+_CONFIG_DIR = _ROOT / "assets" / "ontology_schema" / "_config"
 _TRAVERSAL_FILE = _CONFIG_DIR / "traversal_paths.yaml"
 
 

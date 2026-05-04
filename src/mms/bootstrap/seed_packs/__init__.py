@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import List, Optional
 
 _HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent.parent.parent
+# _HERE = .../src/mms/bootstrap/seed_packs → 上溯 4 级到项目根
+_ROOT = _HERE.parent.parent.parent.parent
 
 try:
     sys.path.insert(0, str(_HERE.parent))

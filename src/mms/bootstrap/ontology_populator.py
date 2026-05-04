@@ -245,7 +245,7 @@ def bootstrap_project(
     if not skip_seeds:
         log("\n▶ Step 2/6 · 注入种子包（v3.1 格式优先）...")
         try:
-            from seed_packs import install_packs  # type: ignore
+            from mms.bootstrap.seed_packs import install_packs  # type: ignore
             target_docs = root / "docs"
             installed = install_packs(
                 pack_names=report.detected_stacks,

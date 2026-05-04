@@ -1503,7 +1503,7 @@ def _cmd_bootstrap_legacy(args: argparse.Namespace) -> int:
     import time
     try:
         from mms.analysis.dep_sniffer import sniff  # type: ignore[import]
-        from seed_packs import install_packs  # type: ignore[import]
+        from mms.bootstrap.seed_packs import install_packs  # type: ignore[import]
         from mms.analysis.ast_skeleton import build_ast_index  # type: ignore[import]
     except ImportError as e:
         error(f"Bootstrap 模块未找到（{e}）")
@@ -1618,8 +1618,8 @@ def cmd_seed(args: argparse.Namespace) -> int:
                         print(f"       {desc}")
                 print()
 
-        # ── v2 格式：seed_packs/ ──────────────────────────────────────────────
-        v2_root = _PROJECT_ROOT / "seed_packs"
+        # ── v2 格式：src/mms/bootstrap/seed_packs/ ────────────────────────────
+        v2_root = _PROJECT_ROOT / "src" / "mms" / "bootstrap" / "seed_packs"
         if v2_root.exists():
             v2_packs = sorted(
                 p for p in v2_root.iterdir()

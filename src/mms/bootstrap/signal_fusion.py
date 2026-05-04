@@ -199,9 +199,9 @@ def load_overrides(project_root: Path, detected_stacks: Optional[List[str]] = No
     # 确定要加载的 seed_packs 路径集合
     seed_packs_root = project_root / "seed_packs"
     if not seed_packs_root.exists():
-        # 回退到 MMS 自身的 seed_packs 目录
+        # 回退到 MMS 自身的 seed_packs 目录（已迁移至 src/mms/bootstrap/seed_packs/）
         _mms_root = Path(__file__).resolve().parent.parent.parent.parent
-        seed_packs_root = _mms_root / "seed_packs"
+        seed_packs_root = _mms_root / "src" / "mms" / "bootstrap" / "seed_packs"
     if not seed_packs_root.exists():
         return []
 
