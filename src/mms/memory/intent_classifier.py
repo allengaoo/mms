@@ -4,10 +4,10 @@ intent_classifier.py — MMS-OG v3.0 意图分类器
 
 将用户的自然语言任务描述映射到 {layer, operation, entry_files} 三元组。
 
-两阶段分类：
+两阶段分类（注：文档曾误称"三阶段漏斗"，实际为两阶段）：
   阶段 0（本地，无 LLM）：
-    从 docs/memory/ontology/arch_schema/intent_map.yaml 加载规则，
-    按 priority 顺序匹配关键词，计算置信度。
+    从 docs/memory/_system/routing/intent_map.yaml 加载规则，
+    按 priority 顺序匹配关键词，计算置信度（双重过滤：比例 + 绝对命中数）。
     置信度 ≥ 0.80 时直接返回结果，跳过 LLM 调用。
 
   阶段 1（小 prompt LLM，约 300-500 tokens）：
@@ -161,8 +161,10 @@ class IntentClassifier:
         )
 
         rules = self._intent_map.get("rules", [])
-        global_min_ratio = self._intent_map.get("defaults", {}).get("min_hit_ratio", 0.12)
-        global_threshold = self._intent_map.get("defaults", {}).get("confidence_threshold", 0.80)
+        defaults = self._intent_map.get("defaults", {})
+        global_min_ratio = defaults.get("min_hit_ratio", 0.12)
+        global_min_hits = defaults.get("min_hits", 1)   # 新增：最少绝对命中数
+        global_threshold = defaults.get("confidence_threshold", 0.80)
 
         best_score = -1.0
         best_rule: Optional[dict] = None
@@ -174,6 +176,8 @@ class IntentClassifier:
                 continue
 
             min_ratio = rule.get("min_hit_ratio", global_min_ratio)
+            # 每条规则可单独配置 min_hits，大关键词集规则应要求更多绝对命中数
+            min_hits_req = rule.get("min_hits", global_min_hits)
 
             # 计算命中的关键词
             hits = []
@@ -188,13 +192,20 @@ class IntentClassifier:
             if not hits:
                 continue
 
+            # 双重过滤：比例 AND 绝对数量
             hit_ratio = len(hits) / max(len(keywords), 1)
             if hit_ratio < min_ratio:
                 continue
+            if len(hits) < min_hits_req:
+                continue
 
-            # 置信度：命中比例×2（上限1.0）+ boost
-            score = min(hit_ratio * 2.0, 1.0) + float(rule.get("confidence_boost", 0.0))
-            score = min(score, 1.0)
+            # 置信度算法（修复版）：
+            #   - 基础分 = hit_ratio × 2（上限 0.9），避免 2 关键词 1 命中直接满分
+            #   - 规模奖励：关键词越多且命中率高，得分越稳定（乘以 min(hits/3, 1.0)）
+            #   - confidence_boost 叠加（上限 1.0）
+            base_score = min(hit_ratio * 2.0, 0.9)
+            scale_bonus = min(len(hits) / max(min_hits_req + 2, 3), 1.0) * 0.1
+            score = min(base_score + scale_bonus + float(rule.get("confidence_boost", 0.0)), 1.0)
 
             if score > best_score:
                 best_score = score

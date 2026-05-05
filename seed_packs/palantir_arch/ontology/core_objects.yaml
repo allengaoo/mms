@@ -1,0 +1,40 @@
+# palantir_arch/ontology/core_objects.yaml
+# Palantir 架构风格业务概念
+object_types:
+  - id: AggregateRoot
+    description: DDD 聚合根，控制业务不变量，所有变更通过领域事件发布
+    attributes:
+      - name: id
+        type: UUID
+        required: true
+      - name: version
+        type: int
+        description: 乐观锁版本号
+
+  - id: CommandHandler
+    description: CQRS 命令处理器，执行写操作，触发领域事件
+    attributes:
+      - name: command
+        type: BaseCommand
+        required: true
+
+  - id: QueryHandler
+    description: CQRS 查询处理器，只读，直接查询读模型
+    attributes:
+      - name: query
+        type: BaseQuery
+        required: true
+      - name: read_model
+        type: ReadModel
+        required: true
+
+  - id: Port
+    description: 六边形架构端口，Domain 层向外部定义的抽象契约
+    attributes:
+      - name: interface_type
+        type: "Protocol | ABC"
+        required: true
+
+  - id: Adapter
+    description: 实现 Port 的具体基础设施组件
+    implements: Port

@@ -1,0 +1,47 @@
+# LinkTypeDef: link_contains — 包含关系（模块→文件 / 文件→类）
+# ──────────────────────────────────────────────────────────────
+# 表示代码结构的层次包含关系，用于双向遍历。
+# 一个 LinkType 同时支持两种包含关系（通过 source_type 区分）：
+#   CodeModule --contains--> CodeFile
+#   CodeFile   --contains--> CodeClass
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: link_contains
+label: "包含关系"
+version: "1.0"
+
+source_type: [CodeModule, CodeFile]   # 多源类型
+target_type: [CodeFile, CodeClass]    # 与 source_type 一一对应
+cardinality: 1:N
+inverse: contained_by
+
+description: |
+  层次包含关系：
+    CodeModule --contains--> CodeFile（目录包含文件）
+    CodeFile   --contains--> CodeClass（文件包含类）
+
+  用于：
+    - 给定模块路径，找到所有子文件（正向）
+    - 给定类名，找到其所在文件（contained_by 反向）
+    - 给定文件路径，找到其所在模块（contained_by 反向）
+
+storage:
+  field_name: contains_ids
+  field_type: list[string]
+  stored_in: "ast_index.json 结构中（module → files → classes）"
+
+auto_population:
+  trigger: action_bootstrap
+  method: directory_and_ast_traversal
+  description: |
+    Bootstrap 扫描时自然产生：
+      目录遍历 → 建立 CodeModule --contains--> CodeFile 边
+      AST 解析 → 建立 CodeFile --contains--> CodeClass 边
+
+traversal_usage:
+  - purpose: "模块内类浏览"
+    description: "从 CodeModule 出发，contains × 2 跳找到所有 CodeClass"
+
+  - purpose: "向上归属查询"
+    description: "给定 CodeClass，通过 contained_by 找到文件，再找到模块"

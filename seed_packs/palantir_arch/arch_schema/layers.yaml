@@ -1,0 +1,50 @@
+# palantir_arch/arch_schema/layers.yaml
+# Palantir 风格分层（L1-L5 严格隔离 + CQRS + RLS）
+extends: base
+layers_override:
+  - id: L1_core
+    name: Core Domain（聚合根 / 值对象）
+    keywords: [aggregate, entity, value_object, domain_event, domain]
+    path_prefixes: ["backend/app/core/domain", "backend/app/domain"]
+    description: 纯领域模型，零外部依赖
+
+  - id: L2_port
+    name: Port（接口 / 抽象）
+    keywords: [port, interface, abstract, protocol, abc]
+    path_prefixes: ["backend/app/core/ports"]
+    description: 领域层向外暴露的抽象接口（六边形架构端口）
+
+  - id: L3_usecase
+    name: Use Case（应用服务）
+    keywords: [usecase, use_case, command, query, handler]
+    path_prefixes: ["backend/app/services/control", "backend/app/application"]
+    description: CQRS 命令/查询处理，不含 HTTP 细节
+
+  - id: L4_adapter
+    name: Adapter（适配器）
+    keywords: [adapter, repository, gateway, orm, sqlmodel]
+    path_prefixes: ["backend/app/infrastructure", "backend/app/adapters"]
+    description: 实现 Port 接口的具体适配器（数据库/消息队列/外部 API）
+
+  - id: L5_delivery
+    name: Delivery（交付层）
+    keywords: [api, router, controller, consumer, subscriber]
+    path_prefixes: ["backend/app/api", "backend/app/delivery"]
+    description: HTTP/gRPC/消息队列等协议的交付层
+
+dependency_rules:
+  - from: L1_core
+    to: []
+    description: 核心领域层不依赖任何外层
+  - from: L2_port
+    to: [L1_core]
+    description: Port 只引用核心领域
+  - from: L3_usecase
+    to: [L1_core, L2_port]
+    description: 应用层通过 Port 调用，不直接依赖 Adapter
+  - from: L4_adapter
+    to: [L1_core, L2_port]
+    description: Adapter 实现 Port，不依赖 Use Case
+  - from: L5_delivery
+    to: [L3_usecase, L2_port]
+    description: 交付层只调用 Use Case

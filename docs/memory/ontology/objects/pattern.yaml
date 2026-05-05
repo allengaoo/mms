@@ -1,0 +1,48 @@
+# ObjectTypeDef: Pattern — 可复用的架构/代码模式
+# ─────────────────────────────────────────────────
+# MemoryNode 的子类型（type: pattern 或 type: anti-pattern）
+# 从多条 Lesson 中归纳出的普适性规律，稳定性高（hot tier）。
+
+id: Pattern
+label: "可复用模式"
+type: object
+layer: L2_memory_graph
+parent_type: MemoryNode
+version: "1.0"
+
+description: |
+  从反复出现的 Lesson 中归纳提炼的可复用架构或代码模式。
+  包含正向模式（推荐）和反模式（禁止），均通过 type 字段区分。
+  Pattern 通过 derived_from 链接到来源 Lesson，
+  通过 about 链接到相关 DomainConcept。
+
+properties_extends: MemoryNode
+
+additional_properties:
+  pattern_category:
+    type: string
+    required: true
+    enum: [architectural, design, testing, error-handling, performance, security]
+
+  applicability:
+    type: list[string]
+    required: false
+    description: "适用场景描述（如 'Spring Boot REST API', 'gRPC service layer'）"
+
+  code_example:
+    type: string
+    required: false
+    description: "代码示例（简短的伪代码或片段）"
+
+  anti_pattern_risk:
+    type: string
+    required: false
+    description: "若为 anti-pattern，描述其危害"
+
+lifecycle:
+  default_tier: hot
+  gc_rules:
+    - "age > 180d AND accessed_count == 0 → 降级为 cold"
+
+id_prefix: "PAT-"
+example_ids: ["PAT-001-DTO-ISOLATION", "PAT-002-GRPC-ERROR-WRAP"]

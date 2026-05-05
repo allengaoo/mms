@@ -106,27 +106,72 @@ class FreshnessChecker:
             self._graph = MemoryGraph(memory_root=self._memory_root)
         return self._graph
 
-    def _file_fingerprint(self, file_path: str) -> Optional[str]:
-        """计算文件内容的 SHA256 fingerprint（只取前 12 位）。"""
+    def _file_content_fingerprint(self, file_path: str) -> Optional[str]:
+        """计算文件内容的 SHA256 fingerprint（只取前 12 位），用于降级对比。"""
         try:
             abs_path = _ROOT / file_path
             if abs_path.exists():
                 content = abs_path.read_bytes()
-                return hashlib.sha256(content).hexdigest()[:12]
+                return "content:" + hashlib.sha256(content).hexdigest()[:12]
         except Exception:  # noqa: BLE001
             pass
         return None
 
-    def _fingerprint_changed(self, file_path: str, node_fingerprint: Optional[str]) -> bool:
+    def _method_sig_fingerprint(self, file_path: str, class_name: str) -> Optional[str]:
+        """
+        重新扫描代码文件，提取指定类的方法签名，计算 sha256:前16位 格式的 fingerprint。
+        与 memory_seed_generator._compute_fingerprint 使用相同算法，保证可比较性。
+        """
+        abs_path = _ROOT / file_path
+        if not abs_path.exists():
+            return None
+        try:
+            import ast as _ast
+            source = abs_path.read_text(encoding="utf-8", errors="ignore")
+            tree = _ast.parse(source)
+            for node in _ast.walk(tree):
+                if isinstance(node, (_ast.ClassDef, _ast.AsyncFunctionDef)):
+                    if hasattr(node, "name") and node.name == class_name:
+                        sigs = sorted(
+                            f"{m.name}:{_ast.unparse(m.args)}"
+                            for m in _ast.walk(node)
+                            if isinstance(m, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+                        )
+                        content = "\n".join(sigs)
+                        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                        return f"sha256:{digest[:16]}"
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    def _fingerprint_changed(
+        self,
+        file_path: str,
+        node_fingerprint: Optional[str],
+        class_name: Optional[str] = None,
+    ) -> bool:
         """
         判断文件 fingerprint 是否发生变化。
-        若 node 没有记录 fingerprint，保守判断为"可能已变"（返回 True）。
+
+        比对策略：
+          1. 若 node_fingerprint 以 sha256: 开头（Bootstrap v4+ 生成），
+             尝试重新计算方法签名 fingerprint 进行对比。
+          2. 否则降级为文件内容哈希对比。
+          3. 若无记录 fingerprint 且无法计算，保守返回 True（提示可能已变）。
         """
         if not node_fingerprint:
             return True  # 保守：无记录时假设已变
-        current = self._file_fingerprint(file_path)
+
+        if node_fingerprint.startswith("sha256:") and class_name:
+            current = self._method_sig_fingerprint(file_path, class_name)
+            if current is None:
+                return False  # 文件不存在或解析失败，不触发
+            return current != node_fingerprint
+
+        # 降级：旧格式 fingerprint，用文件内容哈希对比（前缀不同，视为已变）
+        current = self._file_content_fingerprint(file_path)
         if current is None:
-            return False  # 文件不存在，不触发告警
+            return False
         return current != node_fingerprint
 
     def check(self, changed_files: List[str]) -> FreshnessReport:
@@ -150,19 +195,22 @@ class FreshnessChecker:
             report.total_checked += len(affected_nodes)
 
             for node in affected_nodes:
-                # 从 ast_pointer 取 fingerprint（若有）
-                node_fp = None
+                # 从 ast_pointer 提取 fingerprint 和 class_name
+                node_fp: Optional[str] = None
+                node_class: Optional[str] = None
                 try:
+                    import re as _re
                     raw_content = node.path.read_text(encoding="utf-8", errors="ignore")
-                    # 简单提取 ast_pointer.fingerprint 字段
-                    import re
-                    fp_match = re.search(r"fingerprint:\s*(\w+)", raw_content)
+                    fp_match = _re.search(r"fingerprint:\s*(sha256:[a-f0-9]+|[a-f0-9]{8,})", raw_content)
                     if fp_match:
                         node_fp = fp_match.group(1)
+                    cls_match = _re.search(r"class_name:\s*(\S+)", raw_content)
+                    if cls_match:
+                        node_class = cls_match.group(1).strip()
                 except Exception:  # noqa: BLE001
                     pass
 
-                if self._fingerprint_changed(file_path, node_fp):
+                if self._fingerprint_changed(file_path, node_fp, class_name=node_class):
                     stale.add(node.id)
                     # 沿 impacts 边传播一跳
                     for impact_id in node.impacts:

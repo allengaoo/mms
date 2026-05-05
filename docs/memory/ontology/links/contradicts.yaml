@@ -1,0 +1,35 @@
+# LinkTypeDef: link_contradicts — 记忆矛盾关系
+# ─────────────────────────────────────────────
+# 两条记忆之间存在技术判断上的矛盾（如一条说"用 gRPC"，另一条说"用 REST"）。
+# 矛盾检测是保证记忆图知识一致性的关键质量手段。
+
+id: link_contradicts
+label: "矛盾关系"
+version: "1.0"
+
+source_type: MemoryNode
+target_type: MemoryNode
+cardinality: M:N
+inverse: contradicted_by    # 对称关系（A 矛盾 B = B 矛盾 A）
+symmetric: true             # 矛盾关系是对称的
+
+storage:
+  field_name: contradicts   # 存储在 MemoryNode 的 front-matter 字段
+  field_type: list[string]  # 存储目标 MemoryNode 的 id
+
+auto_population:
+  trigger: null             # 当前不自动建边（需人工审查或未来 LLM 辅助）
+  method: manual_or_llm_assisted
+  description: |
+    矛盾关系的建立需要语义理解，因此当前不自动建边。
+    计划在 Phase 4（图质量保障）中通过 LLM 辅助检测同一 DomainConcept
+    下 tags 相近但结论相反的记忆对。
+
+detection_hint:
+  strategy: "找到 about_concepts 交集非空、但 tags 中同时含有互斥标签的记忆对"
+  example_conflict_tags: ["grpc-first", "rest-first"]
+
+traversal_usage:
+  - path_id: concept_lookup
+    direction: bidirectional
+    description: "查找某概念知识时，附带展示已知矛盾点供开发者判断"

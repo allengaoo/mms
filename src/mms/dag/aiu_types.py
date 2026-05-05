@@ -233,53 +233,55 @@ AIU_LAYER_AFFINITY: Dict[AIUType, List[str]] = {
 # 注：详细的多层亲和性见 AIU_LAYER_AFFINITY
 AIU_LAYER_MAP: Dict[AIUType, str] = {
     # 族 A：Schema（领域模型 + 适配器）
-    AIUType.SCHEMA_ADD_FIELD:         "DOMAIN",
-    AIUType.SCHEMA_MODIFY_FIELD:      "DOMAIN",
-    AIUType.SCHEMA_ADD_RELATION:      "DOMAIN",
-    AIUType.CONTRACT_ADD_REQUEST:     "ADAPTER",
-    AIUType.CONTRACT_ADD_RESPONSE:    "ADAPTER",
-    AIUType.CONTRACT_MODIFY_RESPONSE: "ADAPTER",
+    # 修复：原来使用 DDD 术语（DOMAIN/ADAPTER/APP/PLATFORM），现统一使用 dag_model.py
+    # VALID_LAYERS 中的 Clean Architecture 名称，消除 Layer 1 内部的命名不一致问题。
+    AIUType.SCHEMA_ADD_FIELD:         "L3_domain",
+    AIUType.SCHEMA_MODIFY_FIELD:      "L3_domain",
+    AIUType.SCHEMA_ADD_RELATION:      "L3_domain",
+    AIUType.CONTRACT_ADD_REQUEST:     "L5_interface",
+    AIUType.CONTRACT_ADD_RESPONSE:    "L5_interface",
+    AIUType.CONTRACT_MODIFY_RESPONSE: "L5_interface",
     # 族 B：业务逻辑（应用层）
-    AIUType.LOGIC_ADD_CONDITION:      "APP",
-    AIUType.LOGIC_ADD_BRANCH:         "APP",
-    AIUType.LOGIC_ADD_LOOP:           "APP",
-    AIUType.LOGIC_EXTRACT_METHOD:     "APP",
-    AIUType.LOGIC_ADD_GUARD:          "APP",
-    # 族 C：数据读写（适配器层 Repository）
-    AIUType.QUERY_ADD_SELECT:         "ADAPTER",
-    AIUType.QUERY_ADD_FILTER:         "ADAPTER",
-    AIUType.MUTATION_ADD_INSERT:      "ADAPTER",
-    AIUType.MUTATION_ADD_UPDATE:      "ADAPTER",
-    AIUType.MUTATION_ADD_DELETE:      "ADAPTER",
-    # 族 D：接口（适配器层）
-    AIUType.ROUTE_ADD_ENDPOINT:       "ADAPTER",
-    AIUType.ROUTE_ADD_PERMISSION:     "ADAPTER",
-    AIUType.FRONTEND_ADD_PAGE:        "ADAPTER",
-    AIUType.FRONTEND_ADD_STORE:       "ADAPTER",
-    AIUType.FRONTEND_BIND_API:        "ADAPTER",
-    # 族 E：基础设施（适配器层）
-    AIUType.EVENT_ADD_PRODUCER:       "ADAPTER",
-    AIUType.EVENT_ADD_CONSUMER:       "ADAPTER",
-    AIUType.CACHE_ADD_READ:           "ADAPTER",
-    AIUType.CONFIG_MODIFY:            "PLATFORM",
+    AIUType.LOGIC_ADD_CONDITION:      "L4_application",
+    AIUType.LOGIC_ADD_BRANCH:         "L4_application",
+    AIUType.LOGIC_ADD_LOOP:           "L4_application",
+    AIUType.LOGIC_EXTRACT_METHOD:     "L4_application",
+    AIUType.LOGIC_ADD_GUARD:          "L4_application",
+    # 族 C：数据读写（基础设施层 Repository）
+    AIUType.QUERY_ADD_SELECT:         "L2_infrastructure",
+    AIUType.QUERY_ADD_FILTER:         "L2_infrastructure",
+    AIUType.MUTATION_ADD_INSERT:      "L2_infrastructure",
+    AIUType.MUTATION_ADD_UPDATE:      "L2_infrastructure",
+    AIUType.MUTATION_ADD_DELETE:      "L2_infrastructure",
+    # 族 D：接口（界面/适配层）
+    AIUType.ROUTE_ADD_ENDPOINT:       "L5_interface",
+    AIUType.ROUTE_ADD_PERMISSION:     "L5_interface",
+    AIUType.FRONTEND_ADD_PAGE:        "L5_interface",
+    AIUType.FRONTEND_ADD_STORE:       "L5_interface",
+    AIUType.FRONTEND_BIND_API:        "L5_interface",
+    # 族 E：基础设施
+    AIUType.EVENT_ADD_PRODUCER:       "L2_infrastructure",
+    AIUType.EVENT_ADD_CONSUMER:       "L2_infrastructure",
+    AIUType.CACHE_ADD_READ:           "L2_infrastructure",
+    AIUType.CONFIG_MODIFY:            "L1_platform",
     # 族 F：质量
-    AIUType.TEST_ADD_UNIT:            "APP",
-    AIUType.TEST_ADD_INTEGRATION:     "APP",
-    AIUType.DOC_SYNC:                 "CC",
+    AIUType.TEST_ADD_UNIT:            "L4_application",
+    AIUType.TEST_ADD_INTEGRATION:     "L4_application",
+    AIUType.DOC_SYNC:                 "cross_cutting",
     # 族 G：分布式（应用层）
-    AIUType.SAGA_ADD_STEP:            "APP",
-    AIUType.SAGA_ADD_COMPENSATOR:     "APP",
-    AIUType.OUTBOX_ADD_MESSAGE:       "APP",
-    AIUType.IDEMPOTENCY_ADD_KEY:      "APP",
+    AIUType.SAGA_ADD_STEP:            "L4_application",
+    AIUType.SAGA_ADD_COMPENSATOR:     "L4_application",
+    AIUType.OUTBOX_ADD_MESSAGE:       "L4_application",
+    AIUType.IDEMPOTENCY_ADD_KEY:      "L4_application",
     # 族 H：治理（平台层）
-    AIUType.RBAC_ADD_PERMISSION:      "PLATFORM",
-    AIUType.RBAC_ADD_ROLE:            "PLATFORM",
-    AIUType.AUDIT_ADD_TRAIL:          "PLATFORM",
-    AIUType.TENANT_ADD_ISOLATION:     "PLATFORM",
+    AIUType.RBAC_ADD_PERMISSION:      "L1_platform",
+    AIUType.RBAC_ADD_ROLE:            "L1_platform",
+    AIUType.AUDIT_ADD_TRAIL:          "L1_platform",
+    AIUType.TENANT_ADD_ISOLATION:     "L1_platform",
     # 族 I：可观测性（平台层）
-    AIUType.METRIC_ADD_COUNTER:       "PLATFORM",
-    AIUType.TRACE_ADD_SPAN:           "PLATFORM",
-    AIUType.ALERT_ADD_RULE:           "PLATFORM",
+    AIUType.METRIC_ADD_COUNTER:       "L1_platform",
+    AIUType.TRACE_ADD_SPAN:           "L1_platform",
+    AIUType.ALERT_ADD_RULE:           "L1_platform",
 }
 
 # ── AIU 执行顺序（类比 DB 层级依赖）────────────────────────────────────────────

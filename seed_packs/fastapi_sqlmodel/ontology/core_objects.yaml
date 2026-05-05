@@ -1,0 +1,36 @@
+# fastapi_sqlmodel/ontology/core_objects.yaml
+# FastAPI + SQLModel 预置业务概念
+object_types:
+  - id: SqlModelEntity
+    description: 继承 SQLModel 的数据库实体，同时是 Pydantic 模型
+    attributes:
+      - name: id
+        type: int | UUID
+        required: true
+      - name: created_at
+        type: datetime
+        default: "datetime.utcnow()"
+      - name: updated_at
+        type: datetime
+        default: "datetime.utcnow()"
+
+  - id: DtoSchema
+    description: Pydantic Schema（用于 API 输入/输出验证，不含数据库字段）
+    attributes:
+      - name: class_name_suffix
+        type: str
+        pattern: "(Create|Update|Read|Response)$"
+        
+  - id: CrudService
+    description: 基于 SQLModel Session 的 CRUD 服务
+    attributes:
+      - name: session
+        type: AsyncSession
+        required: true
+
+link_types:
+  - id: model_to_dto
+    description: SQLModel 实体 → DTO Schema 的映射关系（禁止跨层直接引用）
+    from: SqlModelEntity
+    to: DtoSchema
+    constraint: "DTO 不得包含 SQLModel 特有字段（如 Field(foreign_key=...)）"

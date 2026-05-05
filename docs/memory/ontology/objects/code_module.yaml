@@ -1,0 +1,87 @@
+# ObjectTypeDef: CodeModule — 代码包/模块（Layer 1 聚合实体）
+# ──────────────────────────────────────────────────────────────
+# 代表一组相关 CodeFile 的聚合单位（Python package / Java package / Go package）。
+# Bootstrap 时由 dep_sniffer 和 AST 扫描共同产生。
+#
+# 用途：
+#   - 作为架构层级分析的粒度单位（整包属于哪一层？）
+#   - 记录包级别的依赖关系（controllers 包依赖 services 包）
+#   - 支持 "按层浏览" 功能（mulan list --layer ADAPTER）
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: CodeModule
+label: "代码包/模块"
+type: object
+layer: L1_code_structure
+version: "1.0"
+
+description: |
+  代码库中的包或模块单元（Python package / Java package / Go package / TS namespace）。
+  由 Bootstrap 根据目录结构和 AST 扫描结果自动识别，是 CodeFile 的聚合容器。
+
+primary_key: "module_path"
+
+backing_datasource:
+  type: "ast_index_json"
+  path: "docs/memory/_system/ast_index.json"
+  populated_by: "action_bootstrap"
+
+properties:
+  module_path:
+    type: string
+    required: true
+    description: "模块目录路径（相对项目根）"
+    example: "src/controllers"
+
+  package_name:
+    type: string
+    required: false
+    description: "语言级包名（com.example.controllers / controllers / controllers）"
+
+  lang:
+    type: string
+    required: true
+    enum: [python, typescript, java, go, mixed, unknown]
+
+  file_count:
+    type: integer
+    required: false
+    description: "模块内的文件数量"
+
+  class_count:
+    type: integer
+    required: false
+    description: "模块内的类数量"
+
+  inferred_layer:
+    type: string
+    required: false
+    enum: [ADAPTER, APP, DOMAIN, PLATFORM, CC, UNKNOWN]
+    description: "整个模块推断归属的架构层"
+
+  layer_confidence:
+    type: float
+    required: false
+    description: "模块级层推断置信度（由内部类推断结果聚合投票）"
+
+  dominant_object_type:
+    type: string
+    required: false
+    enum: [Controller, Service, Repository, Entity, Config, Util, Test, Mixed, Unknown]
+    description: "模块内占多数的 CodeClass.inferred_object_type"
+
+related_link_types:
+  - link_contains    # CodeModule --contains--> CodeFile
+
+related_functions:
+  - fn_infer_layer
+
+related_actions:
+  - action_bootstrap
+
+validation_rules:
+  - rule_id: module_path_not_empty
+    description: "module_path 不能为空"
+    check: "len(module_path.strip()) > 0"
+    severity: error

@@ -1,0 +1,9 @@
+stack_id: react_zustand
+description: "React 18 + Zustand + Ant Design 前端栈"
+always_inject: false
+match_conditions:
+  - required_packages: ["react"]
+  - optional_packages: ["zustand", "antd", "react_query"]
+    min_hits: 1
+  - dir_hints: ["frontend/src/stores", "frontend/src"]
+    min_hits: 1

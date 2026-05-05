@@ -1,0 +1,46 @@
+# base 种子包匹配条件
+# 此包始终被注入（所有项目通用约束）
+stack_id: base
+description: "通用工程约束基础种子（适用所有软件工程项目）"
+always_inject: true
+match_conditions: []
+
+# ── AST-level Framework Override Rules（通用语言框架基类）────────────────────
+# 从 signal_fusion.py _BASE_CLASS_LAYER_HINTS 迁移的通用规则（低优先级）
+# 栈专属规则（如 spring_boot / python_django）优先级更高
+ast_overrides:
+  - rule_id: BASE_REPOSITORY_SUFFIX_IS_DOMAIN
+    name_suffix: "Repository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 0.75
+
+  - rule_id: BASE_SERVICE_SUFFIX_IS_APP
+    name_suffix: "Service"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.70
+
+  - rule_id: BASE_CONTROLLER_SUFFIX_IS_ADAPTER
+    name_suffix: "Controller"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.75
+
+  - rule_id: BASE_HANDLER_SUFFIX_IS_ADAPTER
+    name_suffix: "Handler"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.70
+
+  - rule_id: BASE_CONFIG_SUFFIX_IS_PLATFORM
+    name_suffix: "Config"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 0.70
+
+  - rule_id: BASE_CONFIGURATION_SUFFIX_IS_PLATFORM
+    name_suffix: "Configuration"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 0.75

@@ -1,0 +1,32 @@
+# go_gin/arch_schema/layers.yaml
+extends: base
+layers_override:
+  - id: L1_domain
+    name: Domain（实体 / 值对象）
+    keywords: [domain, entity, model, aggregate]
+    path_prefixes: ["internal/domain", "pkg/domain"]
+    description: 纯 Go 结构体，不含框架依赖
+
+  - id: L2_repository
+    name: Repository（数据访问接口）
+    keywords: [repository, store, db, persistence]
+    path_prefixes: ["internal/repository", "internal/store"]
+    description: 数据库访问接口及 GORM 实现
+
+  - id: L3_usecase
+    name: Use Case / Service
+    keywords: [usecase, service, application]
+    path_prefixes: ["internal/usecase", "internal/service"]
+    description: 业务逻辑层，通过接口依赖 Repository
+
+  - id: L4_handler
+    name: HTTP Handler（Gin）
+    keywords: [handler, router, api, http, gin]
+    path_prefixes: ["internal/handler", "internal/api", "cmd"]
+    description: Gin 路由和 Handler，接收 HTTP 请求
+
+  - id: L5_middleware
+    name: Middleware / Config
+    keywords: [middleware, config, pkg, util]
+    path_prefixes: ["internal/middleware", "pkg", "config"]
+    description: 中间件、全局配置、通用工具

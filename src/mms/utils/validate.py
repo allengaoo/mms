@@ -28,19 +28,31 @@ from typing import Dict, List, Optional, Tuple
 _MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
 _SCHEMA_FILE = _MEMORY_ROOT / "_system" / "schema.json"
 
-_REQUIRED_FIELDS = ["id", "layer", "dimension", "type", "tier", "tags", "source_ep", "created_at", "version"]
-# 接受短格式（L2）和长格式（L2_infrastructure）
-_VALID_LAYERS = {"L1", "L2", "L3", "L4", "L5", "CC", "BIZ",
-                 "L1_platform", "L2_infrastructure", "L3_domain",
-                 "L4_application", "L5_interface", "cross_cutting"}
+_REQUIRED_FIELDS = ["id", "layer", "type", "tier", "tags", "version"]
+# v4.0：细粒度层 ID（规范值）+ 短格式 + 粗粒度别名（向后兼容）
+_VALID_LAYERS = {
+    # 细粒度层 ID（v4.0 规范值，Source of Truth 来自 layers.yaml）
+    "L5_frontend", "L5_api", "L4_service", "L4_worker",
+    "L3_ontology", "L3_data_pipeline",
+    "L2_database", "L2_messaging", "L2_cache", "L2_storage",
+    "L1_security", "CC_architecture", "CC_testing", "CC_governance",
+    "BIZ", "Ops", "Tooling_mms",
+    # 粗粒度别名（v3.x 向后兼容）
+    "L1", "L2", "L3", "L4", "L5", "CC",
+    "L1_platform", "L2_infrastructure", "L3_domain",
+    "L4_application", "L5_interface", "cross_cutting",
+}
 _VALID_TYPES = {
     "lesson", "decision", "error", "pattern", "skill",
+    "anti-pattern",  # MemoryNode schema v4.0 支持
     # BIZ 层专属类型
     "business-flow", "actor-model", "constraint", "edge-case",
 }
 _VALID_TIERS = {"hot", "warm", "cold", "archive"}
-# 接受标准前缀和遗留前缀 MEM-DB（EP-107 迁移时使用）；ENV 前缀用于部署环境快照记忆
-_ID_PATTERN = re.compile(r"^(MEM-L|MEM-E|MEM-DB|AD|PAT|SKL|BIZ|ENV)-[0-9A-Z][0-9A-Z-]*$")
+# 接受标准前缀和遗留前缀；MEM-SEED 为 seed pack 模板前缀；MEM-BOOT 为 bootstrap 自动生成
+_ID_PATTERN = re.compile(
+    r"^(MEM-L|MEM-E|MEM-DB|MEM-SEED|MEM-BOOT|AD|PAT|SKL|BIZ|ENV)-[0-9A-Z][0-9A-Z-]*$"
+)
 _EP_PATTERN = re.compile(r"^EP-[0-9]+$")
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
@@ -157,6 +169,10 @@ def find_changed_files() -> List[Path]:
                 # 排除系统文件目录（与 find_all_memory_files 保持一致）
                 if "_system" in path_str or "/archive" in path_str or "/templates" in path_str:
                     continue
+                # 排除 README.md 等文档文件（文件名不包含 ID 格式的均跳过）
+                fname = Path(path_str).name
+                if fname.lower().startswith("readme") or fname.lower().endswith("_readme.md"):
+                    continue
                 full = _MEMORY_ROOT.parent.parent / path_str
                 if full.exists():
                     memory_files.append(full)
@@ -212,11 +228,14 @@ def run_validation(files: List[Path]) -> bool:
 
         errors = validate_frontmatter(fm, fpath)
 
-        # 唯一性检查
+        # 唯一性检查（seed_packs 目录下的文件是模板，允许 ID 重复）
+        is_seed_pack = "seed_packs" in str(fpath)
         mem_id = fm.get("id", "")
-        if mem_id and mem_id in seen_ids:
-            errors.append(f"id '{mem_id}' 与 {seen_ids[mem_id].name} 重复")
-        elif mem_id:
+        if mem_id and mem_id in seen_ids and not is_seed_pack:
+            existing = seen_ids[mem_id]
+            if "seed_packs" not in str(existing):
+                errors.append(f"id '{mem_id}' 与 {existing.name} 重复")
+        if mem_id and not is_seed_pack:
             seen_ids[mem_id] = fpath
 
         if errors:

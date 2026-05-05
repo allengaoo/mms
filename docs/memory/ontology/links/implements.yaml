@@ -1,0 +1,46 @@
+# LinkTypeDef: link_implements — 类继承/接口实现关系
+# ──────────────────────────────────────────────────────
+# 从 AST bases 字段提取，表示类之间的继承或接口实现关系。
+# 对层推断有重要辅助作用：
+#   若 UserRepository extends BaseRepository → 大概率是 Repository 类型
+#
+# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+
+id: link_implements
+label: "继承/实现关系"
+version: "1.0"
+
+source_type: CodeClass
+target_type: CodeClass
+cardinality: M:N
+inverse: implemented_by
+
+description: |
+  当 CodeClass A 继承（extends）或实现（implements）CodeClass B 时，建立此边：
+    A --implements--> B
+  B 通常是抽象类、接口、或基类。
+
+  继承关系对层推断的贡献（inheritance_score 信号）：
+    A extends BaseRepository → A.inferred_object_type ← Repository (高置信度)
+    A extends AbstractController → A.inferred_object_type ← Controller
+    A implements UserService → A.inferred_object_type ← Service
+
+storage:
+  field_name: implements_classes
+  field_type: list[string]
+  stored_in: "ast_index.json CodeClass 条目的 bases 字段衍生"
+
+auto_population:
+  trigger: action_bootstrap
+  method: ast_bases_extraction
+  description: |
+    直接从 AST 骨架化结果（FileSkeleton.classes[].bases）提取。
+    注意：bases 里的类名可能是短名（未全限定），
+    Bootstrap 需要做项目内的全限定名解析（name → class_fqn）。
+
+traversal_usage:
+  - purpose: "层推断增强"
+    description: "fn_infer_layer 使用 implements 边上溯父类的 inferred_object_type"
+
+  - purpose: "多态调用分析"
+    description: "给定接口，找到所有实现类（implemented_by 反向边）"

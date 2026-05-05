@@ -15,6 +15,7 @@ src/mms/bootstrap/memory_seed_generator.py
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -92,15 +93,15 @@ def _extract_about_concepts(class_name: str, layer: str) -> List[str]:
 
 # ─── 记忆 Markdown 生成 ───────────────────────────────────────────────────────
 
-# Bootstrap 内部层名 → MemoryNode schema 规范层名（memory_node.yaml enum）
-# Bootstrap 使用 DDD 术语（ADAPTER/APP/DOMAIN），schema 使用 Clean Architecture 术语（L1-L5）
+# Bootstrap 内部层名 → MemoryNode schema 规范层名（memory_node.yaml enum v4.0 细粒度 ID）
+# Bootstrap 使用 DDD 术语（ADAPTER/APP/DOMAIN），schema v4.0 使用细粒度 ID
 _SCHEMA_LAYER_MAP = {
-    "ADAPTER":  "L5_interface",       # HTTP controller / gRPC handler / CLI adapter
-    "APP":      "L4_application",     # Application service / use case orchestrator
-    "DOMAIN":   "L3_domain",          # Domain entity / repository / aggregate
-    "PLATFORM": "L2_infrastructure",  # Database client / config / message broker
-    "CC":       "CC",                 # Cross-cutting: util / exception / logging
-    "UNKNOWN":  "CC",                 # Fallback
+    "ADAPTER":  "L5_api",            # HTTP controller / gRPC handler / CLI adapter → API 接口层
+    "APP":      "L4_service",        # Application service / use case orchestrator → 应用服务层
+    "DOMAIN":   "L3_ontology",       # Domain entity / repository / aggregate → 领域层（本体语义）
+    "PLATFORM": "L2_infrastructure", # Database client / config / message broker → 基础设施层
+    "CC":       "CC_architecture",   # Cross-cutting: util / exception / logging → 横切架构层
+    "UNKNOWN":  "CC_architecture",   # Fallback
 }
 
 # 目录名仍保留 Bootstrap 语义（便于开发者理解层级归属）
@@ -111,6 +112,24 @@ _LAYER_DIR_NAMES = {
     "PLATFORM": "PLATFORM",
     "CC":       "CC",
 }
+
+def _compute_fingerprint(methods: List[dict]) -> str:
+    """基于方法签名列表计算 AST fingerprint（SHA-256 前 16 字符）。
+
+    对方法名+签名字符串排序后做哈希，使 fingerprint 对方法顺序不敏感，
+    但对方法增删和签名变更敏感，满足漂移检测需求。
+    """
+    if not methods:
+        return ""
+    sigs = sorted(
+        f"{m.get('name', '')}:{m.get('signature', '')}"
+        for m in methods
+        if isinstance(m, dict) and m.get("name")
+    )
+    content = "\n".join(sigs)
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return f"sha256:{digest[:16]}"
+
 
 _TYPE_DESCRIPTIONS = {
     "Controller": "REST 适配层入口，负责接收 HTTP 请求并委托给应用服务层",
@@ -222,6 +241,7 @@ def generate_seed_memories(
     max_per_layer: int = 10,
     dry_run: bool = False,
     id_prefix: str = "MEM-BOOT",
+    existing_fingerprints: Optional[Dict[str, str]] = None,
 ) -> GeneratorReport:
     """
     为推断结果中的核心类生成初始 MemoryNode 文件。
@@ -241,6 +261,7 @@ def generate_seed_memories(
     report = GeneratorReport()
     layer_counts: Dict[str, int] = {}
     counter = 1
+    _existing_fps = existing_fingerprints or {}
 
     # 按层+in_degree 排序，优先处理核心类
     def priority_key(item: Tuple[str, Tuple[LayerInference, ObjectTypeMapping]]) -> float:
@@ -285,6 +306,16 @@ def generate_seed_memories(
         tags = _extract_tags(class_name, layer, obj_map.code_object_type)
         about_concepts = _extract_about_concepts(class_name, layer)
 
+        methods_list = cls_data.get("methods", [])
+        # 计算真实 fingerprint（方法签名哈希），用于漂移检测
+        fingerprint = cls_data.get("fingerprint", "") or _compute_fingerprint(methods_list)
+
+        # 增量幂等检查：若已有同类名记忆且 fingerprint 相同，跳过生成
+        # 注意：fingerprint 可能为 "" (无方法类)，两者均为 "" 时也视为未变化
+        if class_name in _existing_fps and _existing_fps.get(class_name, "MISSING") == fingerprint:
+            report.skipped.append(class_fqn)
+            continue
+
         content = _render_memory_md(
             memory_id=memory_id,
             class_name=class_name,
@@ -294,8 +325,8 @@ def generate_seed_memories(
             code_type=obj_map.code_object_type,
             tags=tags,
             about_concepts=about_concepts,
-            fingerprint=cls_data.get("fingerprint", ""),
-            methods=cls_data.get("methods", []),
+            fingerprint=fingerprint,
+            methods=methods_list,
             bases=cls_data.get("bases", []),
             annotations=cls_data.get("annotations", []),
             layer_confidence=layer_inf.confidence,

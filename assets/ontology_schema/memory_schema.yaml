@@ -34,14 +34,32 @@ fields:
     type: string
     required: true
     enum:
-      - "L1_platform"
-      - "L2_infrastructure"
-      - "L3_domain"
-      - "L4_application"
-      - "L5_interface"
-      - "CC"
-      - "BIZ"
-    description: "记忆所属架构层"
+      # ── 细粒度层 ID（v4.0 规范值，Source of Truth 来自 layers.yaml）──
+      - "L5_frontend"        # 前端界面层（group: L5_interface）
+      - "L5_api"             # API 接口层（group: L5_interface）
+      - "L4_service"         # 应用服务层（group: L4_application）
+      - "L4_worker"          # Worker 层（group: L4_application）
+      - "L3_ontology"        # 本体领域层（group: L3_domain）
+      - "L3_data_pipeline"   # 数据管道领域层（group: L3_domain）
+      - "L2_database"        # 数据库基础设施层（group: L2_infrastructure）
+      - "L2_messaging"       # 消息队列基础设施层（group: L2_infrastructure）
+      - "L2_cache"           # 缓存基础设施层（group: L2_infrastructure）
+      - "L2_storage"         # 对象存储基础设施层（group: L2_infrastructure）
+      - "L1_security"        # 平台安全层（group: L1_platform）
+      - "CC_architecture"    # 横切架构层（group: CC）
+      - "CC_testing"         # 横切测试层（group: CC）
+      - "CC_governance"      # 横切治理层（group: CC）
+      - "BIZ"                # 跨层业务流
+      - "Ops"                # 运维部署层
+      - "Tooling_mms"        # MMS 工具层
+      # ── 向后兼容的粗粒度别名（v3.x 旧值，graph_resolver 自动 normalize）──
+      - "L1_platform"        # deprecated → 对应 L1_security
+      - "L2_infrastructure"  # deprecated → 对应 L2_database/messaging/cache/storage
+      - "L3_domain"          # deprecated → 对应 L3_ontology/data_pipeline
+      - "L4_application"     # deprecated → 对应 L4_service/worker
+      - "L5_interface"       # deprecated → 对应 L5_frontend/api
+      - "CC"                 # deprecated → 对应 CC_architecture/testing/governance
+    description: "记忆所属架构层（v4.0 起使用细粒度 ID，粗粒度别名向后兼容）"
 
   module:
     type: string

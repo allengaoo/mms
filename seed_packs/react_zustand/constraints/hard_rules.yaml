@@ -1,0 +1,21 @@
+# react_zustand/constraints/hard_rules.yaml
+# React + Zustand 前端强制规则
+rules:
+  - id: no_api_call_in_component
+    description: UI 组件禁止直接调用 API，必须通过 Store 或 Custom Hook
+    pattern: "(axios|fetch|api\.).*in.*\.(tsx|jsx)"
+    scope: ["frontend/src/components", "frontend/src/pages"]
+    severity: ERROR
+
+  - id: store_single_responsibility
+    description: 每个 Zustand Store 只管理单一业务域的状态
+    pattern: "create.*{[^}]{500,}}"
+    scope: ["frontend/src/stores"]
+    severity: WARN
+    message: "Store 过大（>500字符），考虑拆分为多个 Slice"
+
+  - id: no_zustand_in_component
+    description: 组件不得直接调用 useStore()，应通过 Custom Hook 封装
+    pattern: "useStore\(|use[A-Z]\w+Store\("
+    scope: ["frontend/src/components"]
+    severity: WARN

@@ -1,0 +1,193 @@
+# ActionDef: action_bootstrap — 项目冷启动本体初始化（v2）
+# ──────────────────────────────────────────────────────────────
+# Palantir 对应概念：Action Type（有副作用的事务，修改 Ontology 对象和 Link）。
+#
+# 这是 Bootstrap v2 的核心 Action，负责从零开始为一个新项目构建初始本体图谱。
+# 与 Palantir Action 的对应关系：
+#   Parameters   = bootstrap 的输入参数（project_root, dry_run 等）
+#   Rules        = 5 步执行规则（Tech Stack → Seeds → AST → CodeGraph → MemoryGen）
+#   Side Effects = 写入 ast_index.json / 写入 MEM-*.md / 更新 MEMORY_INDEX.json
+#   Submission Criteria = 项目根目录存在 + 至少有一个源文件
+#
+# 版本：v2.0 | 创建于：2026-04-30 | Bootstrap v2（重大升级）
+
+id: action_bootstrap
+label: "项目冷启动本体初始化"
+type: action
+version: "2.0"
+replaces: "action_bootstrap_v1（原 cmd_bootstrap 中的简单逻辑）"
+
+description: |
+  对一个新项目执行完整的本体初始化（Ontology Population）：
+    1. 技术栈嗅探 → 选择种子包
+    2. 注入种子记忆（v3.1 格式优先）
+    3. AST 骨架化 → 产生 CodeFile / CodeClass 实例
+    4. 构建代码依赖图（depends_on / implements 边）
+    5. 五路信号推断 → 为每个 CodeClass 标注层级和语义类型
+    6. 生成初始 MemoryNode → 为核心类创建 MEM-*.md
+    7. 建立 cites / about 边 → 连接 MemoryNode 到 CodeFile 和 DomainConcept
+    8. 更新 MEMORY_INDEX.json
+
+  核心设计原则：零 LLM 调用，< 5s 完成，确定性输出。
+
+parameters:
+  - name: project_root
+    type: Path
+    required: true
+    description: "项目根目录路径"
+    default: "当前工作目录"
+
+  - name: dry_run
+    type: boolean
+    required: false
+    default: false
+    description: "预览模式：执行所有分析步骤，但不写入任何文件"
+
+  - name: skip_ast
+    type: boolean
+    required: false
+    default: false
+    description: "跳过 AST 骨架化（Step 3/4/5/6/7），仅执行种子注入"
+
+  - name: skip_seeds
+    type: boolean
+    required: false
+    default: false
+    description: "跳过种子包注入（Step 2），仅执行 AST 相关步骤"
+
+  - name: skip_memory_gen
+    type: boolean
+    required: false
+    default: false
+    description: "跳过初始记忆生成（Step 6/7），仅执行结构分析"
+
+  - name: min_confidence
+    type: float
+    required: false
+    default: 0.6
+    description: "层推断置信度阈值：低于此值的 CodeClass 不生成 MemoryNode"
+
+  - name: max_memories_per_layer
+    type: integer
+    required: false
+    default: 10
+    description: "每层最多生成的初始 MemoryNode 数量（避免过度生成）"
+
+submission_criteria:
+  - criterion_id: project_root_exists
+    description: "project_root 必须存在且为目录"
+    check: "Path(project_root).is_dir()"
+    error_message: "项目根目录不存在：{project_root}"
+
+  - criterion_id: has_source_files
+    description: "项目必须包含至少一个源文件（.py/.java/.go/.ts）"
+    check: "any source files found in project_root"
+    error_message: "项目根目录下未发现任何源文件，无法执行 Bootstrap"
+
+rules:
+  - rule_id: rule_01_sniff_tech_stack
+    label: "技术栈嗅探"
+    type: function_rule
+    function: "dep_sniffer.sniff(project_root)"
+    outputs: [detected_stacks, confidence, scan_sources]
+    on_failure: continue_with_base_stack   # 嗅探失败时用 base 种子包继续
+
+  - rule_id: rule_02_inject_seeds
+    label: "注入种子记忆（v3.1 + v2 双格式）"
+    type: ontology_rule
+    action: create_or_modify_objects
+    object_type: MemoryNode
+    description: |
+      将 docs/memory/seed_packs/{stack_name}/ 中的 AC-*.md 写入 docs/memory/shared/
+      建立初始的 DomainConcept 节点和 about 边
+    skip_if: "skip_seeds == true"
+
+  - rule_id: rule_03_build_ast_index
+    label: "AST 骨架化 → 创建 CodeFile + CodeClass 实例"
+    type: function_rule
+    function: "ast_skeleton.build_ast_index(project_root)"
+    outputs: [ast_index]
+    creates_objects: [CodeFile, CodeClass]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_04_build_code_graph
+    label: "构建代码依赖图"
+    type: function_rule
+    function: "fn_build_code_graph(ast_index, project_root)"
+    outputs: [code_graph]
+    creates_links: [link_depends_on, link_implements, link_contains]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_05_infer_layers
+    label: "五路信号推断架构层"
+    type: function_rule
+    function: "fn_infer_layer(code_class, code_graph)"
+    applies_to: "all CodeClass instances"
+    modifies: [CodeClass.inferred_layer, CodeClass.layer_confidence, CodeClass.signal_breakdown]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_06_detect_object_types
+    label: "推断代码对象语义类型"
+    type: function_rule
+    function: "fn_detect_code_object_type(code_class, layer_inference)"
+    applies_to: "CodeClass where layer_confidence >= min_confidence"
+    modifies: [CodeClass.inferred_object_type, CodeClass.linked_memory_id]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_07_generate_memory_nodes
+    label: "生成初始 MemoryNode（MEM-*.md）"
+    type: ontology_rule
+    action: create_objects
+    object_type: MemoryNode
+    description: |
+      为每个置信度 >= min_confidence 的 CodeClass 生成一条 MemoryNode，
+      选取每层最重要的（按 in_degree 排序）max_memories_per_layer 个类。
+      自动填充：cites_files / about_concepts / ast_pointer / layer / tier
+    skip_if: "skip_ast == true OR skip_memory_gen == true"
+
+  - rule_id: rule_08_build_links
+    label: "建立 cites / about 边"
+    type: ontology_rule
+    action: create_links
+    link_types: [link_cites, link_about]
+    description: |
+      为生成的 MemoryNode 建立：
+        MemoryNode --cites--> CodeFile（引用的代码文件）
+        MemoryNode --about--> DomainConcept（根据 tags 和 inferred_layer 自动匹配）
+    skip_if: "skip_ast == true OR skip_memory_gen == true"
+
+  - rule_id: rule_09_update_index
+    label: "更新 MEMORY_INDEX.json"
+    type: side_effect
+    description: "将新生成的 MemoryNode 写入 docs/memory/MEMORY_INDEX.json"
+    skip_if: "dry_run == true"
+
+side_effects:
+  - "写入 docs/memory/_system/ast_index.json（CodeFile/CodeClass 实例）"
+  - "写入 docs/memory/shared/{LAYER}/MEM-BOOT-*.md（初始 MemoryNode）"
+  - "更新 docs/memory/MEMORY_INDEX.json"
+  - "写入 docs/memory/_system/code_graph.json（代码依赖图缓存）"
+
+outputs:
+  - name: bootstrap_report
+    type: BootstrapReport
+    description: "执行报告（耗时/生成文件数/层分布/推断统计）"
+
+related_functions:
+  - fn_infer_layer
+  - fn_detect_code_object_type
+  - fn_build_code_graph
+
+related_objects:
+  - CodeFile
+  - CodeClass
+  - CodeModule
+  - MemoryNode
+  - DomainConcept
+
+related_links:
+  - link_cites
+  - link_about
+  - link_depends_on
+  - link_implements
+  - link_contains

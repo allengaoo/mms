@@ -1,0 +1,66 @@
+stack_id: fastapi_sqlmodel
+description: "FastAPI + SQLModel/SQLAlchemy 异步后端栈"
+always_inject: false
+match_conditions:
+  - required_packages: ["fastapi"]
+  - optional_packages: ["sqlmodel", "sqlalchemy", "asyncmy"]
+    min_hits: 1
+  - dir_hints: ["backend/app/api", "backend/app/services/control"]
+    min_hits: 1
+
+# ── AST-level Framework Override Rules ───────────────────────────────────────
+ast_overrides:
+  - rule_id: FASTAPI_SQLMODEL_IS_DOMAIN_ENTITY
+    bases_contains: "SQLModel"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 1.0
+
+  - rule_id: FASTAPI_DECLARATIVE_BASE_IS_DOMAIN
+    bases_contains: "DeclarativeBase"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 0.95
+
+  - rule_id: FASTAPI_BASE_MODEL_IS_DOMAIN
+    bases_contains: "BaseModel"
+    force_layer: "DOMAIN"
+    force_object_type: "Entity"
+    confidence: 0.85
+
+  - rule_id: FASTAPI_BASE_SETTINGS_IS_PLATFORM
+    bases_contains: "BaseSettings"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 1.0
+
+  - rule_id: FASTAPI_SETTINGS_IS_PLATFORM
+    bases_contains: "Settings"
+    name_suffix: "Settings"
+    force_layer: "PLATFORM"
+    force_object_type: "Config"
+    confidence: 0.90
+
+  - rule_id: FASTAPI_ROUTER_DECORATOR_IS_ADAPTER
+    annotation_contains: "router."
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.90
+
+  - rule_id: FASTAPI_APP_DECORATOR_IS_ADAPTER
+    annotation_contains: "app.get"
+    force_layer: "ADAPTER"
+    force_object_type: "Controller"
+    confidence: 0.90
+
+  - rule_id: FASTAPI_REPOSITORY_IS_DOMAIN
+    name_suffix: "Repository"
+    force_layer: "DOMAIN"
+    force_object_type: "Repository"
+    confidence: 0.90
+
+  - rule_id: FASTAPI_SERVICE_IS_APP
+    name_suffix: "Service"
+    force_layer: "APP"
+    force_object_type: "Service"
+    confidence: 0.85

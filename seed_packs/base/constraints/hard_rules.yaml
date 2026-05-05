@@ -1,0 +1,17 @@
+# base/constraints/hard_rules.yaml
+# arch_check.py 可直接引用的硬性红线规则
+rules:
+  - id: no_circular_import
+    description: 禁止循环导入
+    pattern: "循环依赖"
+    severity: ERROR
+    
+  - id: layer_isolation
+    description: 上层不能直接导入下层实现（只能通过接口）
+    pattern: "from L1_model import.*Repository|from L2_repo import.*Service"
+    severity: ERROR
+    
+  - id: no_hardcoded_secrets
+    description: 禁止硬编码密钥、API Key、密码
+    pattern: "(password|secret|api_key)\s*=\s*["'][^$\{][^"']{8,}["']"
+    severity: CRITICAL

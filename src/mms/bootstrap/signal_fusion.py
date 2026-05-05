@@ -102,32 +102,41 @@ _PATH_PATTERNS: Dict[str, List[str]] = {
 _NAME_SUFFIXES: Dict[str, List[str]] = {
     "ADAPTER":  ["Controller", "Handler", "Router", "View",
                  "Resource", "Endpoint", "Rest", "Api",
-                 "Resolver", "Delivery"],        # Go/GraphQL 惯用名
+                 "Resolver", "Delivery",          # Go/GraphQL 惯用名
+                 # API DTO / 请求响应 Schema（接口适配层，不是领域层）
+                 "Request", "Response", "DTO", "Dto",
+                 "Schema", "Schemas",
+                 "ViewModel", "Form", "Payload",
+                 "Serializer",                    # Django REST
+                 ],
     "APP":      ["Service", "UseCase", "Interactor",
                  "Orchestrator", "Manager", "Facade", "Application",
-                 "Usecase",                      # Go 惯用
+                 "Usecase",                       # Go 惯用
                  "ServiceImpl", "UseCaseImpl", "InteractorImpl",
                  "OrchestratorImpl", "ManagerImpl", "FacadeImpl"],  # Java Impl 惯用
     "DOMAIN":   ["Repository", "Repo", "DAO", "Store",
                  "Mapper", "Entity", "Aggregate", "ValueObject",
-                 "Request", "Response", "DTO",   # Go/Java DTO
                  "RepositoryImpl", "RepoImpl", "DAOImpl", "StoreImpl",
-                 "MapperImpl"],                  # Java Repository Impl 惯用
+                 "MapperImpl"],                   # Java Repository Impl 惯用
     "PLATFORM": ["Config", "Configuration", "Filter",
                  "Interceptor", "Provider", "Factory", "Auth", "Security",
                  "Logger", "Postgres", "Database", "Client",  # Go infra
-                 "Connection", "Server"],         # Go server structs
+                 "Connection", "Server",           # Go server structs
+                 "Middleware", "Dependency",       # FastAPI 特有
+                 ],
     "CC":       ["Exception", "Error",
                  "Util", "Helper", "Constant", "Test", "Spec"],
 }
 
 # 继承关系：框架基类 → 架构层映射（无需命名匹配）
 _BASE_CLASS_LAYER_HINTS: Dict[str, Tuple[str, float]] = {
-    # Python Pydantic / SQLModel
+    # Python ORM 基类 → DOMAIN（数据库实体，属于领域层）
     "SQLModel":    ("DOMAIN",   0.8),
-    "BaseModel":   ("DOMAIN",   0.7),
     "Base":        ("DOMAIN",   0.5),
     "DeclarativeBase": ("DOMAIN", 0.8),
+    # Pydantic BaseModel 是弱信号（API Schema 和 Domain ValueObject 都会继承）
+    # 路径信号（schemas/ → ADAPTER）优先级高于此继承信号
+    "BaseModel":   ("DOMAIN",   0.4),
     # Python FastAPI 配置
     "BaseSettings": ("PLATFORM", 0.9),
     "Settings":     ("PLATFORM", 0.7),
@@ -318,10 +327,32 @@ def apply_override(
 
 _PATH_STRONG_PATTERNS: Dict[str, List[str]] = {
     # 这些目录名单独出现就具有高置信度，路径信号评分 1.0（权重 0.25 → 贡献 0.25，超过 0.25 阈值）
-    "ADAPTER":  ["controller", "handler", "router", "endpoint"],
-    "APP":      ["service", "usecase", "use_case"],
-    "DOMAIN":   ["entity", "aggregate", "domain", "repository", "model"],
-    "PLATFORM": ["config", "configuration", "infrastructure", "infra"],
+    "ADAPTER":  [
+        "controller", "handler", "router", "endpoint",
+        # API DTO / 请求响应 Schema（属于接口适配层，不属于领域层）
+        "schemas", "schema", "dto", "dtos",
+        "request", "requests", "response", "responses",
+        # MVC / MVP 视图层
+        "serializer", "serializers", "view", "views",
+        # GraphQL / gRPC 适配
+        "resolver", "resolvers", "grpc",
+    ],
+    "APP":      ["service", "usecase", "use_case", "application", "app"],
+    "DOMAIN":   [
+        "entity", "aggregate", "domain", "repository",
+        # 注意：model/ 是弱信号，不在强信号中（Pydantic model 可能是 ADAPTER）
+    ],
+    "PLATFORM": [
+        "config", "configuration", "infrastructure", "infra",
+        # FastAPI 特有目录
+        "middleware", "middlewares", "dependency", "dependencies",
+        "event", "events", "lifespan",
+        # Spring Boot 特有
+        "aspect", "aop", "interceptor",
+        # 通用平台能力
+        "security", "auth", "authentication", "authorization",
+        "logging", "log", "exception", "error",
+    ],
 }
 
 

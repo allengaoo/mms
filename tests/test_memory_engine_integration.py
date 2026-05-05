@@ -160,9 +160,14 @@ class TestChainA_BootstrapToMemoryGraph:
         mem_dir = dest / "docs" / "memory"
         g = MemoryGraph(memory_root=mem_dir)
         g._ensure_loaded()
+        # v4.0：细粒度层 ID（规范值）+ 粗粒度别名（向后兼容）
         valid_layers = {
-            "L1_platform", "L2_infrastructure", "L3_domain",
-            "L4_application", "L5_interface", "CC",
+            "L5_frontend", "L5_api", "L4_service", "L4_worker",
+            "L3_ontology", "L3_data_pipeline",
+            "L2_database", "L2_messaging", "L2_cache", "L2_storage",
+            "L1_security", "CC_architecture", "CC_testing", "CC_governance",
+            "BIZ", "Ops", "Tooling_mms",
+            "L1_platform", "L2_infrastructure", "L3_domain", "L4_application", "L5_interface", "CC",
         }
         for node in g._nodes.values():
             if node.layer:

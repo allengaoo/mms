@@ -1,0 +1,33 @@
+# fastapi_sqlmodel/arch_schema/layers.yaml
+# FastAPI + SQLModel 特有分层（覆盖 base 层定义）
+extends: base
+layers_override:
+  - id: L1_model
+    name: SQLModel / Pydantic Model
+    keywords: [model, schema, table, entity, dto, response, request]
+    description: SQLModel 表定义 + Pydantic Schema
+    path_prefixes: ["backend/app/models", "backend/app/schemas"]
+    
+  - id: L2_repo
+    name: Repository / CRUD
+    keywords: [crud, repository, dao]
+    description: SQLModel 异步 CRUD 操作
+    path_prefixes: ["backend/app/crud", "backend/app/repositories"]
+    
+  - id: L3_service
+    name: Service / Domain Logic
+    keywords: [service, domain, usecase]
+    description: 业务逻辑（不依赖 HTTP 层）
+    path_prefixes: ["backend/app/services"]
+    
+  - id: L4_api
+    name: FastAPI Router
+    keywords: [router, endpoint, api, v1, v2]
+    description: FastAPI 路由定义
+    path_prefixes: ["backend/app/api"]
+    
+  - id: L5_infra
+    name: Infrastructure
+    keywords: [kafka, redis, celery, worker, cache, broker]
+    description: 消息队列、缓存等基础设施
+    path_prefixes: ["backend/app/infrastructure"]

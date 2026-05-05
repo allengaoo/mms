@@ -1,23 +1,31 @@
-# 意图快速映射表 — MMS-OG v3.0
+# 意图快速映射表 — MMS-OG v4.0
 #
 # 用途：
 #   用户任务描述 → {layer, operation} 的纯本地快速匹配。
 #   取代 injector.py 中硬编码的 _KEYWORD_LAYER_MAP。
 #
-# 匹配算法（arch_resolver.py 实现）：
+# 匹配算法（intent_classifier.py 实现）：
 #   1. 按 priority 从高到低逐条检查规则
 #   2. 统计 keywords 中有多少在任务描述中出现
-#   3. 命中数 / 规则 keywords 总数 ≥ min_hit_ratio 时触发该规则
-#   4. confidence = min(命中比例 × 2, 1.0) + confidence_boost（若配置）
+#   3. 双重过滤：命中数/总数 ≥ min_hit_ratio 且 命中数 ≥ min_hits
+#   4. confidence = min(hit_ratio×2, 0.9) + scale_bonus + confidence_boost
+#      scale_bonus = min(命中数/(min_hits+2), 1.0) × 0.1（奖励绝对命中数多的规则）
 #   5. confidence ≥ 0.80 时跳过第1轮 LLM 调用，直接进入路径解析
 #
-# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+# 扩展机制：
+#   - 在项目根 .mms/intent_overrides.yaml 中可覆盖/追加规则（优先级自动提升 +10）
+#   - 新增层：先在 layers.yaml 中定义，再在 operations.yaml 中确认操作类型，
+#     最后在此文件添加规则，三步均无需修改 Python 代码
+#
+# 版本：v4.0 | 更新于：2026-05-05 | 统一层级命名体系
 
-version: "3.0"
+version: "4.0"
 created_at: "2026-04-16"
+updated_at: "2026-05-05"
 
 defaults:
   min_hit_ratio: 0.12
+  min_hits: 1              # 最少绝对命中数（防止大关键词集规则被单词触发）
   confidence_threshold: 0.80
 
 rules:

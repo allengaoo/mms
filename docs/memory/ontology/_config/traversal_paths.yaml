@@ -1,0 +1,67 @@
+# 图遍历路径配置（YAML 驱动，新增路径不改 Python 代码）
+# ─────────────────────────────────────────────────────────────
+# 供 graph_resolver.py 的 typed_explore() 方法使用。
+# 每个 path_id 代表一种检索意图，定义了要走的 LinkType 序列。
+#
+# 扩展方式：在本文件新增一个 path entry，graph_resolver 自动加载。
+# 不需要修改 graph_resolver.py 源码。
+#
+# 版本：v1.0 | 创建于：2026-04-25
+
+version: "1.0"
+
+paths:
+  # ─── 概念级知识查询 ──────────────────────────────────────────────
+  concept_lookup:
+    label: "查找某概念相关知识"
+    description: |
+      给定一组概念关键词，找到所有与之相关的记忆节点。
+      典型使用：注入上下文前，通过任务描述关键词定位相关记忆。
+    edge_types: [about, related_to]
+    max_depth: 2
+    include_inverse: true   # 也走 cited_by_memories（DomainConcept → MemoryNode 反向）
+    min_results: 3          # 结果不足时触发 hybrid_search fallback
+
+  # ─── 代码变更影响分析 ────────────────────────────────────────────
+  code_change_impact:
+    label: "代码变更时找受影响记忆"
+    description: |
+      给定一组变更的代码文件路径，通过 cites 边的反向索引找到引用这些文件的记忆，
+      再沿 impacts 边传播一跳，标记所有 drift_suspected 记忆。
+    edge_types: [cites, impacts]
+    max_depth: 1
+    include_inverse: false  # 只走正向边（cites_files → 反向文件索引另行处理）
+    min_results: 0          # 不触发 fallback（代码变更分析要精准，不补充无关记忆）
+
+  # ─── 知识图谱扩展探索 ────────────────────────────────────────────
+  knowledge_expand:
+    label: "扩展相关知识深度探索"
+    description: |
+      从已知记忆节点出发，沿关联边扩展探索周边知识，
+      用于 dream 生成时为 LLM 提供更丰富的上下文背景。
+    edge_types: [related_to, derived_from]
+    max_depth: 2
+    include_inverse: true   # 也走 has_derived（找到从本记忆派生的上层知识）
+    min_results: 2
+
+  # ─── 矛盾知识检测 ────────────────────────────────────────────────
+  contradiction_check:
+    label: "检测矛盾知识"
+    description: |
+      查找与目标记忆在同一 DomainConcept 下存在矛盾的记忆对。
+      用于 postcheck 时的知识一致性校验。
+    edge_types: [contradicts]
+    max_depth: 1
+    include_inverse: true   # contradicts 是对称关系
+    min_results: 0
+
+  # ─── 知识溯源 ────────────────────────────────────────────────────
+  knowledge_provenance:
+    label: "溯源知识的推导链"
+    description: |
+      从 Pattern 或 ArchDecision 出发，沿 derived_from 链向下追溯到根 Lesson，
+      或从 Lesson 出发向上找到它被归纳为的 Pattern。
+    edge_types: [derived_from]
+    max_depth: 3
+    include_inverse: true   # 也走 has_derived（向上找派生知识）
+    min_results: 0

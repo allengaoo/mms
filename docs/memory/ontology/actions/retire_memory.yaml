@@ -1,0 +1,49 @@
+# ActionDef: action_retire_memory — 记忆退役（软删除降级）
+# ────────────────────────────────────────────────────────
+# 版本：v1.0 | 创建于：2026-04-30
+
+id: action_retire_memory
+label: "记忆退役"
+type: action
+version: "1.0"
+
+description: |
+  将一条 MemoryNode 降级为 archive tier，切断其所有入边（hybrid_search 永久忽略），
+  并在图中保留节点本身（软删除，可审计追溯）。
+
+  触发场景：
+    1. GC 淘汰（LFU 三维度评分低于阈值）
+    2. contradicts 检测后主动降级（apply_contradiction_resolution）
+    3. 人工审核废弃（mulan gc 交互式操作）
+
+parameters:
+  - name: memory_id
+    type: string
+    required: true
+    description: "要退役的 MemoryNode ID"
+
+  - name: reason
+    type: string
+    required: false
+    description: "退役原因（audit log 记录）"
+
+  - name: purge
+    type: boolean
+    required: false
+    default: false
+    description: "true = 物理删除文件；false = 仅降级 tier 为 archive（推荐）"
+
+rules:
+  - rule_id: set_tier_archive
+    type: modify_object
+    object_type: MemoryNode
+    modification: "tier ← archive"
+
+  - rule_id: cut_incoming_links
+    type: modify_object
+    description: "将所有引用此节点的 impacts/related_to 边标记为 stale"
+
+submission_criteria:
+  - criterion_id: memory_exists
+    check: "memory_id exists in MEMORY_INDEX.json"
+    error_message: "记忆 ID 不存在：{memory_id}"

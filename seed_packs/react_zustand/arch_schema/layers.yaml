@@ -1,0 +1,27 @@
+# react_zustand/arch_schema/layers.yaml
+# React + Zustand 前端分层定义
+extends: base
+layers_override:
+  - id: L1_store
+    name: Zustand Store（状态管理）
+    keywords: [store, state, slice, atom]
+    path_prefixes: ["frontend/src/stores", "frontend/src/store"]
+    description: 全局状态管理，所有状态变更的单一来源
+
+  - id: L2_service
+    name: API Service（数据访问）
+    keywords: [service, api, client, fetcher, request]
+    path_prefixes: ["frontend/src/services", "frontend/src/api"]
+    description: HTTP 请求封装，与后端 API 通信
+
+  - id: L3_hook
+    name: Custom Hook（业务逻辑）
+    keywords: [hook, use_, custom]
+    path_prefixes: ["frontend/src/hooks"]
+    description: 封装业务逻辑的 React Custom Hook
+
+  - id: L4_component
+    name: Component（UI）
+    keywords: [component, page, view, widget, layout]
+    path_prefixes: ["frontend/src/components", "frontend/src/pages"]
+    description: React UI 组件，只负责渲染和用户交互

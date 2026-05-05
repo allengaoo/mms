@@ -1,0 +1,132 @@
+# ObjectTypeDef: MemoryNode — 记忆图节点（Layer 2 核心对象）
+# ─────────────────────────────────────────────────────────────
+# 这是 MMS 记忆本体图（Layer 2）的核心节点类型，代表系统积累的
+# 一条结构化知识。MemoryNode 通过 LinkType 与其他节点建立语义关系，
+# 构成可遍历的知识图谱索引。
+#
+# 子类型（通过 type 字段区分）：
+#   - lesson       从执行失败/成功中提炼的经验教训
+#   - pattern      可复用的代码/架构模式
+#   - decision     架构决策记录（ADR）
+#   - anti-pattern 反模式（需要避免的做法）
+#   - business-flow 业务流程文档
+#
+# 版本：v4.0 | 重构于：2026-04-25 | 分层净化
+
+id: MemoryNode
+label: "记忆图节点"
+type: object
+layer: L2_memory_graph
+version: "4.0"
+
+description: |
+  MMS 记忆本体图（Layer 2）的核心实体。
+  每个 MemoryNode 代表一条结构化知识，通过以下 LinkType 连接到图中其他节点：
+    cites       → CodeFile（引用的代码文件）
+    about       → DomainConcept（描述的领域概念）
+    impacts     → MemoryNode（变更时需检查的关联记忆）
+    contradicts → MemoryNode（与之矛盾的记忆）
+    derived_from→ MemoryNode（从哪条记忆提炼而来）
+
+primary_key: "id"
+
+properties:
+  id:
+    type: string
+    required: true
+    pattern: "^(MEM-L-|AD-|BIZ-|ENV-|MEM-DB-)[0-9A-Z-]+"
+    description: "记忆唯一 ID"
+
+  type:
+    type: string
+    required: true
+    enum: [lesson, pattern, decision, anti-pattern, business-flow]
+
+  tier:
+    type: string
+    required: true
+    enum: [hot, warm, cold, archive]
+    description: "访问热度层级，驱动 GC 和检索优先级"
+
+  layer:
+    type: string
+    required: true
+    enum: [L1_platform, L2_infrastructure, L3_domain, L4_application, L5_interface, CC, BIZ]
+
+  tags:
+    type: list[string]
+    required: true
+
+  # ── Layer 2 图边字段（LinkType 实例存储） ──────────────────
+
+  cites_files:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_cites
+    description: "引用的代码文件路径列表（由 _auto_link 自动填充）"
+
+  about_concepts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_about
+    description: "描述的领域概念 ID 列表（由 _auto_link 关键词匹配填充）"
+
+  impacts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_impacts
+    description: "变更时需同步检查的记忆 ID 列表"
+
+  contradicts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_contradicts
+    description: "与之存在矛盾的记忆 ID 列表"
+
+  derived_from:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_derived_from
+    description: "本记忆从哪些记忆提炼而来"
+
+  related_to:
+    type: list[object]
+    required: false
+    default: []
+    description: "通用语义相关记忆（保留，向后兼容 v3 格式）"
+    item_schema:
+      id: "记忆 ID"
+      reason: "关联原因说明"
+
+  ast_pointer:
+    type: object
+    required: false
+    description: "代码物理绑定（EP-130，与 cites_files 互补）"
+    fields:
+      file_path: string
+      class_name: string
+      fingerprint: string
+      drift: boolean
+
+related_link_types:
+  - link_cites
+  - link_about
+  - link_impacts
+  - link_contradicts
+  - link_derived_from
+
+related_functions:
+  - fn_rank_memories
+  - fn_detect_drift
+  - fn_find_contradictions
+
+related_actions:
+  - action_distill
+  - action_dream
+  - action_retire_memory
+  - action_promote_draft

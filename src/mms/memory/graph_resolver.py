@@ -115,6 +115,49 @@ def _parse_frontmatter(text: str) -> dict:
     return result
 
 
+# ── 层级规范化（向后兼容旧粗粒度别名）────────────────────────────────────────
+
+# 旧粗粒度别名 → 新细粒度 ID 映射（v3.x → v4.0）
+# 粗粒度别名映射到其最典型的细粒度子层（用于显示规范化，不改变语义）
+_LAYER_LEGACY_MAP: Dict[str, str] = {
+    "L1_platform":      "L1_security",
+    "L2_infrastructure":"L2_database",
+    "L3_domain":        "L3_ontology",
+    "L4_application":   "L4_service",
+    "L5_interface":     "L5_api",
+    "CC":               "CC_architecture",
+    # ADAPTER/APP/DOMAIN/PLATFORM 是 Bootstrap DDD 内部术语（v4.0 前也可能写入文件）
+    "ADAPTER":          "L5_api",
+    "APP":              "L4_service",
+    "DOMAIN":           "L3_ontology",
+    "PLATFORM":         "L2_infrastructure",
+    "UNKNOWN":          "CC_architecture",
+}
+
+# 所有合法的细粒度 layer ID 集合
+_VALID_FINE_LAYERS: set = {
+    "L5_frontend", "L5_api",
+    "L4_service", "L4_worker",
+    "L3_ontology", "L3_data_pipeline",
+    "L2_database", "L2_messaging", "L2_cache", "L2_storage",
+    "L1_security",
+    "CC_architecture", "CC_testing", "CC_governance",
+    "BIZ", "Ops", "Tooling_mms",
+}
+
+
+def _normalize_layer(layer_raw: str) -> str:
+    """将旧粗粒度 layer 别名规范化为 v4.0 细粒度 ID。
+
+    已经是细粒度 ID 的值直接返回（无需转换）。
+    未知值也直接返回原值（不强制报错，保持宽容加载）。
+    """
+    v = layer_raw.strip().strip("\"'")
+    if v in _VALID_FINE_LAYERS:
+        return v
+    return _LAYER_LEGACY_MAP.get(v, v)
+
+
 # ── 数据结构 ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -140,6 +183,12 @@ class MemoryNode:
     contradicts: List[str] = field(default_factory=list)    # contradicts 边：矛盾记忆 ID
     derived_from: List[str] = field(default_factory=list)   # derived_from 边：来源记忆 ID
     title: str = ""
+    # 元数据字段（v4.1 新增，与 memory_schema.yaml 对齐）
+    module: str = ""
+    source_ep: str = ""
+    version: int = 1
+    generalized: bool = False
+    dimension: str = ""
 
     @property
     def related_ids(self) -> List[str]:
@@ -251,7 +300,7 @@ class MemoryGraph:
                     id=mem_id,
                     path=md,
                     tier=str(fm.get("tier", "warm")).strip("\"'"),
-                    layer=str(fm.get("layer", "")).strip("\"'"),
+                    layer=_normalize_layer(str(fm.get("layer", ""))),
                     tags=fm.get("tags", []) or [],
                     related_to=related_list,
                     cites_files=[str(f) for f in cites] if cites else [],
@@ -260,6 +309,11 @@ class MemoryGraph:
                     contradicts=[str(c) for c in contradicts],
                     derived_from=[str(d) for d in derived_from],
                     title=title,
+                    module=str(fm.get("module", "")).strip("\"'"),
+                    source_ep=str(fm.get("source_ep", "")).strip("\"'"),
+                    version=int(fm.get("version", 1)) if fm.get("version") is not None else 1,
+                    generalized=bool(fm.get("generalized", False)),
+                    dimension=str(fm.get("dimension", "")).strip("\"'"),
                 )
                 self._nodes[mem_id] = node
 

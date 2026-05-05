@@ -1,0 +1,32 @@
+# spring_boot/ontology/core_objects.yaml
+object_types:
+  - id: JpaEntity
+    description: 带 @Entity 注解的 JPA 实体类
+    attributes:
+      - name: id
+        type: Long | UUID
+        annotation: "@Id @GeneratedValue"
+        required: true
+      - name: createdAt
+        type: LocalDateTime
+        annotation: "@CreatedDate"
+      - name: updatedAt
+        type: LocalDateTime
+        annotation: "@LastModifiedDate"
+
+  - id: SpringService
+    description: 带 @Service 注解的业务服务，不含 HTTP 细节
+    attributes:
+      - name: repository
+        type: "JpaRepository<?,?>"
+        required: true
+
+  - id: RestController
+    description: 带 @RestController 注解的 HTTP 控制器
+    attributes:
+      - name: service
+        type: SpringService
+        required: true
+      - name: request_mapping
+        type: string
+        annotation: "@RequestMapping"

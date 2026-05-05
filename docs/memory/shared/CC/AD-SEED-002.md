@@ -1,6 +1,6 @@
 ---
 id: AD-SEED-002
-layer: CC
+layer: CC_architecture
 dimension: architecture
 module: architecture
 type: decision

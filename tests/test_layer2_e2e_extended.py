@@ -323,9 +323,14 @@ class TestChainG_CrossLanguageConsistency:
         self, python_bootstrapped, java_bootstrapped
     ):
         """两个项目生成的节点 layer 字段都应符合 schema 枚举值。"""
+        # v4.0：细粒度层 ID（规范值）+ 粗粒度别名（向后兼容）
         valid_layers = {
-            "L1_platform", "L2_infrastructure", "L3_domain",
-            "L4_application", "L5_interface", "CC",
+            "L5_frontend", "L5_api", "L4_service", "L4_worker",
+            "L3_ontology", "L3_data_pipeline",
+            "L2_database", "L2_messaging", "L2_cache", "L2_storage",
+            "L1_security", "CC_architecture", "CC_testing", "CC_governance",
+            "BIZ", "Ops", "Tooling_mms",
+            "L1_platform", "L2_infrastructure", "L3_domain", "L4_application", "L5_interface", "CC",
         }
         for dest, _ in [python_bootstrapped, java_bootstrapped]:
             mem_dir = dest / "docs" / "memory"
@@ -409,9 +414,14 @@ class TestChainH_SchemaMemoryConsistency:
         if not g._nodes:
             pytest.skip("无记忆节点")
 
+        # v4.0：细粒度层 ID（规范值）+ 粗粒度别名（向后兼容）
         valid_layers = {
-            "L1_platform", "L2_infrastructure", "L3_domain",
-            "L4_application", "L5_interface", "CC",
+            "L5_frontend", "L5_api", "L4_service", "L4_worker",
+            "L3_ontology", "L3_data_pipeline",
+            "L2_database", "L2_messaging", "L2_cache", "L2_storage",
+            "L1_security", "CC_architecture", "CC_testing", "CC_governance",
+            "BIZ", "Ops", "Tooling_mms",
+            "L1_platform", "L2_infrastructure", "L3_domain", "L4_application", "L5_interface", "CC",
         }
         invalid = [
             (n.id, n.layer)

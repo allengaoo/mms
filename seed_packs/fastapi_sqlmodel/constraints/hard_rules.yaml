@@ -1,0 +1,19 @@
+# fastapi_sqlmodel/constraints/hard_rules.yaml
+# FastAPI + SQLModel 强制规则
+rules:
+  - id: dto_isolation
+    description: API 路由函数不得直接返回 SQLModel 实体，必须转换为 DTO
+    pattern: "return\s+(?:await\s+)?(?:db\.get|session\.get|crud\.)"
+    severity: ERROR
+    message: "路由函数必须通过 DTO Schema 序列化，不得直接返回 ORM 对象"
+    
+  - id: no_sync_db_in_async
+    description: 异步路由中禁止使用同步数据库操作
+    pattern: "async def.*:\n.*\bSession\b(?!Async)"
+    severity: ERROR
+    
+  - id: migration_required_for_schema_change
+    description: 修改 SQLModel Table 时必须同步生成 Alembic 迁移脚本
+    trigger_pattern: "class.*SQLModel.*table\s*=\s*True"
+    requires: ["migrations/**/*.py"]
+    severity: CRITICAL

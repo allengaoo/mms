@@ -1,0 +1,39 @@
+# FunctionDef: fn_extract_tags — 任务标签提取函数
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: fn_extract_tags
+label: "任务标签提取"
+type: function
+version: "3.0"
+
+description: |
+  从任务描述和模板名中提取结构化标签列表。
+  标签用于：
+  1. task_history.jsonl 的 Jaccard 相似度匹配（第一级漏斗）
+  2. 记忆关键词检索（第二级漏斗）
+
+  提取策略（优先级由高到低）：
+  - 模板名映射（ep-backend-api → [api, backend, service, endpoint]）
+  - 意图分类结果（layer + operation → 对应标签集）
+  - 关键词扫描（从 task_description 中直接匹配领域词汇表）
+
+implementation: "scripts/mms/task_matcher.py :: TaskMatcher.build_record()"
+
+inputs:
+  - name: task_description
+    type: string
+
+  - name: template_name
+    type: string
+    required: false
+
+  - name: intent_result
+    type: IntentResult
+    required: false
+    description: "若已有意图分类结果，可直接使用其 layer/operation 作为标签来源"
+
+outputs:
+  - name: tags
+    type: list[string]
+    description: "去重后的标签列表，最多 15 个"
+    example: ["frontend", "navigation", "modify_config", "L5_frontend", "ant-design"]

@@ -1,0 +1,30 @@
+# base/ontology/core_objects.yaml
+# 通用业务概念本体
+object_types:
+  - id: Entity
+    description: 带有唯一标识的业务实体（如 User、Order）
+    attributes:
+      - name: id
+        type: UUID | int
+        required: true
+      - name: created_at
+        type: datetime
+        required: true
+      - name: updated_at
+        type: datetime
+        required: true
+
+  - id: ValueObject
+    description: 无标识的不可变值对象（如 Money、Address）
+    attributes:
+      - name: value
+        type: any
+        required: true
+
+  - id: AggregateRoot
+    description: DDD 聚合根，控制聚合边界内的一致性
+    inherits: Entity
+    attributes:
+      - name: domain_events
+        type: List[DomainEvent]
+        required: false

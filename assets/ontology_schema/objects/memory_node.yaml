@@ -51,11 +51,99 @@ properties:
   layer:
     type: string
     required: true
-    enum: [L1_platform, L2_infrastructure, L3_domain, L4_application, L5_interface, CC, BIZ]
+    enum:
+      # 细粒度层 ID（v4.0 规范值）
+      - L5_frontend
+      - L5_api
+      - L4_service
+      - L4_worker
+      - L3_ontology
+      - L3_data_pipeline
+      - L2_database
+      - L2_messaging
+      - L2_cache
+      - L2_storage
+      - L1_security
+      - CC_architecture
+      - CC_testing
+      - CC_governance
+      - BIZ
+      - Ops
+      - Tooling_mms
+      # 粗粒度别名（v3.x 向后兼容，已废弃）
+      - L1_platform
+      - L2_infrastructure
+      - L3_domain
+      - L4_application
+      - L5_interface
+      - CC
 
   tags:
     type: list[string]
     required: true
+
+  # ── 元数据字段（与 memory_schema.yaml front-matter 对齐）──────────
+
+  module:
+    type: string
+    required: false
+    description: "层内模块（如 api、ontology、messaging、frontend）"
+
+  source_ep:
+    type: string
+    required: false
+    description: "产生本记忆的 EP 编号"
+
+  created_at:
+    type: date
+    required: false
+    format: "YYYY-MM-DD"
+
+  version:
+    type: integer
+    required: false
+    default: 1
+    description: "记忆版本号，内容重大更新时递增"
+
+  last_accessed:
+    type: date
+    required: false
+    description: "最后一次被检索引用的日期（GC 依赖此字段）"
+
+  access_count:
+    type: integer
+    required: false
+    default: 0
+
+  also_in:
+    type: list[string]
+    required: false
+    description: "本记忆同时适用的其他层（软链接）"
+
+  generalized:
+    type: boolean
+    required: false
+    default: false
+    description: "是否已泛化（可跨项目复用）"
+
+  dimension:
+    type: string
+    required: false
+    description: "细粒度维度标签（如 architecture、security、performance）"
+
+  provenance:
+    type: object
+    required: false
+    description: "记忆来源元数据（bootstrap 自动生成时填充）"
+    fields:
+      trigger_type:
+        type: string
+        description: "生成触发类型（bootstrap_v2 / distill / dream / manual）"
+      generated_at:
+        type: date
+      layer_confidence:
+        type: float
+        description: "层推断置信度（仅 bootstrap 生成节点有值）"
 
   # ── Layer 2 图边字段（LinkType 实例存储） ──────────────────
 

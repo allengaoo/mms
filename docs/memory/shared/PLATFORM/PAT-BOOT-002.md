@@ -1,7 +1,7 @@
 ---
 id: PAT-BOOT-002
 type: pattern
-layer: L1_platform
+layer: L1_security
 dimension: architecture
 source_ep: EP-000
 tier: warm

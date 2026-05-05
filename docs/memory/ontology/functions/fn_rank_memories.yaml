@@ -1,0 +1,46 @@
+# FunctionDef: fn_rank_memories — 记忆排序与检索函数
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: fn_rank_memories
+label: "记忆排序与检索"
+type: function
+version: "3.0"
+
+description: |
+  给定一组候选记忆 ID，按相关性排序并返回压缩后的上下文字符串。
+
+  v3.0 新增：图遍历模式（graph_resolver.py）
+  - 从「已解析的文件路径」反向查找引用这些文件的记忆节点（find_by_file）
+  - 从「热点记忆 ID」做 BFS 遍历 related_to/impacts 边（explore，depth=1）
+  - 与关键词检索结果合并，按 tier（hot > warm > cold）+ access_count 降序排列
+
+implementation:
+  - "scripts/mms/graph_resolver.py :: MemoryGraph.build_context_for_task()"
+  - "scripts/mms/injector.py :: MemoryInjector._inject_memories()"
+
+inputs:
+  - name: files
+    type: list[string]
+    description: "fn_resolve_paths 返回的文件路径（用于反向查找引用这些文件的记忆）"
+
+  - name: seed_memories
+    type: list[string]
+    description: "初始记忆 ID 列表（如层的 hot_memories）"
+
+  - name: task_description
+    type: string
+    description: "用户任务描述（用于关键词匹配）"
+
+  - name: max_nodes
+    type: integer
+    default: 6
+    description: "图遍历返回的最大记忆节点数"
+
+outputs:
+  - name: context_str
+    type: string
+    description: "格式化的记忆上下文字符串，直接注入到 Prompt 中"
+
+  - name: memory_ids
+    type: list[string]
+    description: "实际使用的记忆 ID 列表（用于历史记录）"

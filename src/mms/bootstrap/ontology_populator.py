@@ -352,12 +352,34 @@ def bootstrap_project(
     except Exception as e:
         report.errors.append(f"信号推断失败: {e}")
 
-    # ── Rule 07+08: 生成初始记忆 ─────────────────────────────────────────────
+    # ── Rule 07+08: 生成初始记忆（增量模式）────────────────────────────────────
     if not skip_memory_gen and inference_results:
         log(f"\n▶ Step 6/6 · 生成初始 MemoryNode（min_confidence={min_confidence}）...")
         try:
             from mms.bootstrap.memory_seed_generator import generate_seed_memories  # type: ignore
             shared_dir = root / "docs" / "memory" / "shared"
+
+            # 增量 Bootstrap：扫描已有 MEM-BOOT-*.md，提取 class_name → fingerprint 映射
+            # 若推断出的类的 fingerprint 与已有记忆一致，跳过生成（幂等）
+            existing_boot_fps: dict = {}
+            if shared_dir.exists():
+                import re as _re
+                for md_path in shared_dir.rglob("MEM-BOOT-*.md"):
+                    try:
+                        text = md_path.read_text(encoding="utf-8", errors="ignore")
+                        cls_m = _re.search(r"class_name:\s*(\S+)", text)
+                        if not cls_m:
+                            continue
+                        class_name_key = cls_m.group(1).strip()
+                        # 提取 fingerprint（可能为空）
+                        fp_m = _re.search(r"fingerprint:\s*(sha256:[a-f0-9]+)", text)
+                        fp_val = fp_m.group(1) if fp_m else ""
+                        existing_boot_fps[class_name_key] = fp_val
+                    except Exception:
+                        pass
+            if existing_boot_fps:
+                log(f"  ℹ️  已有 {len(existing_boot_fps)} 条 MEM-BOOT 记忆，增量模式生效")
+
             gen_report = generate_seed_memories(
                 inference_results=inference_results,
                 ast_index=ast_index,
@@ -365,6 +387,7 @@ def bootstrap_project(
                 min_confidence=min_confidence,
                 max_per_layer=max_per_layer,
                 dry_run=dry_run,
+                existing_fingerprints=existing_boot_fps,
             )
             report.memories_generated = gen_report.total
             report.memories_per_layer = gen_report.layer_distribution

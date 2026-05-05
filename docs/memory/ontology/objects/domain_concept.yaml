@@ -1,0 +1,64 @@
+# ObjectTypeDef: DomainConcept — 领域概念（图谱锚点节点）
+# ─────────────────────────────────────────────────────────
+# 不是 MemoryNode 的子类型，而是独立的图锚点。
+# 由 _system/routing/layers.yaml 的 keywords 字段驱动生成。
+# 作用：所有 MemoryNode 通过 about → DomainConcept 聚合，
+#       实现 O(1) 的概念级检索（find_by_concept）。
+
+id: DomainConcept
+label: "领域概念锚点"
+type: object
+layer: L2_memory_graph
+version: "1.0"
+
+description: |
+  记忆图谱的概念锚点节点，用于将领域词汇（如 "gRPC", "DTO", "数据库事务"）
+  与相关记忆节点连接起来，支持零 LLM 的语义概念检索。
+
+  DomainConcept 节点由 _auto_link() 在写入 MemoryNode 时自动绑定：
+    MemoryNode --about--> DomainConcept
+  图遍历时，find_by_concept(["gRPC"]) 先定位 DomainConcept 节点，
+  再沿 about 边的反向索引（cited_by）取出所有相关 MemoryNode，
+  时间复杂度 O(1) 定位 + O(k) 邻居查询。
+
+properties:
+  id:
+    type: string
+    required: true
+    description: "概念唯一 ID（通常为规范化的关键词，如 'grpc', 'dto-isolation'）"
+    pattern: "^[a-z0-9-]+"
+
+  label:
+    type: string
+    required: true
+    description: "人类可读的概念名称"
+
+  layer_source:
+    type: string
+    required: true
+    description: "来源层级（来自 layers.yaml 的哪个层定义）"
+    enum: [L1_platform, L2_infrastructure, L3_domain, L4_application, L5_interface, CC, BIZ]
+
+  keywords:
+    type: list[string]
+    required: true
+    description: "触发 about 边建立的关键词列表（从 layers.yaml keywords 字段同步）"
+
+  aliases:
+    type: list[string]
+    required: false
+    description: "同义词/别名，用于增强关键词匹配覆盖率"
+
+  is_auto_generated:
+    type: boolean
+    required: false
+    default: true
+    description: "是否由 layers.yaml 自动驱动生成（false 表示人工定义）"
+
+auto_population:
+  trigger: action_bootstrap
+  method: sync_from_layers_yaml
+  description: "系统启动时从 _system/routing/layers.yaml 同步所有 keywords → DomainConcept"
+
+related_link_types:
+  - link_about    # MemoryNode --about--> DomainConcept（反向：cited_by_memories）

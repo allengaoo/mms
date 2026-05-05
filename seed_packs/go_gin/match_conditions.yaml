@@ -1,0 +1,9 @@
+stack_id: go_gin
+description: "Go + Gin Web 框架栈"
+always_inject: false
+match_conditions:
+  - required_packages: ["gin"]
+  - optional_packages: ["gorm", "grpc", "fiber", "chi"]
+    min_hits: 1
+  - dir_hints: ["cmd", "internal", "pkg"]
+    min_hits: 1
