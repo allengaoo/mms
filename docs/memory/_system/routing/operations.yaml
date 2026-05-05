@@ -253,3 +253,68 @@ operations:
       - "scripts/mms/dream.py"
     test_required: false
     doc_sync_required: false
+
+  # ── EP-129 新增：知识查询、分析、重构 操作类型 ─────────────────────────────
+
+  knowledge_query:
+    label: "知识查询"
+    description: |
+      查询记忆图谱、本体结构、架构决策等知识内容，不涉及代码修改。
+      对应 MemoryInjector 检索路径和 OntologyRegistry 查询。
+    keywords:
+      - "查询"
+      - "检索"
+      - "找一下"
+      - "有没有"
+      - "是否存在"
+      - "搜索"
+      - "knowledge query"
+      - "查找记忆"
+      - "查本体"
+      - "查规则"
+    additional_files: []
+    test_required: false
+    doc_sync_required: false
+
+  analyze:
+    label: "静态分析"
+    description: |
+      对代码库进行静态分析，包括架构检查、依赖图生成、层级违规检测、
+      代码骨架提取等。对应 analysis/ 层能力，结果输入记忆系统。
+    keywords:
+      - "分析"
+      - "静态分析"
+      - "架构检查"
+      - "依赖分析"
+      - "层级违规"
+      - "analyze"
+      - "code analysis"
+      - "ast 分析"
+      - "骨架提取"
+      - "代码图谱"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+    test_required: false
+    doc_sync_required: false
+
+  refactor:
+    label: "重构"
+    description: |
+      在不改变外部行为的前提下，对已有代码进行结构重组、目录迁移、
+      解耦改造、模块拆分等重构性操作。
+    keywords:
+      - "重构"
+      - "解耦"
+      - "拆分"
+      - "迁移"
+      - "目录结构"
+      - "模块化"
+      - "refactor"
+      - "restructure"
+      - "decouple"
+      - "split module"
+      - "移动文件"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+    test_required: true
+    doc_sync_required: true

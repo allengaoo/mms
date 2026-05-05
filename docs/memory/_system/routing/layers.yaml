@@ -104,14 +104,15 @@ layers:
       - "MEM-L-022"   # DomainException 错误码规范
       - "AD-002"      # RLS：所有 API 必须含 tenant_id 过滤
 
-  L5_testing:
-    label: "测试层"
-    description: "Pytest 单元测试、集成测试、Vitest 前端测试、MSW Mock Service Worker"
+  CC_testing:
+    label: "横切测试层"
+    description: "Pytest 单元测试、集成测试、Vitest 前端测试、MSW Mock Service Worker。横切关注点，不属于特定业务层。"
     path_prefixes:
       - "backend/tests/unit/"
       - "backend/tests/integration/"
       - "frontend/src/**/__tests__/"
       - "frontend/src/test/"
+      - "tests/"
     entry_files:
       - "backend/tests/unit/services/test_auth_service.py"
       - "backend/tests/unit/api/test_health_endpoint.py"
@@ -244,9 +245,9 @@ layers:
       - "AD-007"      # NullSafeNormalizer 作为 Kafka 发送前强制门
       - "BIZ-002"     # 数据同步管道业务流程
 
-  L3_governance:
-    label: "治理领域层"
-    description: "TenantQuota 配额管理、ChangeRequest 变更审批、ACL 权限"
+  CC_governance:
+    label: "横切治理层"
+    description: "TenantQuota 配额管理、ChangeRequest 变更审批、ACL 权限控制。横切所有业务层的合规与治理约束。"
     path_prefixes:
       - "backend/app/services/control/"
       - "docs/specs/governance/"
@@ -260,6 +261,8 @@ layers:
       - "CR"
       - "审批"
       - "ACL"
+      - "权限"
+      - "合规"
     hot_memories:
       - "MEM-L-018"   # Quota Redis 原子操作
 
@@ -381,6 +384,34 @@ layers:
       - "AD-003"      # 控制面/数据面分离
 
   # ─────────────────────────────────────────────────────────
+  # BIZ：跨层业务流（端到端业务流程文档）
+  # 不对应具体代码目录，而是描述跨越多个技术层的业务流程。
+  # ─────────────────────────────────────────────────────────
+
+  BIZ:
+    label: "跨层业务流"
+    description: |
+      描述端到端业务流程的横切视图，如"用户注册流"、"数据同步管道"。
+      不对应具体的代码目录，而是关联跨 L2_database / L4_service / L5_frontend
+      等多个技术层的业务场景文档和流程图。
+    path_prefixes:
+      - "docs/memory/shared/BIZ/"
+      - "docs/specs/business/"
+    entry_files: []
+    keywords:
+      - "业务流"
+      - "流程"
+      - "端到端"
+      - "用户注册"
+      - "数据同步"
+      - "business flow"
+      - "workflow"
+      - "场景"
+    hot_memories:
+      - "BIZ-001"    # 用户注册业务流
+      - "BIZ-002"    # 数据同步管道业务流程
+
+  # ─────────────────────────────────────────────────────────
   # CC：横切关注点（架构决策 + 文档）
   # ─────────────────────────────────────────────────────────
 
@@ -406,12 +437,12 @@ layers:
       - "AD-008"      # 知识索引三层架构
 
   # ─────────────────────────────────────────────────────────
-  # L0_mms：MMS 工具层（EP-128 新增）
+  # Tooling_mms：MMS 工具层（EP-128 新增）
   # 覆盖 scripts/mms/ 下所有 AI 工程工具：合成器、追踪器、DAG 编排、
   # 知识蒸馏、autoDream 等。不属于任何业务层，是平台的"元工具层"。
   # ─────────────────────────────────────────────────────────
 
-  L0_mms:
+  Tooling_mms:
     label: "MMS 工具层"
     description: |
       MMS（Memory Management System）AI 工程记忆工具集。

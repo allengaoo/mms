@@ -270,7 +270,7 @@ rules:
 
   - id: "rule_add_test"
     priority: 60
-    layer: "L5_testing"
+    layer: "CC_testing"
     operation: "test"
     description: "补充测试"
     keywords:
@@ -327,7 +327,7 @@ rules:
 
   - id: "rule_arch_concept_review"
     priority: 65
-    layer: "L1_platform"
+    layer: "CC_architecture"
     operation: "review"
     description: "架构概念解释/规范查询（不涉及代码修改）"
     min_hit_ratio: 0.08
@@ -444,7 +444,7 @@ rules:
 
   - id: "rule_mms_trace"
     priority: 85
-    layer: "L0_mms"
+    layer: "Tooling_mms"
     operation: "view_trace"
     description: "查看或管理 EP 诊断追踪数据（trace show/summary/enable/clean）"
     keywords:
@@ -480,7 +480,7 @@ rules:
 
   - id: "rule_mms_dag"
     priority: 80
-    layer: "L0_mms"
+    layer: "Tooling_mms"
     operation: "mms_dag"
     description: "使用 DAG 编排执行 EP Unit（unit generate / run / run-next）"
     keywords:
@@ -510,7 +510,7 @@ rules:
 
   - id: "rule_mms_synthesize"
     priority: 78
-    layer: "L0_mms"
+    layer: "Tooling_mms"
     operation: "mms_synthesize"
     description: "使用 mms synthesize 合成 EP 起手提示词"
     keywords:
@@ -527,7 +527,7 @@ rules:
 
   - id: "rule_mms_distill"
     priority: 75
-    layer: "L0_mms"
+    layer: "Tooling_mms"
     operation: "mms_distill"
     description: "使用 mms distill / dream 提取 EP 知识，生成或提升记忆草稿"
     keywords:
@@ -550,6 +550,69 @@ rules:
       - "工程经验"
     entry_files_hint:
       - "scripts/mms/dream.py"
+
+  # ── EP-129 新增：知识查询 / 静态分析 / 重构 ────────────────────────────────
+
+  - id: "rule_knowledge_query"
+    priority: 55
+    layer: "CC_architecture"
+    operation: "knowledge_query"
+    description: "查询记忆图谱、本体、架构决策等知识内容（不修改代码）"
+    min_hit_ratio: 0.06
+    confidence_boost: 0.20
+    keywords:
+      - "查询"
+      - "检索"
+      - "找一下"
+      - "有没有"
+      - "是否存在"
+      - "搜索记忆"
+      - "查找记忆"
+      - "查本体"
+      - "查规则"
+      - "knowledge query"
+      - "这个记忆"
+      - "有这个知识吗"
+    entry_files_hint:
+      - "docs/memory/shared/cross_cutting/decisions/"
+      - "docs/context/MASTER_INDEX.md"
+
+  - id: "rule_static_analyze"
+    priority: 52
+    layer: "CC_architecture"
+    operation: "analyze"
+    description: "对代码库进行静态分析、架构检查、层级违规检测"
+    keywords:
+      - "分析"
+      - "静态分析"
+      - "架构检查"
+      - "层级违规"
+      - "依赖分析"
+      - "ast 分析"
+      - "代码骨架"
+      - "analyze"
+      - "code analysis"
+    entry_files_hint:
+      - "src/mms/bootstrap/"
+      - "src/analysis/"
+
+  - id: "rule_refactor"
+    priority: 58
+    layer: "CC_architecture"
+    operation: "refactor"
+    description: "代码重构、目录迁移、模块解耦"
+    keywords:
+      - "重构"
+      - "解耦"
+      - "拆分"
+      - "模块化"
+      - "目录结构"
+      - "迁移代码"
+      - "refactor"
+      - "restructure"
+      - "decouple"
+    entry_files_hint:
+      - "docs/architecture/e2e_traceability.md"
 
 # ──────────────────────────────────────────────────────────
 # 通用补充（所有规则命中时都会附加）
