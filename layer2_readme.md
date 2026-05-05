@@ -1,6 +1,8 @@
 # Layer 2: 知识本体层 (Knowledge Ontology Layer)
 
-> **最后更新**：2026-05-05 | commit `cf0023d`
+> **最后更新**：2026-05-05 | commit `59cacde`
+
+---
 
 ## 1. 架构定位
 
@@ -13,319 +15,715 @@ Layer 2 自身由四个子系统构成：
 | **Memory Engine** | `src/mms/memory/` | 图谱操作 / 上下文注入 / 知识萃取 / 腐化检测 |
 | **Ontology Engine** | `src/mms/ontology/` | Schema 解析 / 运行时校验 / 注册表 |
 | **Bootstrap Engine** | `src/mms/bootstrap/` | 冷启动 / AST 推断 / 种子包注入 / 初始记忆生成 |
-| **Diagnostics** | `src/mms/diagnostics/` | 图谱可视化诊断（HTML 自包含页面，Layer 4 功能归属 Layer 2 数据） |
+| **Diagnostics** | `src/mms/diagnostics/` | 图谱可视化诊断（HTML 自包含页面）|
 
 ---
 
-## 2. 组件架构与职责分布
-
-Layer 2 采用"引擎 (Engine) - 资产 (Assets) - 实例数据 (Instance Data)"分离的三层架构设计。
-
-### 2.1 组件架构图
+## 2. Layer 2 完整组件拓扑
 
 ```mermaid
 graph TD
-    subgraph Engine ["引擎层 (src/mms/)"]
-        M[Memory Engine<br/>图谱操作/上下文注入]
-        O[Ontology Engine<br/>Schema 解析/校验]
-        B[Bootstrap Engine<br/>冷启动/架构推断]
-        D[Diagnostics<br/>记忆图谱可视化]
+    subgraph L2["Layer 2 — 知识本体层"]
+        subgraph ENG["引擎层 (src/mms/)"]
+            B[Bootstrap Engine<br/>ontology_populator.py<br/>signal_fusion.py<br/>memory_seed_generator.py]
+            M[Memory Engine<br/>injector.py<br/>graph_resolver.py<br/>intent_classifier.py<br/>dream.py]
+            O[Ontology Engine<br/>registry.py]
+            D[Diagnostics<br/>memory_viz.py<br/>html_renderer.py]
+        end
+
+        subgraph ASSET["资产层 (assets/)"]
+            OS["Ontology Schema<br/>objects/ · links/ · functions/<br/>actions/ · _config/"]
+            WP["Bootstrap Profiles<br/>signal_weights.yaml<br/>bootstrap_config_template.yaml"]
+        end
+
+        subgraph SDAT["种子数据 (seed_packs/)"]
+            SP["Seed Packs<br/>base / spring_boot / fastapi_sqlmodel<br/>python_django / go_gin / palantir_arch"]
+        end
+
+        subgraph INST["实例数据层 (docs/memory/)"]
+            MD[(Memory Nodes<br/>shared/**/*.md)]
+            SYS[(System Files<br/>_system/routing/<br/>ast_index.json)]
+        end
     end
 
-    subgraph Assets ["资产与配置层"]
-        OS[Ontology Schema<br/>assets/ontology_schema/]
-        SP[Seed Packs<br/>src/mms/bootstrap/seed_packs/]
-    end
+    CLI["mulan bootstrap<br/>--weights-profile=go_gin<br/>--weights-override='...'"] --> B
+    L1["Layer 1<br/>MemoryInjector.inject(task)"] --> M
 
-    subgraph Data ["实例数据层"]
-        MD[(Memory Nodes<br/>docs/memory/shared/*.md)]
-    end
+    B -->|"Step 1: dep_sniffer.sniff()"| SYS
+    B -->|"Step 2: install_packs()"| SP
+    SP -->|先验知识注入| B
+    B -->|"Step 3: build_ast_index()"| B
+    B -->|"Step 4: build_code_graph()"| SYS
+    B -->|"Step 5: infer_all(weights)"| WP
+    WP -->|"get_signal_weights(profile)"| B
+    B -->|"Step 6: generate_seed_memories()"| MD
 
-    M -->|读取/写入| MD
-    M -->|查询规则| O
-    O -->|解析 YAML| OS
-    B -->|注入先验知识| SP
-    B -->|生成初始节点| MD
-    D -->|扫描并可视化| MD
+    M -->|"fn_classify_intent → intent_map.yaml"| SYS
+    M <-->|"YAML front-matter 读写"| MD
+    M -->|"Schema 校验 / LinkType 查询"| O
+    O -->|"懒加载 YAML"| OS
+
+    D -->|"只读扫描 front-matter"| MD
+    D -->|"运行时生成隐式边"| D
+
+    OS -->|"约束"| O
+    OS -->|"Override Pass 规则"| B
 ```
-
-### 2.2 核心组件职责
-
-- **Memory Engine (`src/mms/memory/`)**：运行时操作核心。负责解析 Markdown 为图结构，在 EP 执行前进行上下文注入，以及后台的知识萃取（dream）与腐化检测（entropy_scan）。共 16 个模块。
-- **Ontology Engine (`src/mms/ontology/`)**：Schema 的运行时代理。负责读取 YAML 格式的本体定义，提供 ObjectType/Function/Action/LinkType 内存注册表。
-- **Bootstrap Engine (`src/mms/bootstrap/`)**：项目初始化引擎。通过 AST 分析 + YAML Override Pass + 五路信号融合，自动推断架构层级，并结合 Seed Packs 生成初始记忆。
-- **Diagnostics (`src/mms/diagnostics/`)**：记忆图谱诊断可视化。扫描所有记忆文件，生成自包含 HTML（3 Tab：图谱拓扑 / AST 文件树 / AST↔记忆映射表）。
-- **Ontology Schema (`assets/ontology_schema/`)**：声明式的"世界观"（YAML），定义系统支持的节点类型、边类型、Action、Function。
-- **Seed Packs (`src/mms/bootstrap/seed_packs/`)**：按技术栈划分的预制记忆文件，提供初始的"先验知识"（含 ast_overrides 规则）。
 
 ---
 
-## 3. 核心业务流程与数据流
+## 3. 记忆分层体系
 
-### 3.1 Layer 2 整体数据流图
+### 3.1 双层级分类架构
+
+记忆分层采用**粗粒度组（9 组）+ 细粒度层（17 个）**的双层结构，存储在 `docs/memory/_system/routing/layers.yaml` v4.0。
+
+```
+层分类架构
+├── L5_interface   (接口/适配层)   ── L5_frontend, L5_api
+├── L4_application (应用服务层)   ── L4_service, L4_worker
+├── L3_domain      (领域层)       ── L3_ontology, L3_data_pipeline
+├── L2_infrastructure (基础设施层) ── L2_database, L2_messaging, L2_cache, L2_storage
+├── L1_platform    (平台层)       ── L1_security
+├── CC             (横切关注点)   ── CC_architecture, CC_testing, CC_governance
+├── BIZ            (跨层业务流)   ── BIZ
+├── Ops            (运维部署层)   ── Ops
+└── Tooling_mms    (MMS工具层)    ── Tooling_mms
+```
+
+### 3.2 细粒度层与业务含义
+
+| 细粒度层 ID | 所属组 | 业务含义 |
+|-------------|--------|----------|
+| `L5_frontend` | L5_interface | React 18 页面、路由、Zustand、Axios |
+| `L5_api` | L5_interface | FastAPI Router、Request/Response Schema、API 版本控制 |
+| `L4_service` | L4_application | Control/Query Service、CQRS 应用服务 |
+| `L4_worker` | L4_application | APScheduler、Ingestion/Indexing Worker |
+| `L3_ontology` | L3_domain | ObjectTypeDef/LinkTypeDef、本体场景、领域模型 |
+| `L3_data_pipeline` | L3_domain | Connector、SyncJob、DataCatalog、列映射 |
+| `L2_database` | L2_infrastructure | MySQL、SQLModel、Alembic 迁移 |
+| `L2_messaging` | L2_infrastructure | Kafka、Avro、Schema Registry |
+| `L2_cache` | L2_infrastructure | Redis、`@cached`、分布式锁 |
+| `L2_storage` | L2_infrastructure | MinIO/S3、Iceberg、流式 IO |
+| `L1_security` | L1_platform | RBAC、SecurityContext、Audit、JWT |
+| `CC_architecture` | CC | ADR、可追踪性、架构地图 |
+| `CC_testing` | CC | Pytest / Vitest / MSW（横切测试） |
+| `CC_governance` | CC | Quota、CR 变更审批、ACL |
+| `BIZ` | BIZ | 端到端业务流程文档 |
+| `Tooling_mms` | Tooling_mms | MMS 脚本 / DAG / dream 等元工具 |
+| `Ops` | Ops | K8s / Docker / 部署 / 迁移 |
+
+### 3.3 层分类在系统各组件中的对应关系
+
+```
+         用户意图任务
+              │
+     intent_classifier.py
+     (fn_classify_intent)
+              │ 输出 (layer, operation)
+              ▼
+     docs/memory/_system/routing/
+     ├── layers.yaml      ← 细粒度层 ID（L5_api / L4_service...）
+     ├── intent_map.yaml  ← layer × operation 路由规则
+     └── operations.yaml  ← 15 种操作类型
+
+              ▲
+              │ 写入 layer 字段（细粒度 ID）
+     signal_fusion.py
+     (infer_layer → DDD五元组)
+              │ 经 _SCHEMA_LAYER_MAP 映射
+              ▼
+     ADAPTER → L5_api
+     APP     → L4_service
+     DOMAIN  → L3_ontology
+     PLATFORM→ L2_infrastructure
+     CC      → CC_architecture
+
+              │ 存储在 front-matter
+     docs/memory/shared/{DDD_DIR}/MEM-BOOT-*.md
+     (目录名仍用 ADAPTER/APP/DOMAIN，layer字段用细粒度ID)
+```
+
+---
+
+## 4. 本体 Schema 拓扑
+
+### 4.1 本体 Schema 完整关系图
+
+```mermaid
+graph LR
+    subgraph OBJ["ObjectTypes (8)"]
+        MN[MemoryNode<br/>通用记忆节点]
+        LS[Lesson<br/>经验教训]
+        PT[Pattern<br/>可复用模式]
+        AD[ArchDecision<br/>架构决策]
+        DC[DomainConcept<br/>领域概念锚点]
+        CF[CodeFile<br/>代码文件]
+        CC[CodeClass<br/>代码类/结构体]
+        CM[CodeModule<br/>代码包/模块]
+    end
+
+    subgraph LNK["LinkTypes (9)"]
+        LRT[related_to<br/>MemoryNode↔MemoryNode]
+        LDF[derived_from<br/>MemoryNode→MemoryNode]
+        LAB[about<br/>MemoryNode→DomainConcept]
+        LIM[impacts<br/>MemoryNode→MemoryNode]
+        LCT[contradicts<br/>MemoryNode↔MemoryNode]
+        LCI[cites<br/>MemoryNode→CodeFile]
+        LDO[depends_on<br/>CodeClass→CodeClass]
+        LIP[implements<br/>CodeClass→CodeClass]
+        LCN[contains<br/>CodeModule→CodeFile/Class]
+    end
+
+    subgraph FN["Functions (9)"]
+        FIL[fn_infer_layer<br/>五路信号→层推断]
+        FDT[fn_detect_code_object_type<br/>层→语义类型]
+        FBG[fn_build_code_graph<br/>AST→依赖图]
+        FCI[fn_classify_intent<br/>任务→意图]
+        FRP[fn_resolve_paths<br/>意图→文件列表]
+        FRM[fn_rank_memories<br/>文件→上下文]
+        FET[fn_extract_tags<br/>任务→标签]
+        FDD[fn_detect_drift<br/>节点→腐化检测]
+        FFC[fn_find_contradictions<br/>图→矛盾检测]
+    end
+
+    subgraph ACT["Actions (5)"]
+        AB[action_bootstrap<br/>冷启动初始化]
+        ADST[action_distill<br/>知识蒸馏]
+        ADR[action_dream<br/>自动知识萃取]
+        APD[action_promote_draft<br/>草稿升级]
+        ART[action_retire_memory<br/>记忆退役]
+    end
+
+    LS --> MN
+    PT --> MN
+    AD --> MN
+
+    FIL -->|"推断→"| CF
+    FIL -->|"推断→"| CC
+    FDT -->|"基于"| FIL
+    FBG -->|"生成 depends_on/implements"| LDO
+    FBG -->|"生成 depends_on/implements"| LIP
+
+    AB -->|"调用"| FIL
+    AB -->|"调用"| FDT
+    AB -->|"调用"| FBG
+    AB -->|"写入"| MN
+    AB -->|"建立"| LCI
+
+    ADST -->|"触发"| FDD
+    ADST -->|"写入"| LDF
+    ADST -->|"写入"| LAB
+    ADR -->|"触发"| FFC
+    ADR -->|"写入"| LIM
+    ART -->|"处理"| MN
+
+    FCI -->|"查询"| FIL
+    FRM -->|"遍历"| LRT
+    FRM -->|"遍历"| LIM
+```
+
+### 4.2 ObjectTypes 字段清单
+
+| ObjectType | 关键字段 | 继承 |
+|------------|----------|------|
+| **MemoryNode** | `id`, `type`(lesson/pattern/decision/anti-pattern/business-flow), `tier`(hot/warm/cold/archive), `layer`(细粒度ID), `tags`, `cites_files`, `about_concepts`, `impacts`, `contradicts`, `derived_from`, `related_to`, `ast_pointer`(file_path/class_name/fingerprint), `provenance`, `module`, `source_ep`, `created_at`, `version` | — |
+| **Lesson** | `root_cause`, `trigger_ep`, `feedback_rounds` | MemoryNode |
+| **Pattern** | `pattern_category`, `applicability`, `code_example`, `anti_pattern_risk` | MemoryNode |
+| **ArchDecision** | `decision_context`, `rationale`, `decision_status`, `alternatives_considered`, `superseded_by` | MemoryNode |
+| **DomainConcept** | `id`, `label`, `layer_source`, `keywords`, `aliases`, `is_auto_generated` | — |
+| **CodeFile** | `file_path`, `lang`, `package`, `fingerprint`, `inferred_layer`, `layer_confidence`, `drift_suspected` | — |
+| **CodeClass** | `class_fqn`, `name`, `bases`, `annotations`, `methods`, `fingerprint`, `inferred_layer`, `inferred_object_type`, `signal_breakdown`, `linked_memory_id` | — |
+| **CodeModule** | `module_path`, `package_name`, `lang`, `file_count`, `class_count`, `inferred_layer`, `dominant_object_type` | — |
+
+### 4.3 LinkTypes 清单
+
+| LinkType | source_type → target_type | cardinality | 存储字段 | 自动填充触发 |
+|----------|--------------------------|-------------|---------|------------|
+| `related_to` | MemoryNode ↔ MemoryNode | M:N | `related_to: [{id, reason}]` | 人工/dream |
+| `derived_from` | MemoryNode → MemoryNode | N:M | `derived_from: [id]` | action_distill |
+| `about` | MemoryNode → DomainConcept | M:N | `about_concepts: [label]` | action_distill |
+| `impacts` | MemoryNode → MemoryNode | M:N | `impacts: [id]` | 可选自动（tags 重叠） |
+| `contradicts` | MemoryNode ↔ MemoryNode | M:N | `contradicts: [id]` | fn_find_contradictions |
+| `cites` | MemoryNode → CodeFile | M:N | `cites_files: [path]` | action_bootstrap |
+| `depends_on` | CodeClass → CodeClass | M:N | 代码图 JSON | fn_build_code_graph |
+| `implements` | CodeClass → CodeClass | M:N | 代码图 JSON | fn_build_code_graph |
+| `contains` | CodeModule → CodeFile/Class | 1:N | 代码图 JSON | fn_build_code_graph |
+
+### 4.4 Functions 清单
+
+| Function | 实现路径 | 核心输入 → 输出 |
+|----------|---------|----------------|
+| `fn_infer_layer` | `mms.bootstrap.signal_fusion.infer_layer` | CodeClass + weights → LayerInference(layer, confidence, breakdown) |
+| `fn_detect_code_object_type` | `mms.bootstrap.signal_fusion.detect_code_object_type` | CodeClass + LayerInference → ObjectTypeMapping |
+| `fn_build_code_graph` | `mms.bootstrap.code_graph_builder` | ast_index + project_root → CodeGraph |
+| `fn_classify_intent` | `mms.memory.intent_classifier` | task_str → IntentResult(layer, operation, confidence) |
+| `fn_resolve_paths` | `mms.memory.memory_functions` | IntentResult → [file_paths] |
+| `fn_rank_memories` | `mms.memory.memory_functions` | files + seed_mems + task → context_str |
+| `fn_extract_tags` | `mms.memory.memory_functions` | task_description → [tags] |
+| `fn_detect_drift` | `mms.memory.freshness_checker` | MemoryNode + ast_index → drift_suspected |
+| `fn_find_contradictions` | `mms.memory.graph_health` | memory_id + graph → contradiction_pairs |
+
+### 4.5 Actions 清单
+
+| Action | 触发方式 | 副作用 |
+|--------|----------|--------|
+| `action_bootstrap` | `mulan bootstrap` CLI / `bootstrap_project()` API | 写入 MEM-BOOT-*.md；更新 code_graph.json |
+| `action_distill` | postcheck PASS 后异步执行 | 写入 derived_from / about_concepts；生成 Lesson 节点 |
+| `action_dream` | distill 完成后或手动触发 | 发现矛盾；推断 impacts；写入新 Pattern 节点 |
+| `action_promote_draft` | 人工 `mulan promote` | 移动 private/→shared/；更新 tier |
+| `action_retire_memory` | GC 扫描 / 矛盾解决 / 人工 | 软删除（归档至 archive 目录） |
+
+> **注：Rules 目录**：当前 `assets/ontology_schema/rules/` **不存在**。规则散落在各 Action 的 `rules:` 字段和 `fn_classify_intent` 的 `intent_map.yaml` 中。后续计划将其独立为 Rule 文件（Palantir 模式）。
+
+---
+
+## 5. 信号权重系统拓扑
+
+### 5.1 五路信号与权重配置体系
+
+```
+用户项目代码
+      │
+      ├─── path 信号（目录名关键词）  ──┐
+      ├─── name 信号（类名后缀/前缀）  ──┤
+      ├─── annotation 信号（注解/装饰器）┤
+      ├─── inheritance 信号（父类/接口）┤  加权融合
+      └─── import 信号（导入包关键词） ──┘
+                                          │
+                  ┌───────────────────────┘
+                  │ 权重来源（优先级从高到低）
+                  ▼
+      ┌─────────────────────────────────┐
+      │ .mms/bootstrap_config.yaml      │  项目级配置（最高优先）
+      │   signal_weights_profile: go_gin│
+      │   signal_weights:               │
+      │     annotation: 0.45            │
+      └────────────┬────────────────────┘
+                   │
+                   ▼
+      ┌─────────────────────────────────┐
+      │ assets/bootstrap_profiles/      │  全局模板库
+      │ signal_weights.yaml             │
+      │   base / java_spring_boot /     │
+      │   python_fastapi / go_gin ...   │
+      └────────────┬────────────────────┘
+                   │ get_signal_weights(profile, overrides)
+                   ▼ ← 纯函数，无全局状态
+      ┌─────────────────────────────────┐
+      │ mms.bootstrap.signal_fusion     │
+      │   infer_layer(weights=...)      │  权重以参数注入
+      │   infer_all(weights_profile=...)│  无副作用
+      └─────────────────────────────────┘
+```
+
+### 5.2 七个权重模板对比
+
+| Profile | path | name | annotation | inheritance | import | 适用场景 |
+|---------|------|------|-----------|-------------|--------|---------|
+| `base` | 0.25 | 0.25 | **0.30** | 0.10 | 0.10 | 通用基准，无框架偏好 |
+| `java_spring_boot` | 0.20 | 0.20 | **0.45** | 0.10 | 0.05 | 注解即声明（@RestController 确定层级）|
+| `python_fastapi` | **0.40** | 0.25 | 0.15 | 0.12 | 0.08 | 目录结构规范，BaseModel 歧义需路径打破 |
+| `python_django` | 0.25 | **0.35** | 0.25 | 0.12 | 0.03 | ViewSet/Serializer 后缀强信号 |
+| `go_gin` | **0.45** | 0.25 | 0.03 | 0.12 | 0.15 | Go 无注解；包路径 + import 是主要信号 |
+| `go_ddd` | **0.55** | 0.20 | 0.02 | 0.13 | 0.10 | 严格 DDD 目录布局（interface/usecase/domain）|
+| `clean_architecture` | **0.50** | 0.25 | 0.10 | 0.10 | 0.05 | 语言无关 Clean Arch / 六边形架构 |
+
+### 5.3 DDD 内部术语 → 细粒度层 ID 映射
+
+> 推断引擎内部使用 DDD 五元组（避免与业务层 ID 混淆），最终写入 MemoryNode 时转换为细粒度 ID。
+
+```
+signal_fusion 推断 (DDD)    _SCHEMA_LAYER_MAP    MemoryNode.layer (细粒度)
+────────────────────────────────────────────────────────────────────────
+ADAPTER                  →→→→→→→→→→→→→→→→→    L5_api
+APP                      →→→→→→→→→→→→→→→→→    L4_service
+DOMAIN                   →→→→→→→→→→→→→→→→→    L3_ontology
+PLATFORM                 →→→→→→→→→→→→→→→→→    L2_infrastructure
+CC                       →→→→→→→→→→→→→→→→→    CC_architecture
+UNKNOWN (fallback)       →→→→→→→→→→→→→→→→→    CC_architecture
+
+目录落地仍使用 DDD 名（保持向后兼容）：
+docs/memory/shared/
+├── ADAPTER/   (存 layer=L5_api 的节点)
+├── APP/       (存 layer=L4_service 的节点)
+├── DOMAIN/    (存 layer=L3_ontology 的节点)
+├── PLATFORM/  (存 layer=L2_infrastructure 的节点)
+└── CC/        (存 layer=CC_architecture 的节点)
+```
+
+---
+
+## 6. 意图识别分类体系
+
+### 6.1 意图识别架构
+
+```
+用户任务字符串 (task)
+        │
+        ▼
+  ┌─────────────────────────────────────────┐
+  │     阶段 0：本地关键词规则匹配            │
+  │     fn_classify_intent (local)           │
+  │                                          │
+  │  intent_map.yaml (v4.0)                  │
+  │  ├── defaults: {min_hit_ratio,           │
+  │  │              min_hits,                │
+  │  │              confidence_threshold}    │
+  │  └── rules[]:                            │
+  │       ├── id / priority                  │
+  │       ├── layer (细粒度ID)               │
+  │       ├── operation (15种)               │
+  │       ├── keywords []                    │
+  │       ├── min_hit_ratio / min_hits       │
+  │       └── confidence_boost               │
+  │                                          │
+  │  评分算法：                               │
+  │    hit_ratio = hits / len(keywords)      │
+  │    base = min(hit_ratio * 2.0, 0.9)     │
+  │    scale_bonus = min(hits/(min_hits+2),1)│
+  │    score = base + scale_bonus + boost    │
+  └──────────────┬──────────────────────────┘
+                 │ confidence < threshold?
+                 ▼
+  ┌─────────────────────────────────────────┐
+  │     阶段 1：LLM 兜底（可选）             │
+  │     qwen/claude mini prompt              │
+  │     输出：{layer, operation}             │
+  │     不输出：路径/文件名                   │
+  └──────────────────────────────────────────┘
+                 │
+                 ▼
+       IntentResult {
+         layer: 细粒度层ID,
+         operation: 操作类型,
+         confidence: float,
+         entry_files_hint: []
+       }
+```
+
+### 6.2 意图分类维度：layer × operation
+
+```
+                    操作类型 (operation，15 种)
+                    ──────────────────────────────────────────────────────────
+                    create modify_config modify_logic debug delete deploy
+                    test review view_trace mms_synthesize mms_dag mms_distill
+                    knowledge_query analyze refactor
+层
+│
+├── L5_interface
+│   ├── L5_frontend      → create / modify_logic / test / view_trace
+│   └── L5_api           → create / modify_logic / debug / review
+│
+├── L4_application
+│   ├── L4_service       → create / modify_logic / analyze / refactor
+│   └── L4_worker        → create / modify_config / debug
+│
+├── L3_domain
+│   ├── L3_ontology      → create / knowledge_query / analyze / review
+│   └── L3_data_pipeline → create / modify_config / debug
+│
+├── L2_infrastructure
+│   ├── L2_database      → create / modify_config / deploy / analyze
+│   ├── L2_messaging     → create / modify_config / debug
+│   ├── L2_cache         → modify_config / analyze
+│   └── L2_storage       → create / modify_config
+│
+├── L1_platform
+│   └── L1_security      → modify_config / review / analyze
+│
+└── CC
+    ├── CC_architecture  → knowledge_query / analyze / review
+    ├── CC_testing       → create / test / analyze
+    └── CC_governance    → modify_config / review
+```
+
+---
+
+## 7. Bootstrap 业务流程
+
+### 7.1 完整业务流程图
+
+```mermaid
+flowchart TD
+    START([项目根目录]) --> REG[OntologyRegistry 注册<br/>fn_infer_layer / fn_detect_type / fn_build_graph]
+    REG --> S1
+
+    S1["Step 1: 技术栈嗅探<br/>dep_sniffer.sniff(project_root)"]
+    S1 -->|detected_stacks, confidence| S15
+
+    S15["Step 1.5: 项目文档蒸馏 (可选)<br/>seed_absorber.absorb()<br/>→ _absorb_draft/*.md"]
+    S15 --> S2
+
+    S2["Step 2: 种子包注入<br/>install_packs(detected_stacks)<br/>→ docs/memory/shared/CC/AD-SEED-*.md"]
+    S2 --> S3
+
+    S3["Step 3: AST 骨架化<br/>build_ast_index(project_root)<br/>→ ast_index {file: {classes, methods...}}"]
+    S3 --> S4
+
+    S4["Step 4: 代码依赖图<br/>build_code_graph(ast_index)<br/>→ code_graph.json<br/>(depends_on / implements 边)"]
+    S4 --> S5
+
+    S5["Step 5: 五路信号推断<br/>infer_all(ast_index, weights_profile)<br/>权重来自 signal_weights.yaml"]
+
+    subgraph S5_DETAIL["信号融合详情"]
+        P1[path 信号<br/>目录名匹配]
+        P2[name 信号<br/>类名后缀]
+        P3[annotation 信号<br/>注解/装饰器]
+        P4[inheritance 信号<br/>父类/接口]
+        P5[import 信号<br/>包依赖方向]
+        P1 & P2 & P3 & P4 & P5 -->|加权融合| LAYER[推断层级<br/>ADAPTER/APP/DOMAIN/PLATFORM/CC]
+        LAYER --> SCHEMA_MAP[_SCHEMA_LAYER_MAP<br/>→ L5_api / L4_service / L3_ontology...]
+    end
+
+    S5 --> S5_DETAIL --> S6
+
+    S6["Step 6: 增量记忆生成<br/>generate_seed_memories()<br/>fingerprint 比对 → 跳过已存在节点<br/>→ MEM-BOOT-*.md"]
+    S6 --> DONE([BootstrapV2Report<br/>memories_generated / skipped / errors])
+
+    style S5_DETAIL fill:#f0f0f0,stroke:#999
+```
+
+### 7.2 增量 Bootstrap 逻辑
+
+```
+第 N 次 bootstrap 时：
+
+1. 扫描 shared/**/MEM-BOOT-*.md，提取 {class_name: fingerprint}
+2. 对每个 AST 扫描到的 class：
+   a. 计算当前 fingerprint：SHA-256(sorted(method_name:signature))
+   b. 若 class_name 在已有记录 且 fingerprint 相同 → SKIP（幂等）
+   c. 否则 → 写入/覆盖 MEM-BOOT-*.md（新增或更新）
+
+覆盖场景：
+  ✅ 代码未变 → fingerprint 不变 → SKIP（幂等）
+  ✅ 方法签名变更 → fingerprint 变 → 重新生成
+  ✅ 新增类 → 不在已有记录 → 新建节点
+  ✅ 新增方法 → fingerprint 变 → 重新生成
+  ⚠️ 类被删除 → 旧节点孤立（当前不自动清理）
+```
+
+---
+
+## 8. 整体数据流图
 
 ```mermaid
 flowchart LR
-    Code[物理代码库] -->|1. AST 解析 & 信号融合| Boot(Bootstrap Engine)
-    SP[(Seed Packs)] -->|2. Override Pass 注入| Boot
-    Boot -->|3. 生成初始节点 MEM-BOOT-*.md| Graph[(Memory Graph<br/>Markdown Files)]
+    CODE[物理代码库] -->|AST 解析| BOOT(Bootstrap Engine<br/>signal_fusion + fingerprint)
+    WPFL[(signal_weights.yaml<br/>7种权重模板)] -->|get_signal_weights| BOOT
+    SP[(Seed Packs<br/>base/spring_boot/fastapi...)] -->|先验知识| BOOT
+    BOOT -->|"MEM-BOOT-*.md<br/>layer=L5_api/L4_service..."| GRAPH
 
-    YAML[(Ontology Schema)] -->|4. 懒加载| Onto(Ontology Engine)
+    SCHEMA[(Ontology Schema<br/>objects/links/functions/actions)] -->|懒加载| ONTO(Ontology Engine<br/>registry.py)
 
-    Task[Layer 1 任务请求] -->|5. 发起检索| Mem(Memory Engine)
-    Mem <-->|6. 校验与路由| Onto
-    Mem <-->|7. 图遍历与混合检索| Graph
-    Mem -->|8. 组装 Prompt| Task
+    TASK[Layer 1 任务] -->|inject(task)| MEM(Memory Engine<br/>intent_classifier → injector)
+    MEM -->|fn_classify_intent| IMAP[(intent_map.yaml<br/>layer × operation)]
+    MEM <-->|front-matter 读写| GRAPH[(Memory Graph<br/>docs/memory/shared/*.md)]
+    MEM -->|Schema 校验| ONTO
+    MEM -->|Prompt Context| TASK
 
-    Log[EP 执行日志] -->|9. 异步萃取| Dream(Dream Engine)
-    Dream -->|10. 沉淀新知识| Graph
+    LOG[EP 执行日志] -->|异步| DREAM(Dream Engine<br/>dream.py)
+    DREAM -->|derived_from / about | GRAPH
+    DREAM -->|矛盾检测| GRAPH
 
-    Diag[Diagnostics CLI] -->|11. 扫描可视化| Graph
+    DIAG[Diagnostics CLI<br/>visualize_memory.py] -->|只读扫描| GRAPH
+    DIAG -->|"隐式边推断<br/>cites_same_file"| HTML[记忆图谱 HTML<br/>3 Tab 可视化]
 ```
 
 ---
 
-## 4. 目录结构设计原则
+## 9. 组件解耦与通信协议
 
-经过架构重构，Layer 2 实现了严格的**高内聚与物理隔离**：
+### 9.1 依赖方向（严格单向）
+
+```
+Layer 1 (任务工程层)
+    │  Python API: MemoryInjector.inject(task: str)
+    ▼
+Memory Engine          Diagnostics (只读)
+    │  ← Schema 校验       │
+    ▼                      ▼
+Ontology Engine    Memory Graph (docs/memory/shared/)
+    │  ← YAML 懒加载       ▲
+    ▼                      │ 写入 MEM-BOOT-*.md
+Ontology Schema    Bootstrap Engine
+(assets/)              │  ← 权重注入
+                        ▼
+                  signal_weights.yaml
+                  + .mms/bootstrap_config.yaml
+                  + CLI --weights-profile
+```
+
+### 9.2 通信协议汇总
+
+| 协议 | 载体 | 方向 | 说明 |
+|------|------|------|------|
+| **YAML Front-matter** | `docs/memory/shared/*.md` | Bootstrap → Memory | 写入/读取的核心数据格式，v4.0 规范 |
+| **YAML Schema** | `assets/ontology_schema/*.yaml` | 资产 → 引擎 | 声明式"世界观"，引擎懒加载解析 |
+| **Python API** | `MemoryInjector.inject(task)` | Layer 1 → Layer 2 | 唯一跨层调用接口，内部黑盒 |
+| **权重参数注入** | `infer_layer(weights=dict)` | 配置 → 推断 | 纯函数无全局状态，显式依赖注入 |
+| **HTML 输出** | `memory_viz.html` | Diagnostics → 人类 | 单向输出，自包含，无需服务 |
+| **JSON 缓存** | `_system/code_graph.json` | Bootstrap → 系统 | 代码依赖图快照，供后续分析复用 |
+
+---
+
+## 10. 目录结构
 
 ```text
 src/mms/
 ├── memory/                 # 引擎：图谱操作与上下文注入（16 个模块）
-├── ontology/               # 引擎：Schema 解析与内存注册表（1 个核心文件）
-├── bootstrap/              # 引擎：冷启动与架构推断（4 个模块）
-│   └── seed_packs/         # 资产：Bootstrap 专属先验知识库
-├── diagnostics/            # ★ 诊断：记忆图谱可视化（Layer 4 诊断工具）
-│   ├── memory_viz.py       # 数据收集器
-│   └── html_renderer.py    # HTML 渲染器
+│   ├── injector.py         # 主入口：MemoryInjector.inject()
+│   ├── graph_resolver.py   # 图遍历（MemoryNode 加载与 _normalize_layer）
+│   ├── intent_classifier.py # fn_classify_intent（两阶段：规则+LLM）
+│   ├── dream.py            # 知识萃取（EP 执行后异步蒸馏）
+│   ├── freshness_checker.py # fn_detect_drift（sha256 fingerprint 比对）
+│   ├── graph_health.py     # fn_find_contradictions
+│   ├── task_matcher.py     # 历史任务匹配
+│   └── ...
+├── ontology/               # 引擎：Schema 解析与内存注册表
+│   └── registry.py         # ObjectTypeRegistry / FunctionRegistry / ActionRegistry
+├── bootstrap/              # 引擎：冷启动与架构推断
+│   ├── ontology_populator.py # action_bootstrap 完整实现（Step 1~6）
+│   ├── signal_fusion.py    # infer_layer / infer_all（纯函数，无全局状态）
+│   ├── memory_seed_generator.py # _render_memory_md + _compute_fingerprint
+│   └── code_graph_builder.py # fn_build_code_graph
+└── diagnostics/            # 诊断：记忆图谱可视化
+    ├── memory_viz.py       # MemoryVizCollector（显式边+隐式同文件边）
+    └── html_renderer.py    # 3 Tab HTML 渲染器
 
 assets/
-└── ontology_schema/        # 资产：全局本体 Schema 定义（YAML，无业务代码）
-    ├── memory_schema.yaml  # 记忆节点 front-matter 规范（v4.0）
-    ├── objects/            # ObjectType 定义（8 种）
-    ├── links/              # LinkType 定义（8 种）
-    ├── functions/          # Function 定义（9 种）
-    ├── actions/            # Action 定义（5 种）
-    └── _config/            # 图遍历路径配置
+├── ontology_schema/        # 声明式本体定义（YAML）
+│   ├── memory_schema.yaml  # 记忆节点 front-matter 规范 v4.0
+│   ├── objects/            # 8 种 ObjectType
+│   ├── links/              # 9 种 LinkType（含 related_to）
+│   ├── functions/          # 9 种 Function（实现路径已修正）
+│   ├── actions/            # 5 种 Action
+│   └── _config/            # 图遍历路径配置
+└── bootstrap_profiles/     # 信号权重模板库
+    ├── signal_weights.yaml              # 7 种权重 Profile
+    └── bootstrap_config_template.yaml   # 用户项目配置模板
 
-docs/memory/                # 数据：仅存放当前项目的实例数据
-├── shared/                 # 记忆节点（按层分目录：CC / PLATFORM / DOMAIN / APP / ADAPTER）
-│   └── *.md                # 标准 front-matter v4.0 格式
-├── private/                # EP 私有草稿与诊断数据
-└── _system/                # 系统运行时文件（routing / ast_index.json 等）
+docs/memory/                # 实例数据（当前项目）
+├── shared/                 # 记忆节点（按层目录）
+│   ├── ADAPTER/            # layer=L5_api 的节点
+│   ├── APP/                # layer=L4_service 的节点
+│   ├── DOMAIN/             # layer=L3_ontology 的节点
+│   ├── PLATFORM/           # layer=L2_infrastructure 的节点
+│   └── CC/                 # layer=CC_architecture 的节点
+├── private/                # EP 私有草稿
+└── _system/                # 系统运行时文件
+    ├── routing/            # layers.yaml / intent_map.yaml / operations.yaml
+    ├── ep_run/             # EP 执行记录
+    └── code_graph.json     # 代码依赖图快照
 
-seed_packs/                 # ★ 框架种子包（YAML 驱动，含 ast_overrides）
+seed_packs/                 # 框架种子包（YAML 驱动）
 ├── base/                   # 通用约束（always_inject=true）
-├── spring_boot/            # 13 条 ast_overrides（@RestController/JpaRepository 等）
-├── fastapi_sqlmodel/       # 9 条 ast_overrides（SQLModel/BaseSettings 等）
-├── python_django/          # 13 条 ast_overrides（models.Model/APIView 等）
-├── go_gin/
-├── palantir_arch/
-└── react_zustand/
+├── spring_boot/            # 13 条 ast_overrides
+├── fastapi_sqlmodel/       # 9 条 ast_overrides
+├── python_django/          # 13 条 ast_overrides
+├── go_gin/                 # Go Gin 约束
+├── palantir_arch/          # Palantir 架构模式
+└── react_zustand/          # 前端模式
 
 scripts/
-└── visualize_memory.py     # ★ 记忆图谱可视化 CLI 入口
+└── visualize_memory.py     # 记忆图谱可视化 CLI 入口
 ```
-
-**设计收益**：
-
-1. **语义清晰**：`assets/ontology_schema`（Schema 定义）与 `docs/memory/shared`（实例数据）彻底分离。
-2. **高内聚**：`seed_packs` 移入 `src/mms/bootstrap/`（谁使用谁管理）；项目根目录的 `seed_packs/` 是面向框架适配的独立资产包。
-3. **无侵入诊断**：`diagnostics/` 以只读方式扫描数据层，不修改任何记忆文件，纯输出 HTML。
 
 ---
 
-## 5. 记忆架构元数据（路由系统）
+## 11. 记忆图谱可视化诊断
 
-Layer 2 的元数据规范文件位于 `docs/memory/_system/routing/`，当前状态：
+### 11.1 数据结构与边类型
 
-### 5.1 层分类体系（layers.yaml）
+```
+NodeData {
+    id, label, layer, tier, node_type, tags,
+    file_path,          ← .md 文件路径
+    ast_file,           ← 源码文件路径（用于隐式边推断）
+    ast_class,          ← 源码类名
+    ast_drift,          ← 腐化状态
+    layer_confidence,   ← 推断置信度
+    about_concepts      ← 语义概念标签
+}
 
-| 层 ID | 类型 | 说明 |
-|-------|------|------|
-| `L1_platform` ~ `L5_interface` | 业务技术层 | Clean Architecture 五层 |
-| `BIZ` | 横切业务流 | 跨层端到端业务场景文档（如"用户注册流"、"数据同步管道"） |
-| `CC_architecture` | 横切架构层 | ADR、全链路追踪文档 |
-| `CC_testing` | 横切测试层 | Pytest / Vitest / MSW 等（从 `L5_testing` 重命名，测试是横切关注点） |
-| `CC_governance` | 横切治理层 | Quota 配额、CR 变更审批、ACL（从 `L3_governance` 提升） |
-| `Tooling_mms` | MMS 工具层 | MMS 自身的 AI 工程工具集（从 `L0_mms` 重命名） |
-| `Ops` | 运维部署层 | K8s / Docker / Alembic |
+EdgeData {
+    source, target, relation, label
+}
+边类型（relation）：
+  ● related_to     灰色实线  显式语义关联（front-matter related_to 字段）
+  ● impacts        红色实线  变更传播（front-matter impacts 字段）
+  ● derived_from   绿色实线  知识来源（front-matter derived_from 字段）
+  ● cites          蓝色实线  代码引用（front-matter cites_files 字段）
+  ┄ cites_same_file 浅蓝虚线  同文件隐式共现（运行时推断，无 schema 约束）
+```
 
-### 5.2 操作类型（operations.yaml）
+> **注**：Bootstrap 新生成项目的 `related_to` / `impacts` 默认为空，这是**预期行为**——语义关联需人工/LLM 辅助填充（action_distill / action_dream）。`cites_same_file` 边由 Diagnostics 在运行时推断，展示同一源文件的多个记忆节点之间的共现关系。
 
-新增三种操作类型（EP-129）：
+### 11.2 使用方式
 
-| 操作 ID | 说明 |
-|---------|------|
-| `knowledge_query` | 查询记忆图谱 / 本体结构（不修改代码） |
-| `analyze` | 静态分析：架构检查 / 层级违规检测 / AST 分析 |
-| `refactor` | 代码重构 / 目录迁移 / 模块解耦 |
+```bash
+# 快速生成并打开（扫描当前项目 docs/memory/）
+python3 scripts/visualize_memory.py --open
+
+# 指定目标项目
+python3 scripts/visualize_memory.py \
+  --memory-root tests/fixtures/go-gin-demo/docs/memory \
+  --output /tmp/viz_go.html --project "Go Gin Demo" --open
+
+# 生成最新快照（三个示例项目）
+python3 scripts/visualize_memory.py --memory-root tests/fixtures/python-fastapi-demo/docs/memory --output /tmp/viz_python.html --open
+python3 scripts/visualize_memory.py --memory-root tests/fixtures/spring-boot-demo/docs/memory --output /tmp/viz_java.html --open
+python3 scripts/visualize_memory.py --memory-root tests/fixtures/go-gin-demo/docs/memory --output /tmp/viz_go.html --open
+```
 
 ---
 
-## 6. 质量状态：测试覆盖率（2026-05-05 更新）
+## 12. 质量状态
 
-**测试用例总数：1573 个，全部通过（3 skipped, 2 xfailed）。**
+### 12.1 测试覆盖率（2026-05-05，commit `59cacde`）
 
-### 6.1 整体覆盖率概览
+**测试用例总数：1584 个，全部通过（3 skipped, 2 xfailed）。**
 
-| 引擎 | 文件 | 覆盖率 | 状态 |
-|------|------|--------|------|
-| **Bootstrap Engine** | `code_graph_builder.py` | 95% | ✅ |
-| | `memory_seed_generator.py` | 99% | ✅ |
-| | `signal_fusion.py` | 92% | ✅ |
-| | `ontology_populator.py` | 86% | ✅ |
-| | `seed_packs/__init__.py` | 83% | ✅ |
-| **Ontology Engine** | `registry.py` | 83% | ✅ |
-| **Memory Engine** | `memory_functions.py` | 99% | ✅ |
-| | `link_registry.py` | 84% | ✅ |
-| | `graph_health.py` | 83% | ✅ |
-| | `task_matcher.py` | 85% | ✅ |
-| | `injector.py` | 76% | 良好 |
-| | `repo_map.py` | 76% | 良好 |
-| | `graph_resolver.py` | 72% | 良好 |
-| | `freshness_checker.py` | 68% | 良好 |
-| | `dream.py` | 63% | 中等 |
-| | `intent_classifier.py` | 61% | 中等 |
-| | `funcmap.py` | 60% | 中等 |
-| | `memory_actions.py` | 56% | 中等 |
-| | `entropy_scan.py` | 49% | 中等 |
-| | `codemap.py` | 29% | 待完善 |
-| | `template_lib.py` | 78% | 良好 |
-| | `private.py` | — | 低优先级 |
-| **Diagnostics** | `memory_viz.py` | 87% | ✅ |
-| | `html_renderer.py` | 99% | ✅ |
-| **Memory Engine 合计** | — | **63%** | 良好 |
-| **Layer 2 合计** | — | **~75%** | 良好 ↑ |
+| 引擎 | 关键文件 | 覆盖率 |
+|------|----------|--------|
+| Bootstrap Engine | `signal_fusion.py` | 92% |
+| | `memory_seed_generator.py` | 99% |
+| | `ontology_populator.py` | 86% |
+| | `code_graph_builder.py` | 95% |
+| Ontology Engine | `registry.py` | 83% |
+| Memory Engine | `memory_functions.py` | 99% |
+| | `graph_resolver.py` | 72% |
+| | `intent_classifier.py` | 61% |
+| | `freshness_checker.py` | 68% |
+| Diagnostics | `memory_viz.py` | 87% |
+| | `html_renderer.py` | 99% |
+| **Layer 2 合计** | — | **~75%** |
 
-### 6.2 已修复的关键 Bug
-
-**Bug 1：MemoryNode Schema 双重不符合（已修复 `de4794f`）**
-
-Bootstrap 引擎生成的节点与 `MemoryNode` ObjectType Schema 存在两处冲突：
-
-| 字段 | 生成值（旧） | Schema 要求 | 修复方案 |
-|------|------------|------------|---------|
-| `id` | `MEM-BOOT-001` | 不在 pattern 允许前缀中 | `memory_node.yaml` 新增 `MEM-BOOT-` 前缀 |
-| `layer` | `ADAPTER`/`APP`/`DOMAIN` | 不在 enum 允许值中 | 引入 `_SCHEMA_LAYER_MAP` 映射到规范值 |
-
-层名映射规则：
-
-```text
-ADAPTER  → L5_interface      (HTTP controller / gRPC handler)
-APP      → L4_application    (Application service / use case)
-DOMAIN   → L3_domain         (Domain entity / repository)
-PLATFORM → L2_infrastructure (Config / database client)
-CC       → CC                (Cross-cutting)
-```
-
-**Bug 2：signal_fusion 推断缺陷（已修复 `de4794f`）**
-
-| 场景 | 修复前 | 修复后 |
-|------|-------|-------|
-| `OmsOrderServiceImpl`（Java Impl 惯用） | UNKNOWN(0.19) | **APP(0.59)** |
-| `OmsOrder`（`model/` 目录下 POJO） | UNKNOWN(0.10) | **DOMAIN(0.25)** |
-
-修复方法：
-1. `_NAME_SUFFIXES` 新增 Java Impl 系列后缀（`ServiceImpl`/`RepositoryImpl`/`DaoImpl` 等）
-2. 引入 `_PATH_STRONG_PATTERNS`：`entity`/`model`/`repository` 等明确目录给出强信号（1.0）
-
-### 6.3 当前测试文件清单
+### 12.2 测试文件清单
 
 | 测试文件 | 覆盖内容 | 用例数 |
 |----------|----------|--------|
-| `test_ontology_registry.py` | ObjectTypeRegistry / FunctionRegistry / ActionRegistry 全面单测 | 41 |
-| `test_bootstrap_on_python_fastapi.py` | Python FastAPI 全链路 bootstrap + Schema 合规性 | 18 |
-| `test_bootstrap_on_spring_boot.py` | Spring Boot fixture 端到端、幂等性、dry_run | 15 |
-| `test_bootstrap_e2e.py` | Bootstrap E2E 综合测试 | — |
-| `test_layer2_e2e.py` | 4 条 E2E 链路（Bootstrap→Memory→Schema / MemoryEngine / Layer1&2） | 24 |
+| `test_ontology_registry.py` | ObjectTypeRegistry / FunctionRegistry / ActionRegistry | 41 |
+| `test_bootstrap_on_python_fastapi.py` | FastAPI 全链路 bootstrap + Schema 合规 | 18 |
+| `test_bootstrap_on_spring_boot.py` | Spring Boot E2E、幂等性、dry_run | 15 |
+| `test_bootstrap_incremental_e2e.py` | **增量 Bootstrap E2E（6 大场景，11 用例）** | 11 |
+| `test_layer2_e2e.py` | 4 条 E2E 链路（Bootstrap→Memory→Schema） | 24 |
+| `test_layer2_e2e_extended.py` | 5 条链路（跨语言/Schema↔Memory） | 32 |
 | `test_memory_engine_unit.py` | Memory Engine 全模块单元测试 | 81 |
-| `test_memory_engine_integration.py` | 跨组件集成测试（6 条联动链路） | 21 |
-| `test_layer2_e2e_extended.py` | Layer 2 E2E 扩展（5 条链路：Prompt / 生命周期 / 跨语言 / Schema↔Memory） | 32 |
-| `test_diagnostics.py` | Diagnostics 模块（frontmatter 解析 / 收集器 / 渲染器 / CLI E2E） | 41 |
-
-### 6.4 当前覆盖率缺口与优先级
-
-Memory Engine 仍有以下待完善项：
-
-1. **`codemap.py`（29%）**：主体扫描逻辑（`generate_codemap`）未覆盖，需补充带真实目录结构的测试
-2. **`entropy_scan.py`（49%）**：`run_full_scan` 和 LFU/图健康相关的高阶函数未覆盖
-3. **`memory_actions.py`（56%）**：真实写入路径（依赖 `dream._layer_to_dir`）需更完整的集成测试
-4. **`dream.py`（63%）**：EP 完整蒸馏流程需 LLM mock，当前仅测试纯函数路径
+| `test_memory_engine_integration.py` | 跨组件集成测试（6 条链路） | 21 |
+| `test_diagnostics.py` | Diagnostics（frontmatter/收集器/渲染器/CLI E2E） | 41 |
 
 ---
 
-## 7. 架构解耦与通信协议分析
-
-Layer 2 的设计在物理目录、逻辑依赖和通信协议三个维度均实现了高度解耦。
-
-### 7.1 分层解耦目标的实现
-
-- **Engine / Assets / Data 彻底分离**
-  - **Engine（代码）无状态化**：`src/mms/memory` 和 `src/mms/ontology` 的 Python 代码中无任何硬编码业务概念，完全退化为通用执行器。
-  - **Assets（资产）声明化**：所有的业务规则、节点类型、图谱边关系全部收敛在 `assets/ontology_schema/` 的 YAML 文件中。修改系统行为无需改动一行 Python 代码。
-  - **Data（数据）纯文本化**：记忆实例数据作为纯文本 Markdown 存放在 `docs/memory/shared/`，不依赖任何特定的数据库服务。
-
-- **引擎内部的零循环依赖**
-  - **Ontology 引擎（绝对底层）**：`registry.py` 除了基础的 `utils` 外，不依赖任何其他 MMS 模块。
-  - **Memory 引擎（高度独立）**：`graph_resolver.py` 只关心"图的连通性"，通过自己的 `link_registry.py` 直接读取 YAML 配置，不依赖 Ontology Engine 的校验逻辑。
-  - **Bootstrap 引擎（单向消费）**：单向依赖 `ontology.registry` 获取对象类型，单向输出 Markdown 文件。
-  - **Diagnostics（纯只读）**：只读扫描 Markdown 文件，不调用任何 Memory/Ontology 引擎方法。
-
-### 7.2 核心通信协议
-
-| 协议 | 载体 | 方向 | 说明 |
-|------|------|------|------|
-| **YAML Schema** | `assets/ontology_schema/*.yaml` | 引擎 ← 资产 | Ontology Engine 和 Memory Engine 通过标准 YAML 读取业务规则 |
-| **Markdown Front-matter** | `docs/memory/shared/*.md` | Bootstrap → Memory | Bootstrap 写入、Memory Engine 读取；人类开发者可直接编辑 |
-| **Python API（极简）** | `MemoryInjector.inject(task)` | Layer 1 → Layer 2 | 跨层调用接口高度收敛，内部实现完全黑盒 |
-| **HTML 输出** | `memory_viz.html` | Diagnostics → 人类 | 单向输出，供开发者浏览器打开检视 |
-
----
-
-## 8. 记忆图谱可视化诊断（Diagnostics）
-
-### 8.1 功能概述
-
-`src/mms/diagnostics/` 提供记忆图谱的可视化诊断能力，输出为**自包含的 HTML 文件**（无需后端服务），可直接在浏览器中打开。
-
-**三个标签页**：
-
-| Tab | 内容 | 技术 |
-|-----|------|------|
-| 📊 记忆图谱 | vis-network 交互式图，可按 layer/tier/关键词过滤，点击节点查看详情 | vis-network 9.1.9 (CDN) |
-| 🌳 AST 文件视图 | 按源码文件分组的树状视图，展示类名 → 记忆节点映射，drift 高亮 | 纯 HTML/CSS |
-| 🔗 AST↔记忆映射 | 完整映射表，含置信度、tier、layer、drift 状态 | 纯 HTML/CSS |
-
-### 8.2 使用方式
-
-```bash
-# 快速生成并打开（默认扫描 docs/memory/）
-python3 scripts/visualize_memory.py --open
-
-# 指定参数
-python3 scripts/visualize_memory.py -o /tmp/viz.html --project MyApp
-
-# 在非项目根目录使用
-python3 scripts/visualize_memory.py --memory-root /path/to/docs/memory --project TargetProject
-```
-
-### 8.3 数据收集逻辑
-
-`MemoryVizCollector.collect()` 扫描所有 `.md` 文件（排除 `_system/`），从 YAML front-matter 中提取：
-
-- **节点属性**：`id`、`layer`、`tier`、`type`、`tags`、`about_concepts`
-- **AST 指针**：`ast_pointer.file_path`、`ast_pointer.class_name`、`ast_pointer.drift`、`provenance.layer_confidence`
-- **图关系**：`related_to`、`impacts`、`derived_from`（生成有向边）
-
----
-
-## 9. 已知局限与后续计划
+## 13. 已知局限与后续计划
 
 | 优先级 | 问题 | 后续方向 |
 |--------|------|---------|
-| P1 | `codemap.py`（29%）主体扫描逻辑测试缺失 | 补充真实目录 fixture 集成测试 |
-| P1 | `entropy_scan.py`（49%）`run_full_scan` 未覆盖 | 补充高阶函数测试 |
-| P2 | Diagnostics 图可视化仅基于 front-matter，无 LLM 语义聚类 | 探索基于 embedding 的节点聚类 |
-| P2 | 记忆节点之间的 `cites_files` 边尚未转为可视化边（目前只做 `related_to/impacts/derived_from`） | 扩展 `memory_viz.py` 收集逻辑 |
-| P3 | Bootstrap 信号融合的 TypeScript / Go 强模式补充 | 扩展 `_PATH_STRONG_PATTERNS` 和 `_NAME_SUFFIXES` |
+| P0 | `rules/` 目录缺失，Rule 散落在 Action 的 YAML 字段中 | 独立 Rules 文件（Palantir 模式）|
+| P1 | `signal_weights.yaml` 中 `strong_path_patterns` 等 profile 专有字段尚未被推断引擎加载 | 扩展 `infer_all()` 支持 profile 级路径模式覆盖 |
+| P1 | Bootstrap 删除的类，其旧 MEM-BOOT-*.md 不会自动清理（孤立节点） | 增量 GC 扫描（比对 ast_index 与现有节点） |
+| P1 | `codemap.py`（29%）主体扫描逻辑测试缺失 | 补充带真实目录结构的集成测试 |
+| P2 | `cites_same_file` 边仅在可视化层存在，未建模为 LinkType | 评估是否需要持久化存储 |
+| P2 | Diagnostics 图可视化无 LLM 语义聚类 | 探索基于 embedding 的节点聚类 |
+| P3 | `fn_detect_drift` 的 sha256 fingerprint 仅覆盖方法签名，不感知类体实现变化 | 考虑结合内容哈希的混合指纹策略 |
