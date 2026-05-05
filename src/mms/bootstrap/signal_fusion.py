@@ -110,6 +110,28 @@ def get_signal_weights(
     return weights
 
 
+def get_strong_path_patterns(profile: Optional[str] = None) -> Optional[Dict[str, List[str]]]:
+    """从 profile 中加载 strong_path_patterns（无副作用的纯函数）。
+
+    若 profile 未定义 strong_path_patterns，返回 None（调用方继续使用内置常量）。
+
+    Args:
+        profile: 模板名（如 "java_spring_boot"、"python_fastapi"）
+
+    Returns:
+        {layer: [keyword, ...]} 或 None（使用内置 _PATH_STRONG_PATTERNS）
+    """
+    if not profile:
+        return None
+    profiles = _load_profiles()
+    if profile not in profiles:
+        return None
+    patterns = profiles[profile].get("strong_path_patterns")
+    if not patterns or not isinstance(patterns, dict):
+        return None
+    return {layer: list(keywords) for layer, keywords in patterns.items()}
+
+
 @dataclass
 class SignalBreakdown:
     path_score:        float = 0.0
@@ -423,14 +445,26 @@ _PATH_STRONG_PATTERNS: Dict[str, List[str]] = {
 }
 
 
-def _score_path(file_path: str, name_patterns: Optional[Dict] = None) -> Dict[str, float]:
+def _score_path(
+    file_path: str,
+    name_patterns: Optional[Dict] = None,
+    strong_patterns: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, float]:
     """路径信号：目录名关键词匹配评分（各层 0~1）。
 
     强信号（entity/aggregate/repository 等明确目录）→ 1.0；
     弱信号（model/dto/impl 等共享目录）→ 0.4；
     两类均可叠加（上限 1.0）。
+
+    Args:
+        file_path:       源文件路径
+        name_patterns:   弱信号路径模式（来自 signal_rules 自定义规则或内置 _PATH_PATTERNS）
+        strong_patterns: 强信号路径模式（来自 profile 的 strong_path_patterns 或内置
+                         _PATH_STRONG_PATTERNS）。profile 中定义时完全替换内置强信号列表，
+                         以适配不同技术栈的目录约定（如 java_spring_boot / python_fastapi）。
     """
     patterns = name_patterns or _PATH_PATTERNS
+    effective_strong = strong_patterns if strong_patterns is not None else _PATH_STRONG_PATTERNS
     parts = Path(file_path).parts
     path_str = "/".join(parts).lower()
     scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
@@ -442,7 +476,7 @@ def _score_path(file_path: str, name_patterns: Optional[Dict] = None) -> Dict[st
                 scores[layer] = min(1.0, scores[layer] + 0.4)
 
     # 强信号路径模式（1.0，可独立超过 0.25 阈值）
-    for layer, keywords in _PATH_STRONG_PATTERNS.items():
+    for layer, keywords in effective_strong.items():
         for kw in keywords:
             if kw in path_str:
                 scores[layer] = 1.0
@@ -558,6 +592,7 @@ def infer_layer(
     out_degree_by_layer: Optional[Dict[str, int]] = None,
     signal_rules: Optional[Dict] = None,
     weights: Optional[Dict[str, float]] = None,
+    strong_path_patterns: Optional[Dict[str, List[str]]] = None,
 ) -> LayerInference:
     """
     五路信号融合推断架构层（纯函数，无全局状态副作用）。
@@ -565,16 +600,20 @@ def infer_layer(
     实现 fn_infer_layer Function（assets/ontology_schema/functions/fn_infer_layer.yaml）。
 
     Args:
-        file_path:           文件路径（用于路径信号）
-        class_name:          类名（用于命名信号）
-        annotations:         类级注解/装饰器列表（用于注解信号）
-        bases:               父类/接口列表（用于继承信号）
-        parent_layers:       已推断的父类层级字典 {class_name: layer}（用于继承信号）
-        in_degree:           被多少类依赖（用于导入信号）
-        out_degree_by_layer: 按层分组的出度 {layer: count}（用于导入信号）
-        signal_rules:        来自 FunctionRegistry 的自定义信号规则（覆盖内置规则）
-        weights:             信号权重字典（来自 get_signal_weights()），None 时使用默认权重。
-                             通过 infer_all() 的 weights_profile 参数注入，不依赖全局状态。
+        file_path:            文件路径（用于路径信号）
+        class_name:           类名（用于命名信号）
+        annotations:          类级注解/装饰器列表（用于注解信号）
+        bases:                父类/接口列表（用于继承信号）
+        parent_layers:        已推断的父类层级字典 {class_name: layer}（用于继承信号）
+        in_degree:            被多少类依赖（用于导入信号）
+        out_degree_by_layer:  按层分组的出度 {layer: count}（用于导入信号）
+        signal_rules:         来自 FunctionRegistry 的自定义信号规则（覆盖内置规则）
+        weights:              信号权重字典（来自 get_signal_weights()），None 时使用默认权重。
+                              通过 infer_all() 的 weights_profile 参数注入，不依赖全局状态。
+        strong_path_patterns: 强信号路径模式，来自 profile 的 strong_path_patterns 字段。
+                              None 时使用内置 _PATH_STRONG_PATTERNS 常量。
+                              通过 infer_all() 的 weights_profile 参数自动注入，实现
+                              "每个 profile 定制强信号目录约定"的效果。
 
     Returns:
         LayerInference: 推断结果，含层级、置信度和分项得分
@@ -592,8 +631,8 @@ def infer_layer(
     custom_name   = (signal_rules or {}).get("name_patterns")
     custom_annot  = (signal_rules or {}).get("annotation_patterns")
 
-    # 各路信号评分
-    path_scores  = _score_path(file_path, custom_path)
+    # 各路信号评分（strong_path_patterns 来自 profile，None 时退回内置常量）
+    path_scores  = _score_path(file_path, custom_path, strong_path_patterns)
     name_scores  = _score_name(class_name, custom_name)
     annot_scores = _score_annotations(annotations, custom_annot)
     inh_scores   = _score_inheritance(bases, parent_layers)
@@ -750,8 +789,9 @@ def infer_all(
     Returns:
         {class_fqn: (LayerInference, ObjectTypeMapping)}
     """
-    # 计算本次调用的权重（纯函数，不修改全局状态）
+    # 计算本次调用的权重和强信号路径模式（纯函数，不修改全局状态）
     active_weights = get_signal_weights(weights_profile, weights_overrides)
+    active_strong_patterns = get_strong_path_patterns(weights_profile)
     in_degrees   = code_graph_in_degrees or {}
     out_by_layer = code_graph_out_by_layer or {}
     results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]] = {}
@@ -795,7 +835,7 @@ def infer_all(
                 override_hits += 1
                 continue
 
-            # ── Pass 2: 五路信号融合推断（显式注入权重，无全局状态依赖）──────────
+            # ── Pass 2: 五路信号融合推断（显式注入权重和强信号模式，无全局状态依赖）──
             layer_inf = infer_layer(
                 file_path=file_path,
                 class_name=name,
@@ -806,6 +846,7 @@ def infer_all(
                 out_degree_by_layer=out_by_layer.get(fqn, {}),
                 signal_rules=signal_rules,
                 weights=active_weights,
+                strong_path_patterns=active_strong_patterns,
             )
             if layer_inf.confidence >= min_confidence:
                 parent_layers[name] = layer_inf.inferred_layer

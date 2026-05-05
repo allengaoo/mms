@@ -1,0 +1,177 @@
+# RuleDef: Bootstrap 执行管道规则集
+# ────────────────────────────────────────────────────────
+# Palantir 对应概念：Rule（定义 Action 执行时的约束和步骤顺序）。
+#
+# 这组规则定义了 action_bootstrap 的执行管道（9 条 Rule），
+# 每条 Rule 描述一个步骤的：触发条件、调用的 Function、输入输出、
+# 创建/修改的 Object 类型，以及跳过条件。
+#
+# 版本：v1.0 | 创建于：2026-05-05 | 从 actions/bootstrap.yaml 提取独立
+#
+# 设计原则（参考 Palantir Rule）：
+#   - Rule 是对 Action 执行逻辑的声明式约束，不含实现代码
+#   - 每条 Rule 对应一个原子操作步骤，可独立测试
+#   - Rule 之间有数据依赖（上一步的 outputs 是下一步的 inputs）
+#   - Rule 通过 skip_if 实现条件执行（不同参数组合不同执行路径）
+
+id: rule_group_bootstrap_pipeline
+label: "Bootstrap 执行管道"
+version: "1.0"
+belongs_to_action: action_bootstrap
+
+# ─── 前置条件（Submission Criteria）─────────────────────────────────────────
+
+submission_criteria:
+  - criterion_id: project_root_exists
+    description: "项目根目录必须存在"
+    check: "Path(project_root).is_dir()"
+    error_message: "项目根目录不存在：{project_root}"
+
+  - criterion_id: has_source_files
+    description: "项目必须包含至少一个源文件（.py/.java/.go/.ts）"
+    check: "any source files found in project_root"
+    error_message: "项目根目录下未发现任何源文件，无法执行 Bootstrap"
+
+# ─── 执行规则（Rules）────────────────────────────────────────────────────────
+
+rules:
+
+  - rule_id: rule_01_sniff_tech_stack
+    label: "技术栈嗅探"
+    step: 1
+    type: function_rule
+    function: fn_build_code_graph    # 实际由 dep_sniffer.sniff() 实现
+    implementation: "mms.analysis.dep_sniffer.sniff(project_root)"
+    outputs: [detected_stacks, confidence, scan_sources]
+    on_failure: continue_with_base_stack
+    description: |
+      分析 requirements.txt / go.mod / pom.xml 等依赖文件，
+      推断技术栈类型（fastapi/spring_boot/gin 等），
+      失败时降级为 base 种子包（确保流程不中断）。
+
+  - rule_id: rule_015_absorb_docs
+    label: "项目文档自动蒸馏（可选）"
+    step: 1.5
+    type: function_rule
+    implementation: "mms.analysis.seed_absorber.absorb(project_root)"
+    outputs: [absorbed_docs]
+    skip_if: "skip_doc_absorb == true"
+    description: |
+      扫描 CONTRIBUTING.md / .cursorrules / README.md 等文档，
+      提取架构约束和规范，生成草稿记忆到 shared/CC/_absorb_draft/。
+
+  - rule_id: rule_02_inject_seeds
+    label: "注入种子记忆（先验知识）"
+    step: 2
+    type: ontology_rule
+    action: create_or_skip_objects
+    object_type: MemoryNode
+    implementation: "mms.bootstrap.seed_packs.install_packs(detected_stacks)"
+    creates_objects: [MemoryNode]
+    creates_links: [link_about, link_related_to]
+    skip_if: "skip_seeds == true"
+    description: |
+      将 seed_packs/{stack_name}/ 中的 AC-*.md 写入 docs/memory/shared/，
+      建立初始的架构约束记忆（始终注入 base 包；按栈注入专属包）。
+
+  - rule_id: rule_03_build_ast_index
+    label: "AST 骨架化"
+    step: 3
+    type: function_rule
+    function: fn_build_code_graph
+    implementation: "mms.analysis.ast_skeleton.build_ast_index(project_root)"
+    outputs: [ast_index]
+    creates_objects: [CodeFile, CodeClass]
+    skip_if: "skip_ast == true"
+    description: |
+      遍历所有源文件，提取类名、方法签名、基类、注解、导入等信息，
+      构造 ast_index = {file_path: {classes: [...], ...}}。
+
+  - rule_id: rule_04_build_code_graph
+    label: "构建代码依赖图"
+    step: 4
+    type: function_rule
+    function: fn_build_code_graph
+    implementation: "mms.bootstrap.code_graph_builder.build_code_graph(ast_index)"
+    inputs: [ast_index]
+    outputs: [code_graph]
+    creates_links: [link_depends_on, link_implements, link_contains]
+    writes_files: ["docs/memory/_system/code_graph.json"]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_05_infer_layers
+    label: "五路信号推断架构层"
+    step: 5
+    type: function_rule
+    function: fn_infer_layer
+    implementation: "mms.bootstrap.signal_fusion.infer_all(ast_index, weights_profile)"
+    inputs: [ast_index, code_graph, weights_profile, weights_overrides]
+    outputs: [inference_results, layer_distribution]
+    modifies_objects:
+      - object: CodeClass
+        fields: [inferred_layer, layer_confidence, signal_breakdown]
+    skip_if: "skip_ast == true"
+    weights_config: "assets/bootstrap_profiles/signal_weights.yaml"
+    description: |
+      对每个 CodeClass 执行五路信号融合推断：
+        path (路径) / name (类名) / annotation (注解) / inheritance (继承) / import (导入)
+      权重由 signal_weights_profile 决定（默认 base；可按技术栈配置）。
+      置信度 < min_confidence 的类被标记为 UNKNOWN，不生成记忆节点。
+
+  - rule_id: rule_06_detect_object_types
+    label: "推断代码对象语义类型"
+    step: 6
+    type: function_rule
+    function: fn_detect_code_object_type
+    implementation: "mms.bootstrap.signal_fusion.detect_code_object_type(...)"
+    inputs: [inference_results]
+    applies_to: "CodeClass where layer_confidence >= min_confidence"
+    modifies_objects:
+      - object: CodeClass
+        fields: [inferred_object_type, linked_memory_id]
+    skip_if: "skip_ast == true"
+
+  - rule_id: rule_07_generate_memory_nodes
+    label: "增量生成初始 MemoryNode"
+    step: 7
+    type: ontology_rule
+    action: create_or_skip_objects
+    object_type: MemoryNode
+    implementation: "mms.bootstrap.memory_seed_generator.generate_seed_memories(...)"
+    inputs: [inference_results, existing_fingerprints]
+    creates_objects: [MemoryNode]
+    creates_links: [link_cites, link_about]
+    writes_files: ["docs/memory/shared/{LAYER}/MEM-BOOT-*.md"]
+    skip_if: "skip_ast == true OR skip_memory_gen == true"
+    idempotency:
+      strategy: fingerprint_match
+      fingerprint_algo: "SHA-256(sorted(method_name:signature))"
+      skip_condition: "class_name in existing AND fingerprint unchanged"
+    description: |
+      为每个置信度达标的 CodeClass 生成一条 MEM-BOOT-*.md。
+      增量幂等：若 class_name 已有记忆且 AST fingerprint 未变，则跳过。
+
+  - rule_id: rule_08_structural_gc
+    label: "结构性 GC：清理孤立 Bootstrap 节点"
+    step: 8
+    type: maintenance_rule
+    implementation: "mms.bootstrap.ontology_populator._run_structural_gc(ast_index, mem_root)"
+    inputs: [ast_index, existing_boot_nodes]
+    orphan_definition: |
+      MEM-BOOT-*.md 中的 class_name 不再出现在当前 AST index 中
+      （源码中对应的类已被删除/重命名）
+    action_on_orphan: archive   # 软删除，移至 shared/{LAYER}/_archived/
+    skip_if: "skip_ast == true OR dry_run == true"
+    description: |
+      比对现有 MEM-BOOT-*.md 与最新 AST index：
+      若 class_name 已从代码中消失，将对应节点归档（不物理删除），
+      避免图谱中出现"无源之水"的孤立节点。
+      注：与 entropy_scan 的 LFU 清理不同，这是结构性一致性保证。
+
+  - rule_id: rule_09_update_index
+    label: "更新 MEMORY_INDEX.json"
+    step: 9
+    type: side_effect
+    implementation: "mms.memory.graph_resolver 重新加载"
+    description: "将新生成的 MemoryNode 写入 docs/memory/MEMORY_INDEX.json"
+    skip_if: "dry_run == true"

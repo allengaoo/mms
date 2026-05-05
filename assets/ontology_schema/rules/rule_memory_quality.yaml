@@ -1,0 +1,111 @@
+# RuleDef: 记忆质量治理规则集
+# ────────────────────────────────────────────────────────
+# 这组规则定义了记忆系统的质量约束与自动治理逻辑。
+# 对应 Palantir 中"Rule"（约束 Object 状态、防止不一致）的概念。
+#
+# 规则分为三类：
+#   1. 写入约束规则  — 记忆节点写入/修改时必须满足的条件
+#   2. 降级/晋升规则 — 基于访问频率的 Tier 热度管理
+#   3. 清理规则      — 识别并归档低价值/孤立节点
+
+id: rule_group_memory_quality
+label: "记忆质量治理规则"
+version: "1.0"
+belongs_to_action: "action_distill, action_validate"
+
+# ─── 1. 写入约束规则 ──────────────────────────────────────────────────────────
+
+rules:
+
+  - rule_id: rule_mq_01_required_fields
+    label: "必填字段约束"
+    type: validation_rule
+    trigger: "on_create OR on_modify"
+    applies_to: MemoryNode
+    constraints:
+      - field: id
+        rule: "matches ^MEM-[A-Z]+-\\d{4}$ OR ^AC-.+"
+      - field: title
+        rule: "non-empty string"
+      - field: type
+        rule: "one_of(lesson, pattern, anti-pattern, decision, business-flow)"
+      - field: layer
+        rule: "one_of(L5_api, L5_event, L4_service, L4_saga, L3_domain, L3_factory, L2_repo, L2_infra, L1_db, L1_ext, L0_sidecar, L0_monitoring, CC_config, CC_security, CC_logging, CC_messaging, CC_testing)"
+      - field: tier
+        rule: "one_of(hot, warm, cold)"
+    error_message: "MemoryNode {id} 缺少必填字段或字段值非法"
+
+  - rule_id: rule_mq_02_no_orphan_links
+    label: "链接引用完整性约束"
+    type: validation_rule
+    trigger: "on_validate"
+    applies_to: "all LinkType instances"
+    constraint: "source_id and target_id must exist in MEMORY_INDEX.json OR ast_index.json"
+    action_on_violation: warn   # 仅警告，不阻断（目标可能在其他索引中）
+
+  - rule_id: rule_mq_03_no_duplicate_class
+    label: "单类单记忆约束"
+    type: validation_rule
+    trigger: "on_create"
+    applies_to: MemoryNode
+    constraint: "exactly one MemoryNode per (project, class_name) combination"
+    action_on_violation: skip   # 跳过，不覆盖已存在的节点（由 fingerprint 控制更新）
+
+# ─── 2. Tier 热度管理规则 ────────────────────────────────────────────────────
+
+  - rule_id: rule_mq_04_tier_demotion
+    label: "Tier 降级规则（hot → warm → cold）"
+    type: lifecycle_rule
+    trigger: "scheduled (entropy_scan)"
+    applies_to: MemoryNode
+    conditions:
+      - condition: "tier == hot AND days_since_last_accessed > 30"
+        action: "demote to warm"
+      - condition: "tier == warm AND access_count == 0 AND days_since_created > 60"
+        action: "demote to cold (candidate for archive)"
+    implementation: "entropy_scan.scan_stale_hot() + scan_zero_access()"
+    description: |
+      基于使用频率的 Tier 热度衰减（LFU + 时间衰减）。
+      注：这是"使用性 GC"，与"结构性 GC"（rule_08_structural_gc）正交，
+      均需独立运行。降级后节点仍保留，不删除。
+
+  - rule_id: rule_mq_05_tier_promotion
+    label: "Tier 晋升规则（cold → warm → hot）"
+    type: lifecycle_rule
+    trigger: "on_memory_retrieve"
+    applies_to: MemoryNode
+    condition: |
+      access_count 增加后：
+        cold  → warm：access_count >= 3
+        warm  → hot：  access_count >= 10 AND days_since_last_accessed <= 7
+    implementation: "graph_resolver.py update_access_stats()"
+
+# ─── 3. 清理规则（Cleanup Rules）────────────────────────────────────────────
+
+  - rule_id: rule_mq_06_lfu_archive
+    label: "LFU 低价值节点归档（使用性 GC）"
+    type: cleanup_rule
+    trigger: "scheduled (entropy_scan)"
+    applies_to: MemoryNode
+    condition: "tier == cold AND access_count == 0 AND days_since_created > 90"
+    action: archive   # 软删除，移至 _archived/，不物理删除
+    distinct_from: rule_08_structural_gc
+    description: |
+      基于访问频率的记忆归档（LFU-inspired）。
+      判断依据是"有没有被查询过"，与对应代码是否存在无关。
+      须与 Bootstrap 的结构性 GC (rule_08_structural_gc) 区分：
+        - 结构性 GC：代码消失 → 记忆应归档（代码锚点丢失）
+        - LFU 归档： 代码仍在 → 记忆从未被用过（可能低价值）
+      两者都用"软删除（归档）"，均不物理删除文件。
+
+  - rule_id: rule_mq_07_entropy_scan_ci
+    label: "CI 熵扫描约束"
+    type: ci_rule
+    trigger: "on_push (CI)"
+    applies_to: "docs/memory/**/*.md"
+    checks:
+      - "no ghost index entries (indexed but file missing)"
+      - "no orphan files (file exists but not indexed)"
+      - "no duplicate titles (prefix similarity > 80%)"
+    on_failure: "exit 1 in CI mode"
+    implementation: "entropy_scan.py --ci"

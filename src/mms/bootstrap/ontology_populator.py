@@ -86,6 +86,9 @@ class BootstrapV2Report:
         if self.memories_per_layer:
             for layer, count in sorted(self.memories_per_layer.items()):
                 print(f"               {layer:<10}: {count} 条")
+        gc_archived: List[str] = getattr(self, "gc_archived", [])
+        if gc_archived:
+            print(f"  结构性GC : 归档 {len(gc_archived)} 个孤立节点")
         if self.dry_run:
             print(f"\n  ⚠️  dry-run 模式，文件未实际写入")
         if self.errors:
@@ -429,7 +432,118 @@ def bootstrap_project(
     else:
         log("\n▶ Step 6/6 · 推断结果为空，跳过记忆生成")
 
+    # ── Rule 08: 结构性 GC（孤立 Bootstrap 节点归档）────────────────────────────
+    # 在完整 AST 运行完成后，对比现有 MEM-BOOT-*.md 与最新 AST index：
+    # 若某节点的 class_name 已不在 ast_index 中，说明对应类已被删除/重命名，
+    # 将该节点移入 _archived/ 子目录（软删除，保留历史）。
+    #
+    # 此 GC 与 entropy_scan 的 LFU 访问频率清理完全独立：
+    #   - 结构性 GC：代码锚点丢失（源码删类）→ 孤立节点
+    #   - LFU 清理：记忆从未被查询访问（access_count=0）→ 低价值节点
+    if not skip_ast and not dry_run and ast_index:
+        try:
+            gc_report = _run_structural_gc(
+                ast_index=ast_index,
+                project_root=root,
+                dry_run=dry_run,
+                log=log,
+            )
+            report.gc_archived = gc_report  # type: ignore[attr-defined]
+        except Exception as e:
+            log(f"  ⚠️  结构性 GC 异常（跳过）: {e}")
+            report.errors.append(f"结构性 GC 失败: {e}")
+
     report.elapsed_s = time.time() - start
     if verbose:
         report.print_summary()
     return report
+
+
+def _run_structural_gc(
+    ast_index: Dict,
+    project_root: Path,
+    dry_run: bool,
+    log,
+) -> List[str]:
+    """
+    Rule 08: 结构性 GC — 将孤立的 MEM-BOOT-*.md 归档（软删除）。
+
+    判断孤立标准：MEM-BOOT-*.md 中记录的 class_name 在最新 ast_index 中不存在
+    （即对应的源码类已被删除/重命名）。
+
+    归档策略：
+        - 将孤立节点移至同层的 _archived/ 子目录（不物理删除）
+        - 归档文件名添加 .orphan 后缀，方便识别
+        - 在归档文件头部追加注释说明归档原因
+
+    Args:
+        ast_index:      最新的 AST index（来自本次 Bootstrap 运行）
+        project_root:   项目根目录
+        dry_run:        若 True，只报告不执行移动
+        log:            日志函数
+
+    Returns:
+        已归档的文件路径列表（相对 project_root）
+    """
+    import re as _re
+    import shutil
+
+    shared_dir = project_root / "docs" / "memory" / "shared"
+    if not shared_dir.exists():
+        return []
+
+    # 构建当前所有 class_name 的集合（用于快速查找）
+    current_class_names: set = set()
+    for file_data in ast_index.values():
+        for cls in file_data.get("classes", []):
+            name = cls.get("name", "")
+            if name:
+                current_class_names.add(name)
+
+    archived: List[str] = []
+
+    for md_path in sorted(shared_dir.rglob("MEM-BOOT-*.md")):
+        # 跳过已在 _archived 目录中的文件
+        if "_archived" in md_path.parts:
+            continue
+
+        try:
+            text = md_path.read_text(encoding="utf-8", errors="ignore")
+            m = _re.search(r"class_name:\s*(\S+)", text)
+            if not m:
+                continue
+            class_name = m.group(1).strip()
+        except Exception:
+            continue
+
+        if class_name in current_class_names:
+            continue  # 对应类仍然存在，保留
+
+        # 对应类已消失 → 归档
+        archived_dir = md_path.parent / "_archived"
+        archived_path = archived_dir / (md_path.stem + ".orphan.md")
+
+        rel = str(md_path.relative_to(project_root))
+        if dry_run:
+            log(f"  🗑  [dry-run] 孤立节点待归档: {rel}")
+        else:
+            archived_dir.mkdir(parents=True, exist_ok=True)
+            # 在文件头部追加归档说明
+            import datetime as _dt
+            archive_header = (
+                f"<!-- ARCHIVED: class '{class_name}' no longer exists in AST index. "
+                f"Archived by structural GC on {_dt.date.today()}. -->\n"
+            )
+            archived_path.write_text(archive_header + text, encoding="utf-8")
+            md_path.unlink()
+            log(f"  🗑  孤立节点已归档: {rel} → _archived/{archived_path.name}")
+
+        archived.append(rel)
+
+    if archived:
+        log(f"\n▶ [结构性 GC] 共归档 {len(archived)} 个孤立 Bootstrap 节点"
+            f"{'（dry-run，未实际移动）' if dry_run else ''}")
+    else:
+        log("\n▶ [结构性 GC] 未发现孤立节点，图谱一致")
+
+    return archived
