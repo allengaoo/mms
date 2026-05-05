@@ -58,6 +58,8 @@ _JAVA_FIXTURE = _FIXTURES / "spring-boot-demo"
 def python_bootstrapped(tmp_path_factory):
     dest = tmp_path_factory.mktemp("py") / "python-fastapi-demo"
     shutil.copytree(_PYTHON_FIXTURE, dest)
+    for md in dest.rglob("MEM-BOOT-*.md"):
+        md.unlink()
     report = bootstrap_project(
         project_root=dest,
         skip_seeds=True,
@@ -72,6 +74,8 @@ def python_bootstrapped(tmp_path_factory):
 def java_bootstrapped(tmp_path_factory):
     dest = tmp_path_factory.mktemp("jv") / "spring-boot-demo"
     shutil.copytree(_JAVA_FIXTURE, dest)
+    for md in dest.rglob("MEM-BOOT-*.md"):
+        md.unlink()
     report = bootstrap_project(
         project_root=dest,
         skip_seeds=True,
@@ -607,6 +611,8 @@ class TestCrossLanguageE2E:
         src = _FIXTURES / fixture_name
         dest = tmp_path / fixture_name
         shutil.copytree(src, dest)
+        for md in dest.rglob("MEM-BOOT-*.md"):
+            md.unlink()
         report = bootstrap_project(
             project_root=dest,
             skip_seeds=True,
@@ -626,6 +632,8 @@ class TestCrossLanguageE2E:
         src = _FIXTURES / fixture_name
         dest = tmp_path / fixture_name
         shutil.copytree(src, dest)
+        for md in dest.rglob("MEM-BOOT-*.md"):
+            md.unlink()
         bootstrap_project(
             project_root=dest,
             skip_seeds=True,
@@ -644,6 +652,8 @@ class TestCrossLanguageE2E:
         src = _FIXTURES / fixture_name
         dest = tmp_path / fixture_name
         shutil.copytree(src, dest)
+        for md in dest.rglob("MEM-BOOT-*.md"):
+            md.unlink()
         bootstrap_project(
             project_root=dest,
             skip_seeds=True,

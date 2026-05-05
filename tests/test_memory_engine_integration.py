@@ -56,6 +56,8 @@ def isolated_python(tmp_path):
     """将 python-fastapi-demo 复制到 tmp_path，运行 bootstrap，返回临时目录。"""
     dest = tmp_path / "python-fastapi-demo"
     shutil.copytree(_PYTHON_FIXTURE, dest)
+    for md in dest.rglob("MEM-BOOT-*.md"):
+        md.unlink()
     report = bootstrap_project(
         project_root=dest,
         skip_seeds=True,     # 不注入 seed_packs（保持测试快）

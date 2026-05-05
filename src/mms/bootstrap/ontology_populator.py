@@ -178,6 +178,8 @@ def bootstrap_project(
     min_confidence: float = 0.5,
     max_per_layer: int = 10,
     verbose: bool = True,
+    weights_profile: Optional[str] = None,
+    weights_overrides: Optional[dict] = None,
 ) -> BootstrapV2Report:
     """
     Bootstrap v2：完整执行 action_bootstrap 的 9 条 Rules。
@@ -185,14 +187,17 @@ def bootstrap_project(
     这是 cli.py cmd_bootstrap 的新实现，取代旧版分散逻辑。
 
     Args:
-        project_root:     项目根目录（默认当前工作区）
-        dry_run:          不写文件，只返回分析结果
-        skip_ast:         跳过 AST 扫描和所有后续步骤
-        skip_seeds:       跳过种子包注入
-        skip_memory_gen:  跳过初始记忆生成（只做结构分析）
-        min_confidence:   层推断最低置信度（低于此值不生成记忆）
-        max_per_layer:    每层最多生成记忆数
-        verbose:          是否打印步骤进度
+        project_root:      项目根目录（默认当前工作区）
+        dry_run:           不写文件，只返回分析结果
+        skip_ast:          跳过 AST 扫描和所有后续步骤
+        skip_seeds:        跳过种子包注入
+        skip_memory_gen:   跳过初始记忆生成（只做结构分析）
+        min_confidence:    层推断最低置信度（低于此值不生成记忆）
+        max_per_layer:     每层最多生成记忆数
+        verbose:           是否打印步骤进度
+        weights_profile:   信号权重模板名（"java_spring_boot"/"python_fastapi"/"go_gin" 等）
+                           None 时自动从 .mms/bootstrap_config.yaml 读取，再 fallback 到 base
+        weights_overrides: 精细覆盖单个权重（如 {"annotation": 0.45}），与模板合并
 
     Returns:
         BootstrapV2Report
@@ -329,12 +334,34 @@ def bootstrap_project(
     layer_dist: Dict[str, int] = {}
     try:
         from mms.bootstrap.signal_fusion import infer_all  # type: ignore
+
+        # 自动从 .mms/bootstrap_config.yaml 读取权重 profile（若调用方未显式指定）
+        effective_profile = weights_profile
+        effective_overrides = weights_overrides
+        if effective_profile is None:
+            mms_config_path = root / ".mms" / "bootstrap_config.yaml"
+            if mms_config_path.exists():
+                try:
+                    import yaml as _yaml
+                    cfg = _yaml.safe_load(mms_config_path.read_text()) or {}
+                    effective_profile = cfg.get("signal_weights_profile")
+                    cfg_overrides = cfg.get("signal_weights")
+                    if cfg_overrides and isinstance(cfg_overrides, dict):
+                        effective_overrides = {**cfg_overrides, **(effective_overrides or {})}
+                except Exception:
+                    pass
+
+        if effective_profile:
+            log(f"  使用信号权重模板: {effective_profile}")
+
         inference_results = infer_all(
             ast_index=ast_index,
             code_graph_in_degrees=in_degrees,
             min_confidence=min_confidence,
             project_root=root,
             detected_stacks=report.detected_stacks,
+            weights_profile=effective_profile,
+            weights_overrides=effective_overrides,
         )
         inferred = sum(1 for _, (li, _) in inference_results.items() if li.confidence >= min_confidence)
         skipped  = len(inference_results) - inferred

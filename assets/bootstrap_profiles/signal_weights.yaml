@@ -1,0 +1,215 @@
+# Bootstrap 信号权重模板库 — MMS v4.0
+#
+# 用途：
+#   为不同技术栈 / 架构风格提供差异化的信号权重，解决"一刀切"权重在
+#   特定框架下准确率不足的问题。
+#
+# 背景——五路信号：
+#   path        ：目录名关键词（controller/service/repository/schema 等）
+#   name        ：类名后缀（Controller/Service/Repository/Schema 等）
+#   annotation  ：注解/装饰器（@RestController/@Service/@router.get 等）
+#   inheritance ：父类/接口（BaseModel/JpaRepository/SQLModel 等）
+#   import      ：导入的包名关键词（spring/gin/fastapi 等）
+#
+# 如何使用：
+#   1. 全局覆盖（适用整个项目）：在 .mms/bootstrap_config.yaml 中写入：
+#        signal_weights_profile: "java_spring_boot"
+#      MMS 将自动加载对应配置文件中的权重。
+#
+#   2. 精细覆盖（按信号覆盖个别权重）：在 .mms/bootstrap_config.yaml 中写入：
+#        signal_weights:
+#          annotation: 0.45
+#          path: 0.20
+#      将与 base 模板合并（指定键覆盖，其余保持 base 默认值），并自动归一化。
+#
+#   3. 运行时指定 profile：
+#        mulan bootstrap --weights-profile=java_spring_boot
+#
+# 版本：v1.0 | 创建于：2026-05-05
+
+# ─────────────────────────────────────────────────────────────────────────────
+# base（默认基准配置）
+# 适用：通用项目，无明确框架偏好
+# 特点：五路信号均衡分布，name 和 annotation 略强（类名和注解最直接）
+# ─────────────────────────────────────────────────────────────────────────────
+base:
+  description: "通用基准（无框架偏好）"
+  weights:
+    path:        0.25
+    name:        0.25
+    annotation:  0.30
+    inheritance: 0.10
+    import:      0.10
+  notes: |
+    均衡权重。适用于不熟悉目标项目框架时的保守策略。
+    annotation 略强，因为大多数框架注解（@Controller/@router）是最明确的层级信号。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# java_spring_boot
+# 适用：Spring Boot / Spring MVC / Spring Data JPA
+# 特点：annotation 信号极强（@RestController/@Service/@Repository 完全确定层级），
+#       path 次之（通常有规范的包结构），name 后缀（ServiceImpl 等）有补充作用
+# ─────────────────────────────────────────────────────────────────────────────
+java_spring_boot:
+  description: "Java Spring Boot / Spring MVC / Spring Data JPA"
+  weights:
+    path:        0.20
+    name:        0.20
+    annotation:  0.45
+    inheritance: 0.10
+    import:      0.05
+  strong_path_patterns:
+    ADAPTER:  ["controller", "rest", "web", "dto", "request", "response"]
+    APP:      ["service", "usecase", "application"]
+    DOMAIN:   ["entity", "domain", "model", "aggregate", "repository"]
+    PLATFORM: ["config", "configuration", "security", "aspect", "aop", "infra"]
+  strong_annotations:
+    ADAPTER:  ["@RestController", "@Controller", "@RequestMapping", "@GetMapping", "@PostMapping"]
+    APP:      ["@Service", "@Transactional", "@Async"]
+    DOMAIN:   ["@Entity", "@Table", "@Embeddable", "@MappedSuperclass"]
+    PLATFORM: ["@Configuration", "@Bean", "@Aspect", "@Component", "@EnableWebSecurity"]
+  notes: |
+    Spring Boot 注解是最强的层级信号：@RestController 100% 确定适配层，
+    @Repository 100% 确定领域层。将 annotation 权重提至 0.45。
+    path 在 Maven 标准布局（com.example.controller/service/repository）下也很准确，
+    保持 0.20。name 后缀（ServiceImpl/RepositoryImpl）作为补充，保持 0.20。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# python_fastapi
+# 适用：FastAPI + SQLModel/SQLAlchemy + Pydantic
+# 特点：path 信号最强（FastAPI 项目普遍采用显式目录布局，如 routers/services/repositories），
+#       name 后缀信号适中，BaseModel 继承需结合路径（schemas/ → ADAPTER，models/ → DOMAIN）
+# ─────────────────────────────────────────────────────────────────────────────
+python_fastapi:
+  description: "Python FastAPI + SQLModel/SQLAlchemy + Pydantic"
+  weights:
+    path:        0.40
+    name:        0.25
+    annotation:  0.15
+    inheritance: 0.12
+    import:      0.08
+  strong_path_patterns:
+    ADAPTER:  ["router", "routers", "endpoint", "endpoints", "schemas", "dto",
+               "request", "response", "serializer", "view"]
+    APP:      ["service", "services", "usecase", "use_case", "application"]
+    DOMAIN:   ["repository", "repositories", "entity", "domain", "aggregate"]
+    PLATFORM: ["core", "config", "configuration", "db", "database", "infra",
+               "middleware", "dependency", "dependencies", "auth", "security"]
+  inheritance_overrides:
+    # SQLModel 继承的类在 models/ 目录下是 DOMAIN，在 schemas/ 目录下是 ADAPTER
+    # 由 signal_fusion 在 path 信号得分高时自动降权 inheritance 信号
+    "BaseModel":  { default: "DOMAIN", path_overrides: { "schemas": "ADAPTER", "dto": "ADAPTER" } }
+    "SQLModel":   { default: "DOMAIN" }
+  notes: |
+    FastAPI 项目通常有良好的目录结构，path 信号是最可靠的。
+    关键区别：Pydantic BaseModel 同时被 domain entity 和 API schema 继承，
+    需要 path 信号来打破歧义（schemas/ → ADAPTER，models/ → DOMAIN）。
+    将 path 权重提至 0.40，inheritance 降至 0.12（含 path_overrides 逻辑）。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# python_django
+# 适用：Django / Django REST Framework
+# 特点：annotation 较强（装饰器 @api_view/@permission_classes），
+#       name 后缀信号明显（ViewSet/Serializer/ModelForm），
+#       Django 的 models.py 是强 DOMAIN 信号
+# ─────────────────────────────────────────────────────────────────────────────
+python_django:
+  description: "Python Django / Django REST Framework"
+  weights:
+    path:        0.25
+    name:        0.35
+    annotation:  0.25
+    inheritance: 0.12
+    import:      0.03
+  strong_path_patterns:
+    ADAPTER:  ["views", "serializers", "urls", "forms", "api"]
+    APP:      ["services", "use_cases", "tasks"]
+    DOMAIN:   ["models", "repositories", "querysets", "managers"]
+    PLATFORM: ["admin", "migrations", "middleware", "settings", "apps"]
+  strong_name_suffixes:
+    ADAPTER:  ["View", "ViewSet", "APIView", "Serializer", "Form", "Endpoint"]
+    APP:      ["Service", "Task", "UseCase"]
+    DOMAIN:   ["Model", "Manager", "QuerySet", "Repository"]
+    PLATFORM: ["Admin", "Middleware", "AppConfig"]
+  notes: |
+    Django 的 ViewSet/Serializer 是强层级信号。name 后缀权重提至 0.35。
+    models.py 是 Django 的核心 DOMAIN 文件，但注意 Django model 同时包含数据模型和
+    部分业务逻辑（Fat Model 模式），分类时需结合注解判断。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# go_gin / go_echo / go_fiber
+# 适用：Go + Gin/Echo/Fiber HTTP 框架 + GORM
+# 特点：Go 没有类注解，annotation 信号几乎无用；
+#       Go 高度依赖包（package）组织，path 是最强信号；
+#       import 信号也很有价值（import "gorm.io/gorm" → DOMAIN/PLATFORM）
+# ─────────────────────────────────────────────────────────────────────────────
+go_gin:
+  description: "Go + Gin/Echo/Fiber + GORM（Clean Architecture / Hexagonal）"
+  weights:
+    path:        0.45
+    name:        0.25
+    annotation:  0.03   # Go 没有注解，几乎无贡献
+    inheritance: 0.12   # Go interface 实现是中等信号
+    import:      0.15   # import 路径有层级含义（gorm/gin/redis 等）
+  strong_path_patterns:
+    ADAPTER:  ["handler", "handlers", "controller", "controllers", "delivery",
+               "http", "grpc", "graphql", "dto", "request", "response", "middleware"]
+    APP:      ["service", "services", "usecase", "use_case", "interactor", "application"]
+    DOMAIN:   ["domain", "entity", "repository", "repo", "aggregate", "model", "store"]
+    PLATFORM: ["infrastructure", "infra", "config", "pkg", "database", "db",
+               "cache", "queue", "event", "logger"]
+  strong_import_signals:
+    ADAPTER:  ["gin-gonic/gin", "labstack/echo", "gofiber/fiber"]
+    DOMAIN:   ["gorm.io/gorm", "jackc/pgx"]
+    PLATFORM: ["go-redis/redis", "segmentio/kafka-go", "spf13/viper"]
+  notes: |
+    Go 无注解，annotation 权重降至 0.03（几乎忽略）。
+    Go 的包名（package handler/service/repository）是最强的层级信号，path 提至 0.45。
+    import 路径是第二强信号（import "gorm.io/gorm" 确定 DOMAIN/PLATFORM 层），提至 0.15。
+    典型问题：service 包中的 DTO struct（如 CreateOrderRequest）会被错误归为 APP 层，
+    建议在 .mms/bootstrap_config.yaml 中添加 YAML override 将其修正为 ADAPTER。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# go_ddd（Go 领域驱动设计风格）
+# 适用：Go + 严格 DDD 目录布局（domain/usecase/interface/infrastructure）
+# ─────────────────────────────────────────────────────────────────────────────
+go_ddd:
+  description: "Go + 严格领域驱动设计（DDD 目录布局）"
+  weights:
+    path:        0.55   # DDD 目录布局是 Source of Truth
+    name:        0.20
+    annotation:  0.02
+    inheritance: 0.13
+    import:      0.10
+  strong_path_patterns:
+    ADAPTER:  ["interface", "interfaces", "adapter", "adapters", "delivery",
+               "handler", "grpc", "rest", "http", "dto"]
+    APP:      ["usecase", "use_case", "application", "interactor"]
+    DOMAIN:   ["domain", "entity", "aggregate", "valueobject", "repository", "spec"]
+    PLATFORM: ["infrastructure", "infra", "persistence", "external", "config"]
+  notes: |
+    标准 DDD 目录布局（interface/usecase/domain/infrastructure）时，
+    path 信号几乎完全可信，提至 0.55。
+    适用于 go-clean-arch、go-hexagonal 等风格的项目。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# clean_architecture（语言无关的 Clean Architecture 通用配置）
+# 适用：任何语言，显式采用 Clean Architecture / 六边形架构
+# ─────────────────────────────────────────────────────────────────────────────
+clean_architecture:
+  description: "语言无关 Clean Architecture / Hexagonal Architecture"
+  weights:
+    path:        0.50
+    name:        0.25
+    annotation:  0.10
+    inheritance: 0.10
+    import:      0.05
+  strong_path_patterns:
+    ADAPTER:  ["adapter", "adapters", "interface", "interfaces", "primary",
+               "secondary", "driven", "driving", "port", "ports", "http", "grpc"]
+    APP:      ["usecase", "use_case", "application", "core", "interactor"]
+    DOMAIN:   ["domain", "entity", "aggregate", "repository", "spec", "policy"]
+    PLATFORM: ["infrastructure", "infra", "persistence", "external", "framework"]
+  notes: |
+    Clean Architecture 和六边形架构项目通常有非常规范的目录结构，path 信号权重最高。
+    这是 go_ddd 的语言无关版本，适用于有意识地遵循架构规范的任何语言项目。

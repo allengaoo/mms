@@ -396,30 +396,68 @@ class MemoryVizCollector:
                     confidence=confidence,
                 ))
 
-            # 收集边关系
-            for rel_id in (fm.get("related_to") or []):
-                if isinstance(rel_id, str) and rel_id:
+            # ── 收集显式边关系（Bug 修复：related_to 元素可能是 dict {id, reason} 或 str）
+            def _extract_id(item) -> str:
+                """兼容 str 和 {id: X, reason: Y} 两种 related_to 格式。"""
+                if isinstance(item, dict):
+                    return str(item.get("id", "")).strip()
+                if isinstance(item, str):
+                    # 修复：防止 _parse_frontmatter 将 "- id: X" 解析成字符串 "id: X"
+                    raw = item.strip()
+                    if raw.startswith("id:"):
+                        return raw[3:].strip()
+                    return raw
+                return ""
+
+            for rel in (fm.get("related_to") or []):
+                rel_id = _extract_id(rel)
+                if rel_id:
                     edges.append(EdgeData(
                         source=node_id, target=rel_id,
                         relation="related_to", label="related",
                     ))
 
-            for imp_id in (fm.get("impacts") or []):
-                if isinstance(imp_id, str) and imp_id:
+            for imp in (fm.get("impacts") or []):
+                imp_id = _extract_id(imp)
+                if imp_id:
                     edges.append(EdgeData(
                         source=node_id, target=imp_id,
                         relation="impacts", label="impacts",
                     ))
 
-            for der_id in (fm.get("derived_from") or []):
-                if isinstance(der_id, str) and der_id:
+            for der in (fm.get("derived_from") or []):
+                der_id = _extract_id(der)
+                if der_id:
                     edges.append(EdgeData(
                         source=node_id, target=der_id,
                         relation="derived_from", label="derived",
                     ))
 
         # 过滤掉指向不存在节点的边（避免 vis-network 报错）
-        edges = [e for e in edges if e.target in node_ids or e.source in node_ids]
+        edges = [e for e in edges if e.target in node_ids and e.source in node_ids]
+
+        # ── 推断隐式边：共享同一代码文件（ast_file）的节点之间加 cites_same_file 边
+        # 这些边展示哪些记忆节点"共同描述了同一个代码文件"，有助于理解记忆覆盖的粒度
+        # 注意：file_path 是记忆 .md 文件路径，ast_file 才是源代码文件路径
+        ast_file_to_nodes: Dict[str, list] = {}
+        for nd in nodes:
+            if nd.ast_file:
+                ast_file_to_nodes.setdefault(nd.ast_file, []).append(nd.id)
+        seen_pairs: set = set()
+        for code_file, nids in ast_file_to_nodes.items():
+            if len(nids) < 2:
+                continue
+            fname = Path(code_file).name
+            for i in range(len(nids)):
+                for j in range(i + 1, len(nids)):
+                    pair = tuple(sorted([nids[i], nids[j]]))
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        edges.append(EdgeData(
+                            source=nids[i], target=nids[j],
+                            relation="cites_same_file",
+                            label=fname,
+                        ))
 
         stats = self._build_stats(nodes, edges, ast_mappings)
 

@@ -1,0 +1,46 @@
+# .mms/bootstrap_config.yaml — Bootstrap 项目级配置（模板）
+#
+# 将此文件复制到你的项目根目录下的 .mms/ 文件夹，按需修改。
+# 例如：my-project/.mms/bootstrap_config.yaml
+#
+# 配置项说明：
+#   signal_weights_profile : 预设权重模板名（见下方列表）
+#   signal_weights          : 精细覆盖单个权重（与模板合并，自动归一化）
+#   min_confidence          : 层推断最低置信度（低于此值跳过生成记忆）
+#   max_per_layer           : 每层最多生成的 MEM-BOOT-*.md 数量
+#
+# 可用权重模板（signal_weights_profile 的合法值）：
+#   base                 — 通用基准（均衡五路信号，无框架偏好）
+#   java_spring_boot     — Spring Boot/MVC/Data JPA（annotation 权重最高 0.45）
+#   python_fastapi       — FastAPI + SQLModel/SQLAlchemy（path 权重最高 0.40）
+#   python_django        — Django / Django REST Framework（name 权重 0.35）
+#   go_gin               — Go + Gin/Echo/Fiber（path 0.45，import 0.15，annotation ≈ 0）
+#   go_ddd               — Go + 严格 DDD 目录布局（path 0.55）
+#   clean_architecture   — 语言无关 Clean Architecture / 六边形架构（path 0.50）
+
+# ── 示例 1：Java Spring Boot 项目 ────────────────────────────────────────────
+# signal_weights_profile: "java_spring_boot"
+
+# ── 示例 2：Python FastAPI 项目 ──────────────────────────────────────────────
+# signal_weights_profile: "python_fastapi"
+
+# ── 示例 3：Go Gin 项目 ─────────────────────────────────────────────────────
+# signal_weights_profile: "go_gin"
+
+# ── 示例 4：精细调整（在某模板基础上覆盖单个权重）────────────────────────────
+# signal_weights_profile: "python_fastapi"
+# signal_weights:
+#   annotation: 0.20   # FastAPI 的 @router.get 装饰器在此项目中不常用，适当降低
+#   path: 0.45         # 此项目目录规范严格，进一步提高路径权重
+
+# ── 示例 5：完全自定义权重（不使用模板）─────────────────────────────────────
+# signal_weights:
+#   path:        0.50
+#   name:        0.20
+#   annotation:  0.10
+#   inheritance: 0.15
+#   import:      0.05
+
+# ── 其他 Bootstrap 参数 ───────────────────────────────────────────────────────
+# min_confidence: 0.4    # 默认 0.5；降低可生成更多节点，但会包含低质量推断
+# max_per_layer: 15      # 默认 10；控制每个架构层最多生成的记忆节点数

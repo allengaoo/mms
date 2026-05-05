@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import yaml as _yaml
+
 # ─── 数据类 ──────────────────────────────────────────────────────────────────
 
 LAYERS = ["CC", "PLATFORM", "DOMAIN", "APP", "ADAPTER"]
@@ -44,6 +46,86 @@ MEMORY_NODE_TYPES = {
 }
 
 
+_PROFILES_YAML = Path(__file__).resolve().parents[3] / "assets" / "bootstrap_profiles" / "signal_weights.yaml"
+
+# 已加载的权重配置缓存（profile_name → weights dict）
+_loaded_profiles: Optional[Dict[str, Any]] = None
+
+
+def _load_profiles() -> Dict[str, Any]:
+    global _loaded_profiles
+    if _loaded_profiles is None:
+        try:
+            with open(_PROFILES_YAML, encoding="utf-8") as f:
+                raw = _yaml.safe_load(f)
+            _loaded_profiles = raw or {}
+        except Exception:
+            _loaded_profiles = {}
+    return _loaded_profiles
+
+
+def get_signal_weights(
+    profile: Optional[str] = None,
+    overrides: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """加载并返回信号权重配置。
+
+    优先级（从高到低）：
+      1. overrides 字典中指定的单个权重键值
+      2. profile 对应的模板权重（来自 signal_weights.yaml）
+      3. base 模板默认权重
+
+    权重自动归一化（总和为 1.0）。
+
+    Args:
+        profile:   模板名（如 "java_spring_boot"、"python_fastapi"、"go_gin"）
+        overrides: 精细覆盖单个权重（如 {"annotation": 0.45}）
+
+    Returns:
+        归一化后的 {signal_name: weight} 字典
+    """
+    profiles = _load_profiles()
+    base_weights = {
+        "path": 0.25, "name": 0.25, "annotation": 0.30,
+        "inheritance": 0.10, "import": 0.10,
+    }
+
+    if profile and profile in profiles:
+        tmpl = profiles[profile].get("weights", {})
+        if tmpl:
+            base_weights = {
+                "path":        float(tmpl.get("path",        base_weights["path"])),
+                "name":        float(tmpl.get("name",        base_weights["name"])),
+                "annotation":  float(tmpl.get("annotation",  base_weights["annotation"])),
+                "inheritance": float(tmpl.get("inheritance", base_weights["inheritance"])),
+                "import":      float(tmpl.get("import",      base_weights["import"])),
+            }
+
+    if overrides:
+        for k, v in overrides.items():
+            if k in base_weights:
+                base_weights[k] = float(v)
+
+    total = sum(base_weights.values())
+    if total > 0:
+        base_weights = {k: v / total for k, v in base_weights.items()}
+    return base_weights
+
+
+# 运行时活动权重（可在 bootstrap_project 调用前通过 set_active_weights() 修改）
+_active_weights: Dict[str, float] = {
+    "path": 0.25, "name": 0.25, "annotation": 0.30,
+    "inheritance": 0.10, "import": 0.10,
+}
+
+
+def set_active_weights(profile: Optional[str] = None, overrides: Optional[Dict[str, float]] = None) -> Dict[str, float]:
+    """设置全局活动权重（影响本进程后续所有 infer_layer 调用）。"""
+    global _active_weights
+    _active_weights = get_signal_weights(profile, overrides)
+    return _active_weights
+
+
 @dataclass
 class SignalBreakdown:
     path_score:        float = 0.0
@@ -52,13 +134,14 @@ class SignalBreakdown:
     inheritance_score: float = 0.0
     import_score:      float = 0.0
 
-    def total(self) -> float:
+    def total(self, weights: Optional[Dict[str, float]] = None) -> float:
+        w = weights or _active_weights
         return (
-            self.path_score        * 0.25 +
-            self.name_score        * 0.25 +
-            self.annotation_score  * 0.30 +
-            self.inheritance_score * 0.10 +
-            self.import_score      * 0.10
+            self.path_score        * w.get("path",        0.25) +
+            self.name_score        * w.get("name",        0.25) +
+            self.annotation_score  * w.get("annotation",  0.30) +
+            self.inheritance_score * w.get("inheritance", 0.10) +
+            self.import_score      * w.get("import",      0.10)
         )
 
 
@@ -645,13 +728,15 @@ def infer_all(
     project_root: Optional[Path] = None,
     detected_stacks: Optional[List[str]] = None,
     override_rules: Optional[List[OverrideRule]] = None,
+    weights_profile: Optional[str] = None,
+    weights_overrides: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Tuple[LayerInference, ObjectTypeMapping]]:
     """
     对 ast_index 中所有类批量推断层级和对象类型。
 
     执行顺序：
       1. YAML Override Pass（高置信度框架规则短路，零误判）
-      2. 五路信号融合推断（针对未命中 Override 的类）
+      2. 五路信号融合推断（针对未命中 Override 的类，使用 weights_profile 权重）
 
     Args:
         ast_index:               build_ast_index() 的输出
@@ -662,10 +747,16 @@ def infer_all(
         project_root:            项目根目录（用于加载 Override 规则）
         detected_stacks:         已检测到的技术栈（用于过滤 Override 规则）
         override_rules:          直接传入已加载的规则列表（优先于 project_root 加载）
+        weights_profile:         信号权重模板名（如 "java_spring_boot"、"python_fastapi"）
+                                 None 时使用 _active_weights 全局权重
+        weights_overrides:       精细覆盖单个权重键（与 weights_profile 合并）
 
     Returns:
         {class_fqn: (LayerInference, ObjectTypeMapping)}
     """
+    # 加载本次调用的权重（可覆盖全局 _active_weights）
+    if weights_profile is not None or weights_overrides is not None:
+        set_active_weights(weights_profile, weights_overrides)
     in_degrees   = code_graph_in_degrees or {}
     out_by_layer = code_graph_out_by_layer or {}
     results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]] = {}

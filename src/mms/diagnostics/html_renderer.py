@@ -72,20 +72,33 @@ def _node_to_vis(n: NodeData) -> dict:
 
 
 def _edge_to_vis(e: EdgeData, idx: int) -> dict:
-    """将 EdgeData 转为 vis-network 所需的边对象。"""
+    """将 EdgeData 转为 vis-network 所需的边对象。
+
+    边类型：
+      - related_to     灰色实线（显式语义关联）
+      - impacts        红色实线（变更影响传播）
+      - derived_from   绿色实线（知识来源）
+      - cites          蓝色实线（代码引用）
+      - cites_same_file 浅蓝虚线（同文件隐式共现，Bootstrap 推断）
+    """
     color_map = {
-        "related_to":   "#6b7280",
-        "impacts":      "#dc2626",
-        "derived_from": "#059669",
-        "cites":        "#2563eb",
+        "related_to":      "#6b7280",
+        "impacts":         "#dc2626",
+        "derived_from":    "#059669",
+        "cites":           "#2563eb",
+        "cites_same_file": "#93c5fd",
     }
+    is_inferred = e.relation == "cites_same_file"
     return {
         "id": idx,
         "from": e.source,
         "to": e.target,
-        "label": e.label,
-        "color": {"color": color_map.get(e.relation, "#9ca3af"), "opacity": 0.7},
-        "arrows": "to",
+        "label": e.label if not is_inferred else "",
+        "title": f"[推断] 共享代码文件" if is_inferred else e.label,
+        "color": {"color": color_map.get(e.relation, "#9ca3af"), "opacity": 0.5 if is_inferred else 0.75},
+        "arrows": "to" if not is_inferred else "",
+        "dashes": is_inferred,
+        "width": 1 if is_inferred else 2,
         "font": {"size": 9, "color": "#4b5563"},
         "smooth": {"type": "curvedCW", "roundness": 0.1},
     }
@@ -374,10 +387,16 @@ def render_html(data: VizData, title: str = "MMS 记忆图谱诊断") -> str:
     <button onclick="resetView()">重置视图</button>
     <button onclick="fitGraph()">适应窗口</button>
     <div class="legend">
+      <b style="font-size:0.72rem;color:#374151">节点：</b>
       <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>hot</span>
       <span class="legend-item"><span class="legend-dot" style="background:#f97316"></span>warm</span>
       <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>cold</span>
       <span class="legend-item"><span class="legend-dot" style="background:#9ca3af"></span>archive</span>
+      <b style="font-size:0.72rem;color:#374151;margin-left:0.5rem">边：</b>
+      <span class="legend-item"><span style="display:inline-block;width:20px;height:2px;background:#6b7280;margin-right:2px"></span>related</span>
+      <span class="legend-item"><span style="display:inline-block;width:20px;height:2px;background:#dc2626;margin-right:2px"></span>impacts</span>
+      <span class="legend-item"><span style="display:inline-block;width:20px;height:2px;background:#059669;margin-right:2px"></span>derived</span>
+      <span class="legend-item"><span style="display:inline-block;width:20px;height:2px;border-top:2px dashed #93c5fd;margin-right:2px"></span>同文件(推断)</span>
     </div>
   </div>
   <div id="graph-container"></div>
