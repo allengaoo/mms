@@ -48,82 +48,66 @@ MEMORY_NODE_TYPES = {
 
 _PROFILES_YAML = Path(__file__).resolve().parents[3] / "assets" / "bootstrap_profiles" / "signal_weights.yaml"
 
-# 已加载的权重配置缓存（profile_name → weights dict）
-_loaded_profiles: Optional[Dict[str, Any]] = None
+# 默认基准权重（不依赖全局可变状态，仅用于无 profile 时的 fallback）
+_DEFAULT_WEIGHTS: Dict[str, float] = {
+    "path": 0.25, "name": 0.25, "annotation": 0.30,
+    "inheritance": 0.10, "import": 0.10,
+}
+
+# YAML 文件只读缓存（内容不可变，进程生命周期内安全）
+_profiles_cache: Optional[Dict[str, Any]] = None
 
 
 def _load_profiles() -> Dict[str, Any]:
-    global _loaded_profiles
-    if _loaded_profiles is None:
+    """懒加载 signal_weights.yaml，结果缓存为只读（不修改已加载数据）。"""
+    global _profiles_cache
+    if _profiles_cache is None:
         try:
             with open(_PROFILES_YAML, encoding="utf-8") as f:
                 raw = _yaml.safe_load(f)
-            _loaded_profiles = raw or {}
+            _profiles_cache = raw or {}
         except Exception:
-            _loaded_profiles = {}
-    return _loaded_profiles
+            _profiles_cache = {}
+    return _profiles_cache
 
 
 def get_signal_weights(
     profile: Optional[str] = None,
     overrides: Optional[Dict[str, float]] = None,
 ) -> Dict[str, float]:
-    """加载并返回信号权重配置。
+    """返回归一化的信号权重字典（无副作用的纯函数）。
 
     优先级（从高到低）：
       1. overrides 字典中指定的单个权重键值
       2. profile 对应的模板权重（来自 signal_weights.yaml）
-      3. base 模板默认权重
-
-    权重自动归一化（总和为 1.0）。
+      3. _DEFAULT_WEIGHTS 基准权重
 
     Args:
         profile:   模板名（如 "java_spring_boot"、"python_fastapi"、"go_gin"）
         overrides: 精细覆盖单个权重（如 {"annotation": 0.45}）
 
     Returns:
-        归一化后的 {signal_name: weight} 字典
+        归一化后的 {signal_name: weight} 字典（新对象，不修改任何全局状态）
     """
     profiles = _load_profiles()
-    base_weights = {
-        "path": 0.25, "name": 0.25, "annotation": 0.30,
-        "inheritance": 0.10, "import": 0.10,
-    }
+    weights = dict(_DEFAULT_WEIGHTS)  # 始终从拷贝开始，不修改模块常量
 
     if profile and profile in profiles:
         tmpl = profiles[profile].get("weights", {})
         if tmpl:
-            base_weights = {
-                "path":        float(tmpl.get("path",        base_weights["path"])),
-                "name":        float(tmpl.get("name",        base_weights["name"])),
-                "annotation":  float(tmpl.get("annotation",  base_weights["annotation"])),
-                "inheritance": float(tmpl.get("inheritance", base_weights["inheritance"])),
-                "import":      float(tmpl.get("import",      base_weights["import"])),
-            }
+            for k in weights:
+                if k in tmpl:
+                    weights[k] = float(tmpl[k])
 
     if overrides:
         for k, v in overrides.items():
-            if k in base_weights:
-                base_weights[k] = float(v)
+            if k in weights:
+                weights[k] = float(v)
 
-    total = sum(base_weights.values())
+    total = sum(weights.values())
     if total > 0:
-        base_weights = {k: v / total for k, v in base_weights.items()}
-    return base_weights
-
-
-# 运行时活动权重（可在 bootstrap_project 调用前通过 set_active_weights() 修改）
-_active_weights: Dict[str, float] = {
-    "path": 0.25, "name": 0.25, "annotation": 0.30,
-    "inheritance": 0.10, "import": 0.10,
-}
-
-
-def set_active_weights(profile: Optional[str] = None, overrides: Optional[Dict[str, float]] = None) -> Dict[str, float]:
-    """设置全局活动权重（影响本进程后续所有 infer_layer 调用）。"""
-    global _active_weights
-    _active_weights = get_signal_weights(profile, overrides)
-    return _active_weights
+        weights = {k: v / total for k, v in weights.items()}
+    return weights
 
 
 @dataclass
@@ -135,7 +119,7 @@ class SignalBreakdown:
     import_score:      float = 0.0
 
     def total(self, weights: Optional[Dict[str, float]] = None) -> float:
-        w = weights or _active_weights
+        w = weights or _DEFAULT_WEIGHTS
         return (
             self.path_score        * w.get("path",        0.25) +
             self.name_score        * w.get("name",        0.25) +
@@ -573,11 +557,12 @@ def infer_layer(
     in_degree: int = 0,
     out_degree_by_layer: Optional[Dict[str, int]] = None,
     signal_rules: Optional[Dict] = None,
+    weights: Optional[Dict[str, float]] = None,
 ) -> LayerInference:
     """
-    五路信号融合推断架构层。
+    五路信号融合推断架构层（纯函数，无全局状态副作用）。
 
-    实现 fn_infer_layer Function（docs/memory/ontology/functions/fn_infer_layer.yaml）。
+    实现 fn_infer_layer Function（assets/ontology_schema/functions/fn_infer_layer.yaml）。
 
     Args:
         file_path:           文件路径（用于路径信号）
@@ -588,6 +573,8 @@ def infer_layer(
         in_degree:           被多少类依赖（用于导入信号）
         out_degree_by_layer: 按层分组的出度 {layer: count}（用于导入信号）
         signal_rules:        来自 FunctionRegistry 的自定义信号规则（覆盖内置规则）
+        weights:             信号权重字典（来自 get_signal_weights()），None 时使用默认权重。
+                             通过 infer_all() 的 weights_profile 参数注入，不依赖全局状态。
 
     Returns:
         LayerInference: 推断结果，含层级、置信度和分项得分
@@ -596,6 +583,9 @@ def infer_layer(
     bases = bases or []
     parent_layers = parent_layers or {}
     out_degree_by_layer = out_degree_by_layer or {}
+
+    # 确定本次推断使用的权重（显式注入 > 默认值）
+    w = weights if weights is not None else _DEFAULT_WEIGHTS
 
     # 加载自定义规则（YAML 驱动覆盖）
     custom_path   = (signal_rules or {}).get("path_patterns")
@@ -609,26 +599,31 @@ def infer_layer(
     inh_scores   = _score_inheritance(bases, parent_layers)
     imp_scores   = _score_imports(class_name, in_degree, out_degree_by_layer)
 
-    # 加权融合
+    # 加权融合（使用注入的权重，不再硬编码）
+    wp   = w.get("path",        0.25)
+    wn   = w.get("name",        0.25)
+    wa   = w.get("annotation",  0.30)
+    wi   = w.get("inheritance", 0.10)
+    wm   = w.get("import",      0.10)
+
     all_scores: Dict[str, float] = {}
     breakdown = SignalBreakdown()
 
     for layer in LAYERS:
-        ps = path_scores.get(layer, 0.0)
-        ns = name_scores.get(layer, 0.0)
+        ps  = path_scores.get(layer, 0.0)
+        ns  = name_scores.get(layer, 0.0)
         as_ = annot_scores.get(layer, 0.0)
         is_ = inh_scores.get(layer, 0.0)
         im_ = imp_scores.get(layer, 0.0)
-        all_scores[layer] = ps * 0.25 + ns * 0.25 + as_ * 0.30 + is_ * 0.10 + im_ * 0.10
+        all_scores[layer] = ps * wp + ns * wn + as_ * wa + is_ * wi + im_ * wm
 
     # ── Framework Override Pass ───────────────────────────────────────────────
     # 当框架基类（SQLModel/BaseModel/BaseSettings 等）匹配时，
     # 继承信号本身置信度极高（0.7~0.9），但 0.10 权重使其被压制。
-    # 此处直接以框架基类推断的层级作为最低下限（soft override）。
+    # 此处以框架基类推断的层级作为最低下限（soft override）。
     for base in (bases or []):
         if base in _BASE_CLASS_LAYER_HINTS:
             fw_layer, fw_conf = _BASE_CLASS_LAYER_HINTS[base]
-            # UNKNOWN 表示无意义基类（如 Go 的 struct），跳过
             if fw_layer in all_scores and fw_conf > all_scores[fw_layer]:
                 all_scores[fw_layer] = fw_conf
 
@@ -642,7 +637,8 @@ def infer_layer(
     breakdown.inheritance_score = inh_scores.get(best_layer, 0.0)
     breakdown.import_score      = imp_scores.get(best_layer, 0.0)
 
-    inferred = best_layer if best_score >= 0.25 else "UNKNOWN"
+    min_conf = 0.25  # 与 fn_infer_layer.yaml 的 min_confidence 对齐
+    inferred = best_layer if best_score >= min_conf else "UNKNOWN"
 
     return LayerInference(
         inferred_layer=inferred,
@@ -754,9 +750,8 @@ def infer_all(
     Returns:
         {class_fqn: (LayerInference, ObjectTypeMapping)}
     """
-    # 加载本次调用的权重（可覆盖全局 _active_weights）
-    if weights_profile is not None or weights_overrides is not None:
-        set_active_weights(weights_profile, weights_overrides)
+    # 计算本次调用的权重（纯函数，不修改全局状态）
+    active_weights = get_signal_weights(weights_profile, weights_overrides)
     in_degrees   = code_graph_in_degrees or {}
     out_by_layer = code_graph_out_by_layer or {}
     results: Dict[str, Tuple[LayerInference, ObjectTypeMapping]] = {}
@@ -800,7 +795,7 @@ def infer_all(
                 override_hits += 1
                 continue
 
-            # ── Pass 2: 五路信号融合推断 ──────────────────────────────────────
+            # ── Pass 2: 五路信号融合推断（显式注入权重，无全局状态依赖）──────────
             layer_inf = infer_layer(
                 file_path=file_path,
                 class_name=name,
@@ -810,6 +805,7 @@ def infer_all(
                 in_degree=in_degrees.get(fqn, 0),
                 out_degree_by_layer=out_by_layer.get(fqn, {}),
                 signal_rules=signal_rules,
+                weights=active_weights,
             )
             if layer_inf.confidence >= min_confidence:
                 parent_layers[name] = layer_inf.inferred_layer

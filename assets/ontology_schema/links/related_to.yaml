@@ -1,0 +1,54 @@
+# LinkTypeDef: link_related_to — 语义相关关系
+# ──────────────────────────────────────────────
+# 两条记忆节点在概念或业务上相关，但没有明确的影响/派生方向。
+# 与 impacts（有向、有传播语义）和 derived_from（来源关系）不同，
+# related_to 是弱双向关联，主要用于导航和上下文扩展。
+#
+# 版本：v1.0 | 创建于：2026-05-05
+
+id: link_related_to
+label: "语义相关关系"
+version: "1.0"
+
+source_type: MemoryNode
+target_type: MemoryNode
+cardinality: M:N
+directed: false   # 弱关联，逻辑上无方向，但存储时以 source → target 记录
+
+storage:
+  field_name: related_to     # 存储在 MemoryNode front-matter 字段
+  field_type: list[object]   # 每项为 {id: string, reason: string}
+  item_schema:
+    id:
+      type: string
+      description: "目标 MemoryNode 的 ID"
+    reason:
+      type: string
+      required: false
+      description: "相关原因（可选说明，辅助人工审查）"
+
+population:
+  primary: manual            # 主要由人工标注或 LLM 在 distill 过程中填写
+  secondary: auto_heuristic  # Bootstrap 暂不自动填写（留给 dream/distill 环节）
+
+validation:
+  cross_reference: true      # 目标 id 必须存在于同项目的记忆节点中
+
+usage:
+  - context: "memory_viz.py 可视化时渲染为灰色实线边（显式语义关联）"
+  - context: "MemoryInjector 扩展上下文时沿 related_to 获取补充记忆"
+  - context: "dream.py 在知识蒸馏时可基于 tags 重叠自动填写该字段"
+
+notes: |
+  与 impacts 的区别：
+    impacts 有明确的"变更传播"语义（A 变化 → B 需要检查），
+    related_to 仅表示"概念上相关"（A 和 B 描述同一领域的不同侧面）。
+
+  存储格式（front-matter）：
+    related_to:
+      - id: MEM-BOOT-003
+        reason: "同一代码文件的另一个类"
+      - id: AD-SEED-001
+
+  注意：Bootstrap 生成的 MEM-BOOT-*.md 默认 related_to 为空列表（[]），
+  这是预期行为——语义关联需要人工/LLM 辅助，不由纯 AST 分析自动填充。

@@ -1342,6 +1342,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-doc-absorb", action="store_true",
         help="跳过项目文档自动蒸馏（CONTRIBUTING.md / .cursorrules 等）",
     )
+    p_bootstrap.add_argument(
+        "--weights-profile", type=str, default=None, metavar="PROFILE",
+        help=(
+            "信号权重模板名，覆盖项目 .mms/bootstrap_config.yaml 中的配置。"
+            " 可选值：base / java_spring_boot / python_fastapi / python_django"
+            " / go_gin / go_ddd / clean_architecture"
+        ),
+    )
+    p_bootstrap.add_argument(
+        "--weights-override", type=str, default=None, metavar="JSON",
+        help=(
+            "JSON 格式的单个权重覆盖，与 --weights-profile 合并。"
+            " 例：'{\"annotation\": 0.45, \"path\": 0.20}'"
+        ),
+    )
 
     # ── EP-130: ast-diff ─────────────────────────────────────────────────────
     p_astdiff = sub.add_parser(
@@ -1484,6 +1499,18 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         return _cmd_bootstrap_legacy(args)
 
     root = Path(args.root) if getattr(args, "root", None) else _PROJECT_ROOT
+
+    # 解析 --weights-override JSON 字符串
+    weights_override_dict = None
+    raw_override = getattr(args, "weights_override", None)
+    if raw_override:
+        import json as _json
+        try:
+            weights_override_dict = _json.loads(raw_override)
+        except Exception:
+            error(f"--weights-override 格式错误，应为 JSON 字符串，例如：'{{\"annotation\": 0.45}}'")
+            return 1
+
     report = bootstrap_project(
         project_root=root,
         dry_run=getattr(args, "dry_run", False),
@@ -1494,6 +1521,8 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         min_confidence=float(getattr(args, "min_confidence", 0.5)),
         max_per_layer=int(getattr(args, "max_per_layer", 10)),
         verbose=True,
+        weights_profile=getattr(args, "weights_profile", None),
+        weights_overrides=weights_override_dict,
     )
     return 0 if not report.errors else 1
 

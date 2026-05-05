@@ -52,8 +52,8 @@ description: |
     Util       → (跳过，不生成记忆，避免噪音)
 
 implementation:
-  module: "src.mms.analysis.signal_fusion"
-  function: "detect_code_object_type(code_class: CodeClass, layer_inference: LayerInference) -> ObjectTypeMapping"
+  module: "mms.bootstrap.signal_fusion"
+  function: "detect_code_object_type(class_name, annotations, methods, layer_inference) -> ObjectTypeMapping"
 
 inputs:
   - name: code_class

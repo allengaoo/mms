@@ -4,7 +4,29 @@
 #   为不同技术栈 / 架构风格提供差异化的信号权重，解决"一刀切"权重在
 #   特定框架下准确率不足的问题。
 #
-# 背景——五路信号：
+# ── 层名说明（两套术语的关系）────────────────────────────────────────────────
+#
+# signal_fusion.py 内部推断使用 DDD 五元组（粗粒度）：
+#   ADAPTER  → 适配层（HTTP 接口、消息消费者、API 网关等）
+#   APP      → 应用层（用例编排、服务组合）
+#   DOMAIN   → 领域层（业务模型、领域服务、仓储接口）
+#   PLATFORM → 平台层（基础设施、数据库、配置、中间件）
+#   CC       → 跨层横切（异常、工具类、测试、治理等）
+#
+# Bootstrap 生成 MemoryNode 时，通过 _SCHEMA_LAYER_MAP 映射到
+# layers.yaml 的细粒度 ID（符合 Clean Architecture 命名规范）：
+#   ADAPTER  → L5_api（或 L5_frontend）
+#   APP      → L4_service（或 L4_worker）
+#   DOMAIN   → L3_ontology（或 L3_data_pipeline）
+#   PLATFORM → L2_infrastructure（或 L2_database / L2_cache）
+#   CC       → CC_architecture（或 CC_testing / CC_governance）
+#
+# 本文件中 strong_path_patterns 等字段使用 DDD 五元组（与推断引擎一致），
+# 不直接使用细粒度 ID，以保持与 signal_fusion.py 内部术语的一致性。
+#
+# ── 五路信号说明 ──────────────────────────────────────────────────────────────
+#
+# 五路信号（signal_fusion.py 中的五类评分维度）：
 #   path        ：目录名关键词（controller/service/repository/schema 等）
 #   name        ：类名后缀（Controller/Service/Repository/Schema 等）
 #   annotation  ：注解/装饰器（@RestController/@Service/@router.get 等）

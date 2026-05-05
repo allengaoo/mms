@@ -6,26 +6,31 @@
 # 这是 Bootstrap v2 的核心函数，取代了旧版"依赖 arch_layers.yaml 手写配置"的方式。
 # 通过五路信号自动推断，实现对任意新项目的零配置冷启动。
 #
-# 版本：v1.0 | 创建于：2026-04-30 | Bootstrap v2
+# 版本：v1.1 | 更新于：2026-05-05 | 修正实现路径、阈值、权重配置
 
 id: fn_infer_layer
 label: "架构层推断（五路信号融合）"
 type: function
-version: "1.0"
+version: "1.1"
 pure: true    # 无副作用，幂等，可缓存
 
 description: |
   给定一个 CodeClass（或 CodeFile），融合五路信号推断其在通用 5 层架构中的归属：
     CC / PLATFORM / DOMAIN / APP / ADAPTER / UNKNOWN
 
-  五路信号及权重（总分 100%）：
-    1. 路径信号（path_score）    权重 25%
-       匹配目录名关键词：controllers/→ADAPTER, services/→APP, domain/→DOMAIN ...
+  内部使用 DDD 五元组术语（ADAPTER/APP/DOMAIN/PLATFORM/CC）；
+  Bootstrap 生成的 MemoryNode front-matter 中会通过 _SCHEMA_LAYER_MAP 映射到
+  layers.yaml 的细粒度 ID（L5_api/L4_service/L3_ontology/L2_*/L1_*）。
 
-    2. 命名信号（name_score）    权重 25%
+  五路信号及默认权重（总分 100%）：
+    1. 路径信号（path_score）       权重 25%（默认）
+       匹配目录名关键词：controllers/→ADAPTER, services/→APP, domain/→DOMAIN ...
+       可通过信号权重模板（signal_weights.yaml）覆盖
+
+    2. 命名信号（name_score）       权重 25%（默认）
        匹配类名后缀：*Controller→ADAPTER, *Service→APP, *Repository→DOMAIN ...
 
-    3. 注解信号（annotation_score）权重 30%（最高权重，因为注解是显式声明）
+    3. 注解信号（annotation_score） 权重 30%（默认，最高权重，因注解是显式声明）
        Python:     @router.get/@app.route → ADAPTER
                    @dataclass → DOMAIN
        Java:       @RestController/@Controller → ADAPTER
@@ -33,23 +38,26 @@ description: |
                    @Repository/@Mapper → DOMAIN
                    @Entity/@Table → DOMAIN
                    @Configuration → PLATFORM
-       Go:         gin.HandlerFunc receiver → ADAPTER
-       TypeScript: @Controller()/@Get() → ADAPTER
-                   @Injectable() → APP/PLATFORM
+       Go:         gin.HandlerFunc receiver → ADAPTER（Go 无注解，实际权重应配置为 ~0.03）
 
-    4. 继承信号（inheritance_score）权重 10%
+    4. 继承信号（inheritance_score）权重 10%（默认）
        父类名包含层级关键词：extends BaseController → ADAPTER
        若父类已有推断结果，直接采用父类层级（置信度降低 0.1）
 
-    5. 导入信号（import_score）   权重 10%
-       依赖方向推断：若该类被大量上层类依赖（depended_by 入度高）→ 更可能是底层（DOMAIN/PLATFORM）
-       若该类大量依赖下层类（depends_on 出度高到 DOMAIN）→ 自身可能是 APP 层
+    5. 导入信号（import_score）     权重 10%（默认）
+       依赖方向推断：若该类被大量上层类依赖（in_degree 高）→ 更可能是底层（DOMAIN/PLATFORM）
+       若该类大量依赖 DOMAIN 层 → 自身可能是 APP 层
 
-  最终决策：五路加权得分 → 超过 0.6 置信度的层直接采用；低于 0.4 → UNKNOWN
+  默认权重来自 signal_weights.yaml 的 "base" profile；
+  可通过 .mms/bootstrap_config.yaml 的 signal_weights_profile 或
+  CLI 的 --weights-profile 参数选择其他模板（java_spring_boot/python_fastapi/go_gin 等）。
+
+  最终决策：五路加权得分 ≥ 0.25 → 采用最高得分层；< 0.25 → UNKNOWN
 
 implementation:
-  module: "src.mms.analysis.signal_fusion"
-  function: "infer_layer(code_class: CodeClass, code_graph: CodeGraph) -> LayerInference"
+  module: "mms.bootstrap.signal_fusion"
+  function: "infer_layer(file_path, class_name, annotations, bases, ..., weights) -> LayerInference"
+  weights_config: "assets/bootstrap_profiles/signal_weights.yaml"
 
 inputs:
   - name: code_class
@@ -71,7 +79,7 @@ outputs:
   - name: inferred_layer
     type: string
     enum: [ADAPTER, APP, DOMAIN, PLATFORM, CC, UNKNOWN]
-    description: "推断的架构层"
+    description: "推断的架构层（DDD 内部术语，后续由 _SCHEMA_LAYER_MAP 转换为细粒度 ID）"
 
   - name: confidence
     type: float
