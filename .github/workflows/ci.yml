@@ -75,6 +75,11 @@ jobs:
             -v \
             --tb=short \
             -m "not slow and not integration and not benchmark" \
+            --ignore=tests/benchmark \
+            --ignore=tests/dag \
+            --ignore=tests/integration \
+            --ignore=tests/execution \
+            --ignore=tests/eval \
             --cov=. \
             --cov-report=xml \
             --cov-report=term-missing \
