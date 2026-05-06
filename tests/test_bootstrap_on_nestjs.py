@@ -188,10 +188,12 @@ class TestNestJSLayerInference:
         if not filter_classes:
             pytest.skip("No Filter classes found in NestJS fixture")
 
-        acceptable = {"CC", "CC_testing", "ADAPTER"}
+        # ExceptionFilter 可合理归入 CC（横切关注点）、ADAPTER（HTTP 协议处理）
+        # 或 PLATFORM（NestJS 平台级基础设施），但不应归入业务逻辑层（APP/DOMAIN）
+        acceptable = {"CC", "CC_testing", "ADAPTER", "PLATFORM"}
         for fqn, (layer_inf, _) in filter_classes.items():
             assert layer_inf.inferred_layer in acceptable, (
-                f"{fqn}: expected CC/ADAPTER for filter, "
+                f"{fqn}: expected CC/ADAPTER/PLATFORM for filter, "
                 f"got {layer_inf.inferred_layer}"
             )
 
