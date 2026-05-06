@@ -1,6 +1,6 @@
 # MMS Memory 模块 (src/mms/memory)
 
-> **最后更新**：2026-05-05 | Memory Engine v3.1
+> **最后更新**：2026-05-06 | Memory Engine v3.1（兼容 Schema v5.0）
 
 ## 1. 模块定位
 
@@ -17,24 +17,26 @@
 
 ## 2. 模块清单（16 个文件）
 
-| 文件 | 类/入口 | 职责 | 覆盖率 |
-|------|---------|------|--------|
-| `graph_resolver.py` | `MemoryGraph` | 核心图结构：加载 / 遍历 / 混合检索 | 72% |
-| `injector.py` | `MemoryInjector` | EP 执行前上下文注入（Prompt 组装） | 76% |
-| `intent_classifier.py` | `IntentClassifier` | 3 级意图漏斗（规则→本体→LLM） | 61% |
-| `task_matcher.py` | `TaskMatcher` | 任务-记忆历史相关度匹配（Jaccard） | 85% |
-| `memory_functions.py` | 纯函数 | quality_score / provenance / format_for_context | 99% |
-| `memory_actions.py` | `ActionResult` | 有状态动作（写节点 / 矛盾检测 / archive） | 56% |
-| `link_registry.py` | `LinkTypeRegistry` | LinkType YAML 注册表（8 种边类型） | 84% |
-| `freshness_checker.py` | 函数集合 | 记忆新鲜度检测（`fn_detect_drift`） | 68% |
-| `graph_health.py` | 函数集合 | 图健康监控（孤岛 / 高出度 / 低质量） | 83% |
-| `dream.py` | 函数集合 | autoDream：git 历史 + EP 日志 → 知识草稿 | 63% |
-| `entropy_scan.py` | 函数集合 | 熵扫描：孤儿 / 过时 / 重复标题检测 | 49% |
-| `codemap.py` | 函数集合 | 代码目录树文本化（`generate_codemap`） | 29% |
-| `funcmap.py` | 函数集合 | 后端函数列表生成（`generate_funcmap`） | 60% |
-| `repo_map.py` | `RepoMap` | 仓库结构 token 预算上下文（`build_context`） | 76% |
-| `template_lib.py` | `TemplateLib` | EP 模板库（只读数据，懒加载） | 78% |
-| `private.py` | `PrivateWorkspace` | EP 私有工作区（草稿 / 历史记录） | — |
+
+| 文件                     | 类/入口               | 职责                                              | 覆盖率 |
+| ---------------------- | ------------------ | ----------------------------------------------- | --- |
+| `graph_resolver.py`    | `MemoryGraph`      | 核心图结构：加载 / 遍历 / 混合检索                            | 72% |
+| `injector.py`          | `MemoryInjector`   | EP 执行前上下文注入（Prompt 组装）                          | 76% |
+| `intent_classifier.py` | `IntentClassifier` | 3 级意图漏斗（规则→本体→LLM）                              | 61% |
+| `task_matcher.py`      | `TaskMatcher`      | 任务-记忆历史相关度匹配（Jaccard）                           | 85% |
+| `memory_functions.py`  | 纯函数                | quality_score / provenance / format_for_context | 99% |
+| `memory_actions.py`    | `ActionResult`     | 有状态动作（写节点 / 矛盾检测 / archive）                     | 56% |
+| `link_registry.py`     | `LinkTypeRegistry` | LinkType YAML 注册表（8 种边类型）                       | 84% |
+| `freshness_checker.py` | 函数集合               | 记忆新鲜度检测（`fn_detect_drift`）                      | 68% |
+| `graph_health.py`      | 函数集合               | 图健康监控（孤岛 / 高出度 / 低质量）                           | 83% |
+| `dream.py`             | 函数集合               | autoDream：git 历史 + EP 日志 → 知识草稿                 | 63% |
+| `entropy_scan.py`      | 函数集合               | 熵扫描：孤儿 / 过时 / 重复标题检测                            | 49% |
+| `codemap.py`           | 函数集合               | 代码目录树文本化（`generate_codemap`）                    | 29% |
+| `funcmap.py`           | 函数集合               | 后端函数列表生成（`generate_funcmap`）                    | 60% |
+| `repo_map.py`          | `RepoMap`          | 仓库结构 token 预算上下文（`build_context`）               | 76% |
+| `template_lib.py`      | `TemplateLib`      | EP 模板库（只读数据，懒加载）                                | 78% |
+| `private.py`           | `PrivateWorkspace` | EP 私有工作区（草稿 / 历史记录）                             | —   |
+
 
 ---
 
@@ -50,7 +52,8 @@
 @dataclass
 class MemoryNode:
     id: str
-    layer: str        # CC / PLATFORM / DOMAIN / APP / ADAPTER / L1_platform 等
+    layer: str        # v5.0 通用层 ID：ADAPTER/APP/DOMAIN/PLATFORM/CC/CC_testing 等
+                      # （向后兼容旧版 L5_api/L4_service/L3_ontology 等）
     tier: str         # hot / warm / cold / archive
     tags: List[str]
     cites_files: List[str]
@@ -74,12 +77,14 @@ class MemoryNode:
 
 **图遍历路径（可配置）**：
 
-| 路径名 | 边序列 | 用途 |
-|--------|--------|------|
-| `concept_lookup` | `about → related_to` | 概念级知识查询 |
-| `code_change_impact` | `cites → impacts` | 代码变更影响分析 |
-| `knowledge_expand` | `related_to → derived_from` | 知识图谱扩展 |
-| `drift_propagation` | `cites_reverse → about` | 新鲜度漂移传播 |
+
+| 路径名                  | 边序列                         | 用途       |
+| -------------------- | --------------------------- | -------- |
+| `concept_lookup`     | `about → related_to`        | 概念级知识查询  |
+| `code_change_impact` | `cites → impacts`           | 代码变更影响分析 |
+| `knowledge_expand`   | `related_to → derived_from` | 知识图谱扩展   |
+| `drift_propagation`  | `cites_reverse → about`     | 新鲜度漂移传播  |
+
 
 ---
 
@@ -199,14 +204,16 @@ promote_draft() → docs/memory/shared/{layer}/MEM-L-*.md
 
 **核心函数**：
 
-| 函数 | 检测对象 |
-|------|---------|
-| `scan_orphans(indexed)` | 在文件系统存在但未在索引中记录的"孤儿"文件 |
-| `scan_ghost_entries(indexed)` | 在索引中记录但文件不存在的"幽灵"条目 |
-| `scan_stale_hot(indexed)` | Hot tier 但超过 N 天未访问的记忆 |
-| `scan_zero_access(indexed)` | 创建超过 M 天但从未被访问过的记忆 |
-| `scan_duplicate_titles(indexed)` | 前 N 字符相同的重复标题 |
-| `scan_stale_private()` | 私有草稿工作区中超期的 EP 临时文件 |
+
+| 函数                               | 检测对象                   |
+| -------------------------------- | ---------------------- |
+| `scan_orphans(indexed)`          | 在文件系统存在但未在索引中记录的"孤儿"文件 |
+| `scan_ghost_entries(indexed)`    | 在索引中记录但文件不存在的"幽灵"条目    |
+| `scan_stale_hot(indexed)`        | Hot tier 但超过 N 天未访问的记忆 |
+| `scan_zero_access(indexed)`      | 创建超过 M 天但从未被访问过的记忆     |
+| `scan_duplicate_titles(indexed)` | 前 N 字符相同的重复标题          |
+| `scan_stale_private()`           | 私有草稿工作区中超期的 EP 临时文件    |
+
 
 ---
 
@@ -231,7 +238,7 @@ sequenceDiagram
     participant FS as 文件系统 (Markdown)
 
     EP->>Injector: inject(task="新增订单支付接口")
-    Injector->>IC: classify(task) → (layer=L4_application, op=create)
+    Injector->>IC: classify(task) → (layer=APP, op=create)
     IC-->>Injector: IntentResult(layer, op, confidence=0.85)
 
     Injector->>Resolver: hybrid_search("订单 支付 接口")
@@ -245,6 +252,8 @@ sequenceDiagram
     Injector->>Injector: to_prompt_prefix() → Markdown 格式
     Injector-->>EP: InjectionResult（snippets + prompt_prefix）
 ```
+
+
 
 ### 4.2 知识萃取流程（autoDream）
 
@@ -261,6 +270,8 @@ graph LR
     I --> J[(Memory Graph)]
 ```
 
+
+
 ### 4.3 知识图谱整体数据流
 
 ```mermaid
@@ -276,66 +287,95 @@ graph LR
     GC --> Graph
 ```
 
+
+
 ---
 
-## 5. 记忆节点 Front-matter 标准格式（v4.0）
+## 5. 记忆节点 Front-matter 标准格式（v5.0）
+
+v5.0 使用聚焦 ObjectType 代替通用 `MemoryNode`（God Object 拆分），`layer` 字段直接使用通用层 ID：
 
 ```yaml
 ---
-id: MEM-L-021
-type: pattern            # pattern / decision / lesson / fact / constraint
-layer: DOMAIN            # CC / PLATFORM / DOMAIN / APP / ADAPTER / L1_platform 等
-tier: warm               # hot / warm / cold / archive
-tags: [grpc, dto, serialization]
+id: PAT-001                  # Pattern: PAT-* / Decision: AD-* / AntiPattern: ANTI-* / BusinessFlow: BIZ-*
+object_type: pattern         # pattern / decision / anti-pattern / business-flow
+layer: DOMAIN                # v5.0 通用层 ID（ADAPTER/APP/DOMAIN/PLATFORM/CC/CC_testing...）
+tier: warm                   # hot / warm / cold / archive
+tags: [ddd, repository-pattern, domain]
 cites_files:
-  - backend/app/services/user_service.py
+  - backend/domain/user_repository.py
 about_concepts:
-  - grpc
-  - dto
-impacts: [MEM-L-024]
-related_to: [AD-002]
+  - repository
+  - domain-driven-design
+impacts: [AD-002]
 derived_from: [AD-001]
 ast_pointer:
-  file_path: backend/app/services/user_service.py
-  class_name: UserService
+  file_path: backend/domain/user_repository.py
+  class_name: UserRepository
   fingerprint: sha256:abc123
   drift: false
 provenance:
   trigger_type: bootstrap_v2   # bootstrap_v2 | ep_postcheck_passed | manual
-  generated_at: 2026-05-02
-  layer_confidence: 0.85
+  generated_at: 2026-05-06
+  layer_confidence: 0.92
 version: 1
-created_at: 2026-05-02
+created_at: 2026-05-06
 ---
-# UserService — gRPC DTO 序列化规范
+# UserRepository — DDD Repository 模式
 
 ...（正文内容）
 ```
 
+**v4.0 格式（向后兼容，仍受 validator 支持）**：
+
+```yaml
+---
+id: MEM-L-021
+type: pattern            # 旧版 type 字段（向后兼容）
+layer: L3_ontology       # 旧版细粒度 ID（v4.x 向后兼容）
+tier: warm
+tags: [grpc, dto]
+...
+```
+
+> 可通过 `scripts/migrate_layer_v4_to_v5.py --apply` 将 v4.x 格式升级为 v5.0。
+
 ---
 
-## 6. 测试覆盖率（2026-05-05）
+## 6. 测试覆盖率（2026-05-06）
 
-整体 Memory Engine 覆盖率：**63%**
+整体 Memory Engine 覆盖率：**~63%**（兼容 v5.0 通用层 ID）
 
 **相关测试文件**：
 
-| 测试文件 | 覆盖内容 | 用例数 |
-|----------|----------|--------|
-| `test_memory_engine_unit.py` | TaskMatcher / IntentClassifier / MemoryGraph / MemoryInjector / entropy_scan / memory_actions / codemap / funcmap | 81 |
-| `test_memory_engine_integration.py` | Bootstrap→Graph→Injector→Matcher→Actions 端到端联动（6 条链路） | 21 |
-| `test_memory_functions.py` | memory_functions 纯函数测试 | — |
-| `test_dream.py` | autoDream 纯函数路径 | — |
-| `test_link_registry.py` | LinkTypeRegistry YAML 加载 | — |
-| `test_freshness_checker.py` | 新鲜度检测核心逻辑 | — |
-| `test_template_lib.py` | 模板库懒加载 | — |
+
+| 测试文件                                | 覆盖内容                                                                                                              | 用例数 |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --- |
+| `test_memory_engine_unit.py`        | TaskMatcher / IntentClassifier / MemoryGraph / MemoryInjector / entropy_scan / memory_actions / codemap / funcmap | 81  |
+| `test_memory_engine_integration.py` | Bootstrap→Graph→Injector→Matcher→Actions 端到端联动（6 条链路）                                                             | 21  |
+| `test_memory_functions.py`          | memory_functions 纯函数测试                                                                                            | —   |
+| `test_dream.py`                     | autoDream 纯函数路径                                                                                                   | —   |
+| `test_link_registry.py`             | LinkTypeRegistry YAML 加载                                                                                          | —   |
+| `test_freshness_checker.py`         | 新鲜度检测核心逻辑                                                                                                         | —   |
+| `test_template_lib.py`              | 模板库懒加载                                                                                                            | —   |
+
+
+**v5.0 兼容性说明**：
+
+`graph_resolver.py` 中的 `_normalize_layer()` 函数处理 v4.x / v5.0 双版本 layer ID：
+
+- v5.0 通用层 ID（ADAPTER/APP/DOMAIN 等）直接使用
+- v4.x 细粒度 ID（L5_api/L4_service/L3_ontology 等）自动归一化为通用层
 
 **仍有缺口（待完善）**：
 
-| 文件 | 覆盖率 | 缺口描述 |
-|------|--------|---------|
-| `codemap.py` | 29% | `generate_codemap` 主体扫描逻辑，需真实目录 fixture |
-| `entropy_scan.py` | 49% | `run_full_scan` 高阶函数 |
-| `memory_actions.py` | 56% | 真实写入路径（依赖 `_layer_to_dir`） |
-| `dream.py` | 63% | EP 完整蒸馏流程（需 LLM mock） |
-| `intent_classifier.py` | 61% | Level 3 LLM fallback 路径 |
+
+| 文件                     | 覆盖率  | 缺口描述                                    |
+| ---------------------- | ---- | --------------------------------------- |
+| `codemap.py`           | ~29% | `generate_codemap` 主体扫描逻辑，需真实目录 fixture |
+| `entropy_scan.py`      | ~49% | `run_full_scan` 高阶函数                    |
+| `memory_actions.py`    | ~56% | 真实写入路径（依赖 `_layer_to_dir`）              |
+| `dream.py`             | ~63% | EP 完整蒸馏流程（需 LLM mock）                   |
+| `intent_classifier.py` | ~61% | Level 3 LLM fallback 路径                 |
+
+

@@ -1,0 +1,164 @@
+# _memory_base.yaml — 记忆对象基础 Schema（供 4 个 ObjectType 共享）
+# ─────────────────────────────────────────────────────────────────
+# 这是一个内部基础 Schema 文件，模拟 Palantir Interface 的复用机制。
+# 直接继承此文件的 ObjectType：Pattern / Decision / AntiPattern / BusinessFlow
+#
+# 注意：此文件不是独立的 ObjectType，不应被直接实例化。
+#       凡是引用此文件的 ObjectType，必须在自己的文件中定义 specific_properties。
+#
+# 版本：v5.0 | 创建于：2026-05-05
+# 设计原则：P1_density_over_completeness, P4_focused_object_types
+
+_meta:
+  type: base_schema
+  version: "5.0"
+  note: "非独立 ObjectType，供 Pattern/Decision/AntiPattern/BusinessFlow 继承"
+
+# ── 所有记忆对象共享的基础属性 ──────────────────────────────────────────────────
+base_properties:
+
+  id:
+    type: string
+    required: true
+    description: "记忆唯一 ID"
+    patterns:
+      Pattern:      "^(PAT|MEM-BOOT)-[0-9A-Z-]+"
+      Decision:     "^AD-[0-9A-Z-]+"
+      AntiPattern:  "^ANTI-[0-9A-Z-]+"
+      BusinessFlow: "^BIZ-[0-9A-Z-]+"
+
+  title:
+    type: string
+    required: true
+    description: "记忆标题（一句话概括）"
+
+  layer:
+    type: string
+    required: true
+    description: "架构层归属（v5.0 通用层 ID，参考 universal_layers.yaml）"
+    enum_source: "assets/ontology_schema/_config/universal_layers.yaml"
+    enum:
+      - ADAPTER
+      - APP
+      - DOMAIN
+      - PLATFORM
+      - CC
+      - CC_testing
+      - CC_governance
+      - BIZ
+      - Ops
+
+  tier:
+    type: string
+    required: true
+    enum: [hot, warm, cold, archive]
+    description: "访问热度层级（驱动 GC 和检索优先级）"
+
+  tags:
+    type: list[string]
+    required: true
+    description: "分类标签（用于检索和过滤）"
+
+  version:
+    type: integer
+    required: false
+    default: 1
+    description: "记忆版本号，内容重大更新时递增"
+
+  created_at:
+    type: date
+    required: false
+    format: "YYYY-MM-DD"
+
+  last_accessed:
+    type: date
+    required: false
+    description: "最后一次被检索引用的日期（GC 依赖此字段）"
+
+  access_count:
+    type: integer
+    required: false
+    default: 0
+
+  source_ep:
+    type: string
+    required: false
+    description: "产生本记忆的 EP 编号"
+
+  generalized:
+    type: boolean
+    required: false
+    default: false
+    description: "是否已泛化为跨项目可复用"
+
+  provenance:
+    type: object
+    required: false
+    description: "记忆来源元数据"
+    fields:
+      trigger_type: string   # bootstrap_v2 / distill / dream / manual
+      generated_at: date
+      layer_confidence: float
+
+# ── 所有记忆对象共享的 LinkType 关联 ──────────────────────────────────────────
+base_link_types:
+  - link_cites          # cites → CodeFile（引用的代码文件）
+  - link_about          # about → DomainConcept（描述的领域概念）
+  - link_impacts        # impacts → 记忆（变更时需检查的关联记忆）
+  - link_contradicts    # contradicts → 记忆（与之矛盾的记忆）
+  - link_derived_from   # derived_from → 记忆（从哪条记忆提炼而来）
+  - link_related_to     # related_to → 记忆（弱语义关联）
+
+# ── 共享的边字段（LinkType 实例在 front-matter 中的存储字段）────────────────────
+base_edge_fields:
+
+  cites_files:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_cites
+
+  about_concepts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_about
+
+  impacts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_impacts
+
+  contradicts:
+    type: list[string]
+    required: false
+    default: []
+    link_type: link_contradicts
+
+  derived_from:
+    type: string
+    required: false
+    link_type: link_derived_from
+
+  related_to:
+    type: list[object]
+    required: false
+    default: []
+    link_type: link_related_to
+    field_type: "list[{id: string, reason: string}]"
+
+  ast_file:
+    type: string
+    required: false
+    description: "Bootstrap 生成时对应的源代码文件路径"
+
+  class_name:
+    type: string
+    required: false
+    description: "Bootstrap 生成时对应的类名（用于 GC 比对）"
+
+  ast_pointer:
+    type: string
+    required: false
+    description: "CodeClass FQN 指针（格式: file_path::ClassName）"

@@ -148,12 +148,17 @@ class TestChainA_BootstrapToMemoryGraph:
                 fm = yaml.safe_load(content[3:fm_end].strip())
                 layers_found.add(fm.get("layer"))
 
-        # 期望至少包含 ADAPTER/APP/DOMAIN 对应的 v4.0 细粒度 schema 层
-        # ADAPTER → L5_api, APP → L4_service, DOMAIN → L3_ontology
+        # v5.0 universal layer IDs（Phase 1 后的标准）
+        expected_schema_layers_v5 = {"ADAPTER", "APP", "DOMAIN", "PLATFORM", "CC"}
+        # v4.0 细粒度 schema 层（向后兼容）
         expected_schema_layers_v4 = {"L5_api", "L4_service", "L3_ontology"}
-        # 向后兼容：旧粗粒度层名也视为覆盖
+        # v3 粗粒度层名（向后兼容）
         expected_schema_layers_v3 = {"L5_interface", "L4_application", "L3_domain"}
-        covered = (layers_found & expected_schema_layers_v4) | (layers_found & expected_schema_layers_v3)
+        covered = (
+            (layers_found & expected_schema_layers_v5) |
+            (layers_found & expected_schema_layers_v4) |
+            (layers_found & expected_schema_layers_v3)
+        )
         assert len(covered) >= 2, (
             f"缺少足够的架构层覆盖（期望 ≥ 2 层）\n已有层: {layers_found}"
         )

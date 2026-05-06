@@ -1,0 +1,190 @@
+# Universal Layer Definitions — MMS Schema v5.0 通用架构层
+# ─────────────────────────────────────────────────────────────────
+# 版本：v5.0 | 创建于：2026-05-05 | 替代 MemoryNode.layer 中的项目特化 enum
+#
+# 设计原则（参考 P3_universal_schema_per_project_config）：
+#   - 此文件定义的是"软件工程的元概念"，跨项目通用
+#   - id 字段是 MemoryNode.layer 的合法枚举值（Schema Source of Truth）
+#   - display_label_zh 供用户界面和 LLM prompt 使用（对非技术用户友好）
+#   - 项目特化的细分层（如 MMS 的 L2_database/L2_messaging）
+#     放在 docs/memory/_system/routing/project_layers.yaml，不在此定义
+#
+# 层级体系说明（通用 9 层 + 4 通用横切层 = 13 个 ID）：
+#   ADAPTER      接口/适配层（外部边界）
+#   APP          应用服务层（用例编排）
+#   DOMAIN       领域层（核心业务模型）
+#   PLATFORM     平台层（基础设施）
+#   CC           横切关注点
+#   CC_testing   测试横切
+#   CC_governance 治理横切
+#   BIZ          跨层业务流
+#   Ops          运维部署层
+#
+# 迁移历史：
+#   v3.x → v4.x：细粒度 17 ID（项目特化，已废弃在 Schema 中的使用）
+#   v4.x → v5.0：通用 9+4 层（本文件），项目特化移至 project_layers.yaml
+#
+# CI 引用：tests/test_ontology_principles.py 使用此文件校验 layer enum
+
+version: "5.0"
+schema_source_of_truth: true
+design_principle: P3_universal_schema_per_project_config
+
+layers:
+
+  # ─── L5: 接口/适配层（外部边界）────────────────────────────────────────────
+  - id: ADAPTER
+    display_label_zh: "接口 / 适配层"
+    display_label_en: "Adapter / Interface Layer"
+    description_for_user: |
+      暴露给外部调用者的边界代码：HTTP API 路由、Controller、gRPC Handler、
+      消息队列消费者入口、CLI 命令、前端页面组件、Web Socket Handler 等。
+      代码通常负责参数解析、格式转换，不包含业务逻辑。
+    palantir_analogy: "Ontology Action 的触发入口"
+    typical_patterns:
+      - "*Controller / *Handler / *Router / *Endpoint"
+      - "前端: *Page / *View / *Screen"
+      - "*.tsx / *.vue（页面组件）"
+    project_specific_note: |
+      项目可在 project_layers.yaml 中进一步细分，如：
+        L5_api:      后端 HTTP API
+        L5_frontend: 前端页面
+
+  # ─── L4: 应用服务层（用例编排）─────────────────────────────────────────────
+  - id: APP
+    display_label_zh: "应用服务层"
+    display_label_en: "Application Service Layer"
+    description_for_user: |
+      协调多个领域对象完成用例（Use Case）的业务编排代码：
+      Service、UseCase、Orchestrator、Saga、Worker（定时/异步任务）。
+      不应包含数据库 SQL 或领域规则，只负责调度和组合。
+    palantir_analogy: "Ontology Action 的规则执行体"
+    typical_patterns:
+      - "*Service / *UseCase / *Orchestrator / *Manager"
+      - "*Worker / *Job / *Task"
+      - "Go: *Usecase / *Service"
+    project_specific_note: |
+      项目可细分：
+        L4_service: 同步服务
+        L4_worker:  异步/定时任务
+
+  # ─── L3: 领域层（核心业务模型）─────────────────────────────────────────────
+  - id: DOMAIN
+    display_label_zh: "领域层"
+    display_label_en: "Domain Layer"
+    description_for_user: |
+      业务核心：Entity（实体）、ValueObject（值对象）、Aggregate（聚合根）、
+      Repository 接口、Domain Service、领域事件、业务规则。
+      这是最稳定的层，不依赖任何框架或基础设施。
+    palantir_analogy: "Ontology Object Type（业务实体的 schema 定义）"
+    typical_patterns:
+      - "*Entity / *Aggregate / *ValueObject"
+      - "*Repository（接口）/ *Repo"
+      - "*DomainEvent / *Domain*"
+    project_specific_note: |
+      项目可细分：
+        L3_ontology:       本体/概念模型
+        L3_data_pipeline:  数据管道领域逻辑
+
+  # ─── L2: 平台层（基础设施）─────────────────────────────────────────────────
+  - id: PLATFORM
+    display_label_zh: "平台层"
+    display_label_en: "Platform / Infrastructure Layer"
+    description_for_user: |
+      对接第三方系统的基础设施代码：数据库 ORM、消息队列客户端、
+      缓存客户端、存储客户端、配置加载、认证中间件、日志组件等。
+      通常是对框架/库的封装，不包含业务逻辑。
+    palantir_analogy: "Foundry Dataset（数据来源 / 数据出口）"
+    typical_patterns:
+      - "*Config / *Configuration"
+      - "*Client（DB/Cache/MQ/Storage）"
+      - "*Repository（实现类）/ *RepositoryImpl"
+      - "Alembic / Migration 脚本"
+    project_specific_note: |
+      项目可细分：
+        L2_database:    数据库相关
+        L2_messaging:   消息队列
+        L2_cache:       缓存
+        L2_storage:     对象存储
+
+  # ─── CC: 横切关注点（通用）──────────────────────────────────────────────────
+  - id: CC
+    display_label_zh: "横切关注点"
+    display_label_en: "Cross-Cutting Concerns"
+    description_for_user: |
+      跨越多个业务层的通用能力：工具类（Util）、异常定义、常量、
+      抽象基类、序列化工具、日志工具等。
+      不属于任何特定业务层，被多个层共同引用。
+    palantir_analogy: "Foundry shared properties / interface"
+    typical_patterns:
+      - "*Util / *Helper / *Base / *Abstract*"
+      - "*Exception / *Error"
+      - "*Constant / *Config (通用)"
+
+  # ─── CC_testing: 测试横切 ───────────────────────────────────────────────────
+  - id: CC_testing
+    display_label_zh: "横切测试层"
+    display_label_en: "Cross-Cutting Testing"
+    description_for_user: |
+      单元测试、集成测试、端到端测试、Mock、Fixture 等测试代码。
+      不属于业务层，但是代码库的重要组成部分。
+    typical_patterns:
+      - "test_* / *_test.go / *Test.java"
+      - "tests/ 目录"
+      - "*Mock / *Stub / *Fixture"
+
+  # ─── CC_governance: 治理横切 ────────────────────────────────────────────────
+  - id: CC_governance
+    display_label_zh: "横切治理层"
+    display_label_en: "Cross-Cutting Governance"
+    description_for_user: |
+      合规、权限、配额、变更审批等治理约束代码，横切所有业务层。
+      包括：RBAC、ACL、多租户隔离、审计日志、变更请求（CR）等。
+    palantir_analogy: "Foundry Governance（权限 ACL + 变更审批 CR）"
+    typical_patterns:
+      - "*RBAC / *SecurityContext / *AuditService"
+      - "*Quota / *Permission / *ACL"
+
+  # ─── BIZ: 跨层业务流 ─────────────────────────────────────────────────────────
+  - id: BIZ
+    display_label_zh: "跨层业务流"
+    display_label_en: "Cross-Layer Business Flow"
+    description_for_user: |
+      描述端到端业务流程的文档和记忆，跨越多个技术层。
+      例如："用户注册流程"（跨 ADAPTER→APP→DOMAIN→PLATFORM）。
+      不对应具体代码目录，而是描述业务场景的端到端视图。
+    palantir_analogy: "Foundry Workshop（业务场景视图）"
+    typical_patterns:
+      - "docs/memory/shared/BIZ/BIZ-*.md"
+      - "业务流程文档"
+
+  # ─── Ops: 运维部署层 ─────────────────────────────────────────────────────────
+  - id: Ops
+    display_label_zh: "运维部署层"
+    display_label_en: "Operations / Deployment Layer"
+    description_for_user: |
+      部署、运维、DevOps 相关代码和文档：Dockerfile、K8s 配置、
+      CI/CD 流水线、数据库迁移脚本、监控告警配置等。
+    typical_patterns:
+      - "deploy/ / k8s/ / .github/workflows/"
+      - "Dockerfile / docker-compose*.yml"
+      - "alembic/ (迁移)"
+
+# ─── 向后兼容的废弃别名（从 v4.x 迁移用）────────────────────────────────────
+deprecated_aliases:
+  # v4.x 中的项目特化 ID → 最接近的 v5 通用 ID（仅供迁移脚本参考，不写入新文件）
+  L5_api:          ADAPTER
+  L5_frontend:     ADAPTER
+  L4_service:      APP
+  L4_worker:       APP
+  L3_ontology:     DOMAIN
+  L3_data_pipeline: DOMAIN
+  L2_database:     PLATFORM
+  L2_messaging:    PLATFORM
+  L2_cache:        PLATFORM
+  L2_storage:      PLATFORM
+  L2_infrastructure: PLATFORM
+  L1_security:     PLATFORM
+  L1_platform:     PLATFORM
+  CC_architecture: CC
+  Tooling_mms:     CC

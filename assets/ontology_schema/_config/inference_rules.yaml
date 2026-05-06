@@ -1,0 +1,321 @@
+# inference_rules.yaml — 推断规则（Evaluation DAG）
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4：将 Signal Fusion 的 Override Pass 升级为正式的 Evaluation DAG。
+#
+# 核心设计（决策点 2: B — DAG short-circuit + fallback weighted sum）：
+#
+#   Stage 1 [HARD SHORT-CIRCUIT]   — 高置信度框架规则，命中即停止后续推断
+#   Stage 2 [CONFLICT DETECTION]  — 多信号冲突检测，输出 AMBIGUOUS 或激活 tiebreaker
+#   Stage 3 [WEIGHTED FALLBACK]   — 标准六路信号加权求和（已有 signal_fusion.py 实现）
+#
+# 与现有 override_rules.yaml 的关系：
+#   override_rules.yaml = 项目级 override（用户手写 YAML），位于 .mms/override_rules.yaml
+#   inference_rules.yaml = 全局推断 DAG（schema 级，本文件），位于 assets/ontology_schema/_config/
+#
+# 维护规则：
+#   - 新增 Stage 1 规则须通过 test_inference_dag.py 的 regression 测试
+#   - conflict_pairs 新增须附证据说明（evidence 字段）
+#   - 每条 Stage 1 规则必须有 examples（正向 + 反向）
+#
+# 版本：v5.0 | 创建于：2026-05-06 | Phase 4
+
+version: "5.0"
+dag_design_principle: "P3_universal_schema_per_project_config"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1: HARD SHORT-CIRCUIT 规则
+# 命中条件时直接返回结果，跳过 Stage 2 和 Stage 3。
+# priority 越小越先执行（最高 0）。
+# ─────────────────────────────────────────────────────────────────────────────
+short_circuit_rules:
+
+  # ── Java/Kotlin Spring Boot ──────────────────────────────────────────────
+  - id: SC_java_rest_controller
+    priority: 0
+    target_stacks: [java_spring_boot, kotlin_spring_boot]
+    condition:
+      annotation_contains_any:
+        - "@RestController"
+        - "@Controller"
+        - "@ControllerAdvice"
+    result:
+      layer: ADAPTER
+      confidence: 0.98
+      rationale: "Spring @RestController 100% 确定适配层"
+    examples:
+      positive:
+        - class: "UserController"
+          annotations: ["@RestController"]
+      negative:
+        - class: "UserService"
+          annotations: ["@Service"]
+
+  - id: SC_java_service
+    priority: 1
+    target_stacks: [java_spring_boot, kotlin_spring_boot]
+    condition:
+      annotation_contains_any:
+        - "@Service"
+        - "@Transactional"
+      annotation_not_contains:
+        - "@Repository"
+    result:
+      layer: APP
+      confidence: 0.92
+      rationale: "@Service + @Transactional 明确标注应用服务层"
+
+  - id: SC_java_repository
+    priority: 2
+    target_stacks: [java_spring_boot, kotlin_spring_boot]
+    condition:
+      annotation_contains_any:
+        - "@Repository"
+      or_bases_contain_any:
+        - "JpaRepository"
+        - "CrudRepository"
+        - "PagingAndSortingRepository"
+        - "MongoRepository"
+        - "R2dbcRepository"
+    result:
+      layer: DOMAIN
+      confidence: 0.96
+      rationale: "JPA Repository 模式确定领域层数据访问接口"
+
+  - id: SC_java_entity
+    priority: 3
+    target_stacks: [java_spring_boot, kotlin_spring_boot]
+    condition:
+      annotation_contains_any:
+        - "@Entity"
+        - "@Table"
+        - "@Embeddable"
+        - "@MappedSuperclass"
+    result:
+      layer: DOMAIN
+      confidence: 0.97
+      rationale: "JPA @Entity 100% 确定领域对象"
+
+  - id: SC_java_configuration
+    priority: 4
+    target_stacks: [java_spring_boot, kotlin_spring_boot]
+    condition:
+      annotation_contains_any:
+        - "@Configuration"
+        - "@EnableWebSecurity"
+        - "@EnableAutoConfiguration"
+    result:
+      layer: PLATFORM
+      confidence: 0.95
+      rationale: "Spring @Configuration 确定基础设施层"
+
+  # ── Python FastAPI ────────────────────────────────────────────────────────
+  - id: SC_python_fastapi_router
+    priority: 10
+    target_stacks: [python_fastapi, python_general]
+    condition:
+      annotation_contains_any:
+        - "@router.get"
+        - "@router.post"
+        - "@router.put"
+        - "@router.delete"
+        - "@router.patch"
+        - "@app.get"
+        - "@app.post"
+    result:
+      layer: ADAPTER
+      confidence: 0.97
+      rationale: "FastAPI 路由装饰器 100% 确定适配层"
+
+  - id: SC_python_sqlmodel_base
+    priority: 11
+    target_stacks: [python_fastapi, python_general]
+    condition:
+      bases_contain_any:
+        - "SQLModel"
+      path_contains_any:
+        - "model"
+        - "models"
+        - "entity"
+        - "domain"
+    result:
+      layer: DOMAIN
+      confidence: 0.90
+      rationale: "SQLModel + model 目录 → 领域层实体"
+
+  - id: SC_python_pydantic_schema
+    priority: 12
+    target_stacks: [python_fastapi, python_general]
+    condition:
+      bases_contain_any:
+        - "BaseModel"
+      path_contains_any:
+        - "schema"
+        - "schemas"
+        - "dto"
+        - "request"
+        - "response"
+    result:
+      layer: ADAPTER
+      confidence: 0.88
+      rationale: "BaseModel + schema 目录 → 适配层 DTO"
+
+  - id: SC_python_settings
+    priority: 13
+    target_stacks: [python_fastapi, python_general]
+    condition:
+      bases_contain_any:
+        - "BaseSettings"
+      or_name_contains_any:
+        - "Settings"
+        - "Config"
+        - "Configuration"
+    result:
+      layer: PLATFORM
+      confidence: 0.93
+      rationale: "Pydantic BaseSettings 确定配置/平台层"
+
+  # ── Go ─────────────────────────────────────────────────────────────────────
+  - id: SC_go_gorm_model
+    priority: 20
+    target_stacks: [go_gin, go_ddd, go_general]
+    condition:
+      path_contains_any:
+        - "entity"
+        - "model"
+        - "domain"
+      and_name_suffix_any:
+        - "Model"
+        - "Entity"
+        - "DO"    # Data Object
+    result:
+      layer: DOMAIN
+      confidence: 0.85
+      rationale: "entity/model 目录 + Model/Entity 后缀 → 领域层"
+
+  - id: SC_go_handler
+    priority: 21
+    target_stacks: [go_gin, go_ddd, go_general]
+    condition:
+      path_contains_any:
+        - "handler"
+        - "handlers"
+        - "controller"
+        - "delivery"
+      and_name_suffix_any:
+        - "Handler"
+        - "Controller"
+        - "Server"
+    result:
+      layer: ADAPTER
+      confidence: 0.88
+      rationale: "handler 目录 + Handler 后缀 → 适配层"
+
+  # ── 测试类（通用，所有语言）──────────────────────────────────────────────────
+  - id: SC_test_class
+    priority: 30
+    target_stacks: []  # 空列表 = 所有 stack 生效
+    condition:
+      name_prefix_any:
+        - "Test"
+        - "Mock"
+        - "Stub"
+        - "Fake"
+        - "Spec"
+      or_name_suffix_any:
+        - "Test"
+        - "Tests"
+        - "Spec"
+        - "Mock"
+        - "Fixture"
+    result:
+      layer: CC_testing
+      confidence: 0.90
+      rationale: "测试类固定归入 CC_testing 横切层"
+
+  # ── 通用工具/常量类（所有语言）────────────────────────────────────────────────
+  - id: SC_utility_class
+    priority: 31
+    target_stacks: []
+    condition:
+      name_suffix_any:
+        - "Util"
+        - "Utils"
+        - "Helper"
+        - "Helpers"
+        - "Constants"
+        - "Constant"
+        - "Consts"
+    result:
+      layer: CC
+      confidence: 0.80
+      rationale: "工具/常量类归入横切关注点层"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2: 冲突检测（CONFLICT DETECTION）
+#
+# 当多个强信号同时命中但指向不同层时，触发冲突检测。
+# 输出：
+#   a) 冲突可通过 tiebreaker 解决 → 使用 resolution_priority 排序
+#   b) 冲突无法解决 → 标注 AMBIGUOUS，写入 schema_evolution_report
+# ─────────────────────────────────────────────────────────────────────────────
+conflict_detection:
+
+  # 冲突对定义：哪些层组合的同时命中被认为是"冲突"
+  conflict_pairs:
+    - layers: [ADAPTER, DOMAIN]
+      description: "同时有 ADAPTER 和 DOMAIN 的强信号（如 BaseModel 在 router 目录）"
+      evidence: "Pydantic BaseModel 既被 schema（ADAPTER）继承也被 entity（DOMAIN）继承"
+      tiebreaker: path_signal_wins   # 路径信号优先（更显式）
+
+    - layers: [APP, DOMAIN]
+      description: "服务类同时有业务逻辑和数据访问（Service 包含 SQL 查询）"
+      evidence: "Fat Service 反模式：包含 @Transactional 但直接操作数据库"
+      tiebreaker: annotation_signal_wins
+
+    - layers: [ADAPTER, APP]
+      description: "Controller 直接包含业务逻辑（Controller 塞太多逻辑）"
+      evidence: "常见 MVC 反模式：Controller 内直接实现业务用例"
+      tiebreaker: name_signal_wins
+
+  # Tiebreaker 策略
+  tiebreaker_priority:
+    annotation_signal_wins:
+      description: "注解信号优先（最显式，最不含糊）"
+      fallback: path_signal_wins
+
+    path_signal_wins:
+      description: "路径信号优先（目录约定比类名更可靠）"
+      fallback: name_signal_wins
+
+    name_signal_wins:
+      description: "类名后缀优先（命名约定次于路径约定）"
+      fallback: AMBIGUOUS
+
+  # 冲突评分阈值：两个层的差值 < ambiguity_threshold 时认为是冲突
+  ambiguity_threshold: 0.15
+
+  # 无法解决的冲突的处理策略
+  on_ambiguous:
+    action: use_higher_score_with_flag
+    flag_field: "inference_ambiguous"    # 写入 MemoryNode frontmatter 的标记字段
+    report_to: "schema_evolution_report" # Phase 8 报告中收集
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 3: 加权回退（WEIGHTED FALLBACK）
+#
+# Stage 1 和 Stage 2 都未产生 HARD_STOP 时，使用 signal_fusion.py 的
+# 六路信号加权求和（已实现，此处仅记录元数据）。
+# ─────────────────────────────────────────────────────────────────────────────
+weighted_fallback:
+  description: "六路信号加权回退，权重来自 signal_weights.yaml 的 profile"
+  signals:
+    - path
+    - name
+    - annotation
+    - inheritance
+    - import
+    - signature   # Phase 3 新增，默认权重 0
+  min_confidence_threshold: 0.25
+  on_below_threshold:
+    result: UNKNOWN
+    action: "写入 schema_evolution_report，供人工审查"

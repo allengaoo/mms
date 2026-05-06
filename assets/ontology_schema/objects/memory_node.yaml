@@ -51,10 +51,23 @@ properties:
   layer:
     type: string
     required: true
+    description: "架构层归属（通用 v5.0 层 ID，参考 universal_layers.yaml）"
+    enum_source: "assets/ontology_schema/_config/universal_layers.yaml"
     enum:
-      # 细粒度层 ID（v4.0 规范值）
-      - L5_frontend
+      # ── 通用 v5.0 层 ID（Schema Source of Truth = universal_layers.yaml）──
+      - ADAPTER        # 接口/适配层（Controller/Handler/Router/前端页面）
+      - APP            # 应用服务层（Service/UseCase/Orchestrator/Worker）
+      - DOMAIN         # 领域层（Entity/Aggregate/Repository接口）
+      - PLATFORM       # 平台层（DB/Cache/MQ/Config/Auth等基础设施）
+      - CC             # 横切关注点（Util/Exception/Base/常量）
+      - CC_testing     # 横切测试层
+      - CC_governance  # 横切治理层（RBAC/ACL/Quota）
+      - BIZ            # 跨层业务流
+      - Ops            # 运维部署层
+      # ── 向后兼容（v4.x 项目特化 ID，迁移期内有效，新文件禁止使用）──
+      # 迁移脚本：scripts/migrate_layer_v4_to_v5.py
       - L5_api
+      - L5_frontend
       - L4_service
       - L4_worker
       - L3_ontology
@@ -64,19 +77,13 @@ properties:
       - L2_cache
       - L2_storage
       - L1_security
-      - CC_architecture
-      - CC_testing
-      - CC_governance
-      - BIZ
-      - Ops
-      - Tooling_mms
-      # 粗粒度别名（v3.x 向后兼容，已废弃）
       - L1_platform
       - L2_infrastructure
       - L3_domain
       - L4_application
       - L5_interface
-      - CC
+      - CC_architecture
+      - Tooling_mms
 
   tags:
     type: list[string]

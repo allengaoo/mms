@@ -59,6 +59,8 @@ class BootstrapV2Report:
     memories_generated: int = 0
     memories_per_layer: Dict[str, int] = field(default_factory=dict)
     memory_files: List[str] = field(default_factory=list)
+    seed_memories_loaded: int = 0      # Phase 8: 注入的 seed pack 记忆数量
+    weights_profile_used: str = ""     # Phase 3: 使用的权重 profile 名称
 
     dry_run: bool = False
     errors: List[str] = field(default_factory=list)
@@ -454,6 +456,37 @@ def bootstrap_project(
             report.errors.append(f"结构性 GC 失败: {e}")
 
     report.elapsed_s = time.time() - start
+
+    # ── Phase 8: Schema 演进反馈回路 ──────────────────────────────────────────
+    if not dry_run:
+        try:
+            from mms.bootstrap.schema_evolution import (
+                BootstrapRunStats,
+                record_bootstrap_run,
+            )
+            import uuid as _uuid
+            gc_archived_list: List[str] = getattr(report, "gc_archived", [])
+            mem_paths = [Path(p) for p in report.memory_files if p]
+            evo_stats = BootstrapRunStats(
+                run_id=str(_uuid.uuid4())[:8],
+                project_path=str(root),
+                weights_profile=report.weights_profile_used
+                    if hasattr(report, "weights_profile_used") else "base",
+                total_files=report.files_scanned,
+                total_classes=report.classes_found,
+                memories_generated=report.memories_generated,
+                memories_archived=len(gc_archived_list),
+                inferences=inferences if "inferences" in dir() else {},
+                memory_files=mem_paths,
+            )
+            log_p, md_p = record_bootstrap_run(
+                evo_stats,
+                output_dir=root / "docs" / "memory" / "_system",
+            )
+            log(f"  📊  Schema 演进报告已更新: {md_p.name}")
+        except Exception as e:
+            log(f"  ⚠️  Schema 演进报告生成失败（跳过）: {e}")
+
     if verbose:
         report.print_summary()
     return report

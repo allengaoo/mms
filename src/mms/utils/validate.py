@@ -29,24 +29,37 @@ _MEMORY_ROOT = Path(__file__).parent.parent.parent.parent / "docs" / "memory"
 _SCHEMA_FILE = _MEMORY_ROOT / "_system" / "schema.json"
 
 _REQUIRED_FIELDS = ["id", "layer", "type", "tier", "tags", "version"]
-# v4.0：细粒度层 ID（规范值）+ 短格式 + 粗粒度别名（向后兼容）
+# v5.0：通用层 ID（Source of Truth = assets/ontology_schema/_config/universal_layers.yaml）
+# 向后兼容：保留 v4.x 项目特化 ID，迁移期内有效（新文件禁止使用）
 _VALID_LAYERS = {
-    # 细粒度层 ID（v4.0 规范值，Source of Truth 来自 layers.yaml）
+    # ── v5.0 通用层 ID（universal_layers.yaml，跨项目通用）──
+    "ADAPTER", "APP", "DOMAIN", "PLATFORM", "CC",
+    "CC_testing", "CC_governance", "BIZ", "Ops",
+    # ── v4.x 项目特化 ID（向后兼容，迁移脚本: scripts/migrate_layer_v4_to_v5.py）──
     "L5_frontend", "L5_api", "L4_service", "L4_worker",
     "L3_ontology", "L3_data_pipeline",
     "L2_database", "L2_messaging", "L2_cache", "L2_storage",
     "L1_security", "CC_architecture", "CC_testing", "CC_governance",
-    "BIZ", "Ops", "Tooling_mms",
-    # 粗粒度别名（v3.x 向后兼容）
-    "L1", "L2", "L3", "L4", "L5", "CC",
+    "Tooling_mms",
+    # ── v3.x 粗粒度别名（更早期兼容）──
+    "L1", "L2", "L3", "L4", "L5",
     "L1_platform", "L2_infrastructure", "L3_domain",
     "L4_application", "L5_interface", "cross_cutting",
 }
 _VALID_TYPES = {
-    "lesson", "decision", "error", "pattern", "skill",
-    "anti-pattern",  # MemoryNode schema v4.0 支持
-    # BIZ 层专属类型
-    "business-flow", "actor-model", "constraint", "edge-case",
+    # ── v5.0 独立 ObjectType（拆分自 MemoryNode God Object）──
+    "pattern",        # → Pattern ObjectType
+    "decision",       # → Decision ObjectType (ADR)
+    "anti-pattern",   # → AntiPattern ObjectType
+    "business-flow",  # → BusinessFlow ObjectType
+    # ── 遗留类型（向后兼容）──
+    "error",          # CodeClass 级错误记忆（保留）
+    "skill",          # 技能记忆（向后兼容）
+    "actor-model",    # BIZ 层（保留）
+    "constraint",     # BIZ 层约束（保留）
+    "edge-case",      # BIZ 层边缘情况（保留）
+    # ── 已废弃（不应出现在新文件中）──
+    "lesson",         # 已删除 lesson.yaml，向后兼容保留
 }
 _VALID_TIERS = {"hot", "warm", "cold", "archive"}
 # 接受标准前缀和遗留前缀；MEM-SEED 为 seed pack 模板前缀；MEM-BOOT 为 bootstrap 自动生成
@@ -150,18 +163,20 @@ def find_all_memory_files() -> List[Path]:
 
 
 def find_changed_files() -> List[Path]:
-    """通过 git diff 找出当前暂存或未暂存的变更记忆文件"""
+    """
+    通过 git diff --cached 找出当前已暂存（staged）的变更记忆文件。
+
+    pre-commit hook 只需校验本次 commit 涉及的文件（staged files）。
+    使用 --cached 而非 HEAD，避免将未暂存的工作区变更也纳入校验范围，
+    防止因其他未完成工作导致误报（如跨分支开发时的文件状态污染）。
+    """
     try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, cwd=_MEMORY_ROOT.parent.parent
-        )
-        changed = result.stdout.strip().splitlines()
+        # 仅获取 staged 文件（pre-commit 语义：只校验本次将提交的内容）
         result2 = subprocess.run(
-            ["git", "diff", "--cached", "--name-only"],
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
             capture_output=True, text=True, cwd=_MEMORY_ROOT.parent.parent
         )
-        changed += result2.stdout.strip().splitlines()
+        changed = result2.stdout.strip().splitlines()
 
         memory_files = []
         for path_str in set(changed):

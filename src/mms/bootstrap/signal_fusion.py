@@ -139,6 +139,7 @@ class SignalBreakdown:
     annotation_score:  float = 0.0
     inheritance_score: float = 0.0
     import_score:      float = 0.0
+    signature_score:   float = 0.0   # 第 6 路：方法签名信号（Phase 3 新增）
 
     def total(self, weights: Optional[Dict[str, float]] = None) -> float:
         w = weights or _DEFAULT_WEIGHTS
@@ -147,7 +148,8 @@ class SignalBreakdown:
             self.name_score        * w.get("name",        0.25) +
             self.annotation_score  * w.get("annotation",  0.30) +
             self.inheritance_score * w.get("inheritance", 0.10) +
-            self.import_score      * w.get("import",      0.10)
+            self.import_score      * w.get("import",      0.10) +
+            self.signature_score   * w.get("signature",   0.00)  # 默认 0，profile 激活
         )
 
 
@@ -580,6 +582,112 @@ def _score_imports(class_name: str,
     return scores
 
 
+# ─── Phase 3: 第 6 路信号 — 方法签名信号 ─────────────────────────────────────
+
+# 方法名关键词 → 层级映射（通用、跨语言）
+_METHOD_SIGNATURE_PATTERNS: Dict[str, List[str]] = {
+    "ADAPTER": [
+        # HTTP/REST 入口
+        "handle", "dispatch", "process_request", "on_request",
+        # gRPC/消息队列
+        "on_message", "consume", "on_event",
+        # CLI
+        "run_command", "invoke",
+        # 前端事件
+        "on_click", "on_submit", "render",
+    ],
+    "APP": [
+        # 用例编排
+        "execute", "run", "orchestrate", "coordinate",
+        # 事务边界
+        "create", "update", "delete",  # 注意：放 APP 而非 DOMAIN，因为包含外部调用
+        # 工作流
+        "send_notification", "publish_event", "emit",
+        # 任务/调度
+        "perform", "process", "schedule",
+    ],
+    "DOMAIN": [
+        # 领域行为（无 IO 依赖）
+        "validate", "calculate", "compute", "check",
+        "is_valid", "can_", "should_",
+        # 工厂方法
+        "create_", "build_", "from_",
+        # 仓储接口
+        "find_by", "get_by", "list_by", "save", "remove",
+    ],
+    "PLATFORM": [
+        # 数据库操作
+        "query", "insert", "update_record", "delete_record", "fetch",
+        # 缓存
+        "cache_get", "cache_set", "cache_delete",
+        # 外部调用
+        "call_api", "send_request", "post_to",
+        # 配置/连接
+        "connect", "disconnect", "initialize", "setup",
+    ],
+    "CC": [
+        # 工具方法
+        "format", "parse", "convert", "serialize", "deserialize",
+        "encode", "decode", "hash", "encrypt", "decrypt",
+        # 日志/监控
+        "log", "trace", "metric",
+        # 错误处理
+        "handle_error", "wrap_exception",
+    ],
+}
+
+
+def _score_method_signature(
+    methods: List[dict],
+    sig_patterns: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, float]:
+    """
+    方法签名信号（Phase 3 第 6 路）：基于方法名关键词推断架构层。
+
+    算法：
+      1. 将类的所有方法名转小写，拼接为一个词袋
+      2. 对每个层的关键词列表进行匹配，统计命中数
+      3. 命中率（hits / total_keywords）作为层级得分（max 1.0）
+      4. 空方法列表时所有层得分为 0（不产生误导信号）
+
+    与注解信号相比，方法签名置信度更低（需要语言约定作为先验），
+    适合作为辅助信号，在 profile 中通过 weights.signature 激活。
+
+    Args:
+        methods:      方法字典列表，每个字典必须包含 'name' 键
+        sig_patterns: 自定义方法名关键词字典，None 时使用内置 _METHOD_SIGNATURE_PATTERNS
+
+    Returns:
+        每个层的得分字典，值范围 [0.0, 1.0]
+    """
+    scores: Dict[str, float] = {layer: 0.0 for layer in LAYERS}
+    if not methods:
+        return scores
+
+    patterns = sig_patterns or _METHOD_SIGNATURE_PATTERNS
+    method_names_lower = [
+        m.get("name", "").lower()
+        for m in methods
+        if isinstance(m, dict) and m.get("name")
+    ]
+    if not method_names_lower:
+        return scores
+
+    method_blob = " ".join(method_names_lower)
+
+    for layer, keywords in patterns.items():
+        if layer not in scores:
+            continue
+        hits = sum(
+            1 for kw in keywords
+            if kw in method_blob or any(name.startswith(kw) or kw in name for name in method_names_lower)
+        )
+        if keywords:
+            scores[layer] = min(1.0, hits / len(keywords))
+
+    return scores
+
+
 # ─── fn_infer_layer 实现 ──────────────────────────────────────────────────────
 
 def infer_layer(
@@ -593,9 +701,13 @@ def infer_layer(
     signal_rules: Optional[Dict] = None,
     weights: Optional[Dict[str, float]] = None,
     strong_path_patterns: Optional[Dict[str, List[str]]] = None,
+    methods: Optional[List[dict]] = None,
 ) -> LayerInference:
     """
-    五路信号融合推断架构层（纯函数，无全局状态副作用）。
+    六路信号融合推断架构层（纯函数，无全局状态副作用）。
+
+    Phase 3 新增第 6 路：方法签名信号（method_signature），
+    默认权重为 0（由 profile 的 weights.signature 激活）。
 
     实现 fn_infer_layer Function（assets/ontology_schema/functions/fn_infer_layer.yaml）。
 
@@ -614,9 +726,11 @@ def infer_layer(
                               None 时使用内置 _PATH_STRONG_PATTERNS 常量。
                               通过 infer_all() 的 weights_profile 参数自动注入，实现
                               "每个 profile 定制强信号目录约定"的效果。
+        methods:              方法字典列表（含 name 键），用于第 6 路方法签名信号。
+                              默认权重为 0，需 profile 的 weights.signature > 0 激活。
 
     Returns:
-        LayerInference: 推断结果，含层级、置信度和分项得分
+        LayerInference: 推断结果，含层级、置信度和分项得分（含 signature_score）
     """
     annotations = annotations or []
     bases = bases or []
@@ -630,13 +744,15 @@ def infer_layer(
     custom_path   = (signal_rules or {}).get("path_patterns")
     custom_name   = (signal_rules or {}).get("name_patterns")
     custom_annot  = (signal_rules or {}).get("annotation_patterns")
+    custom_sig    = (signal_rules or {}).get("method_signature_patterns")
 
-    # 各路信号评分（strong_path_patterns 来自 profile，None 时退回内置常量）
+    # 六路信号评分（strong_path_patterns 来自 profile，None 时退回内置常量）
     path_scores  = _score_path(file_path, custom_path, strong_path_patterns)
     name_scores  = _score_name(class_name, custom_name)
     annot_scores = _score_annotations(annotations, custom_annot)
     inh_scores   = _score_inheritance(bases, parent_layers)
     imp_scores   = _score_imports(class_name, in_degree, out_degree_by_layer)
+    sig_scores   = _score_method_signature(methods or [], custom_sig)  # Phase 3
 
     # 加权融合（使用注入的权重，不再硬编码）
     wp   = w.get("path",        0.25)
@@ -644,6 +760,7 @@ def infer_layer(
     wa   = w.get("annotation",  0.30)
     wi   = w.get("inheritance", 0.10)
     wm   = w.get("import",      0.10)
+    ws   = w.get("signature",   0.00)  # 默认关闭，profile 激活
 
     all_scores: Dict[str, float] = {}
     breakdown = SignalBreakdown()
@@ -654,9 +771,10 @@ def infer_layer(
         as_ = annot_scores.get(layer, 0.0)
         is_ = inh_scores.get(layer, 0.0)
         im_ = imp_scores.get(layer, 0.0)
-        all_scores[layer] = ps * wp + ns * wn + as_ * wa + is_ * wi + im_ * wm
+        sg_ = sig_scores.get(layer, 0.0)
+        all_scores[layer] = ps * wp + ns * wn + as_ * wa + is_ * wi + im_ * wm + sg_ * ws
 
-    # ── Framework Override Pass ───────────────────────────────────────────────
+    # ── Stage 1b: Framework Override Pass (soft floor) ───────────────────────
     # 当框架基类（SQLModel/BaseModel/BaseSettings 等）匹配时，
     # 继承信号本身置信度极高（0.7~0.9），但 0.10 权重使其被压制。
     # 此处以框架基类推断的层级作为最低下限（soft override）。
@@ -666,25 +784,60 @@ def infer_layer(
             if fw_layer in all_scores and fw_conf > all_scores[fw_layer]:
                 all_scores[fw_layer] = fw_conf
 
-    best_layer = max(all_scores, key=lambda k: all_scores[k])
-    best_score = all_scores[best_layer]
+    # ── Stage 2: 冲突检测（Phase 4 新增）────────────────────────────────────
+    # 当最高分与次高分差值 < 阈值时，检查是否属于已知冲突对。
+    # 实现 inference_rules.yaml Stage 2 的 ambiguity_threshold = 0.15 规则。
+    _AMBIGUITY_THRESHOLD = 0.15
+    _CONFLICT_PAIRS = frozenset([
+        frozenset(["ADAPTER", "DOMAIN"]),
+        frozenset(["APP", "DOMAIN"]),
+        frozenset(["ADAPTER", "APP"]),
+    ])
 
-    # 分项得分记录（取最高得分层的分量）
+    sorted_layers = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
+    best_layer = sorted_layers[0][0]
+    best_score = sorted_layers[0][1]
+    inference_ambiguous = False
+
+    if len(sorted_layers) >= 2:
+        second_layer = sorted_layers[1][0]
+        second_score = sorted_layers[1][1]
+        gap = best_score - second_score
+
+        if gap < _AMBIGUITY_THRESHOLD and best_score >= 0.25:
+            pair = frozenset([best_layer, second_layer])
+            if pair in _CONFLICT_PAIRS:
+                # 冲突检测：优先采用路径信号 tiebreaker
+                path_best = path_scores.get(best_layer, 0.0)
+                path_second = path_scores.get(second_layer, 0.0)
+                if path_second > path_best:
+                    # 路径信号支持次高分层，切换为次高分
+                    best_layer = second_layer
+                    best_score = second_score
+                # 标记为模糊（提交给 schema_evolution_report）
+                inference_ambiguous = True
+
+    # 分项得分记录（取最终确定的 best_layer 的分量）
     breakdown.path_score        = path_scores.get(best_layer, 0.0)
     breakdown.name_score        = name_scores.get(best_layer, 0.0)
     breakdown.annotation_score  = annot_scores.get(best_layer, 0.0)
     breakdown.inheritance_score = inh_scores.get(best_layer, 0.0)
     breakdown.import_score      = imp_scores.get(best_layer, 0.0)
+    breakdown.signature_score   = sig_scores.get(best_layer, 0.0)  # Phase 3
 
     min_conf = 0.25  # 与 fn_infer_layer.yaml 的 min_confidence 对齐
     inferred = best_layer if best_score >= min_conf else "UNKNOWN"
 
-    return LayerInference(
+    result = LayerInference(
         inferred_layer=inferred,
         confidence=round(best_score, 3),
         signal_breakdown=breakdown,
         all_scores={k: round(v, 3) for k, v in all_scores.items()},
     )
+    # 冲突标记（供 schema_evolution_report 收集）
+    if inference_ambiguous:
+        result.all_scores["_ambiguous"] = 1.0  # type: ignore[assignment]
+    return result
 
 
 # ─── fn_detect_code_object_type 实现 ──────────────────────────────────────────
@@ -771,7 +924,8 @@ def infer_all(
 
     执行顺序：
       1. YAML Override Pass（高置信度框架规则短路，零误判）
-      2. 五路信号融合推断（针对未命中 Override 的类，使用 weights_profile 权重）
+      2. 六路信号融合推断（针对未命中 Override 的类，使用 weights_profile 权重）
+         第 6 路（method_signature）默认权重为 0，通过 profile weights.signature 激活
 
     Args:
         ast_index:               build_ast_index() 的输出
@@ -835,7 +989,7 @@ def infer_all(
                 override_hits += 1
                 continue
 
-            # ── Pass 2: 五路信号融合推断（显式注入权重和强信号模式，无全局状态依赖）──
+            # ── Pass 2: 六路信号融合推断（显式注入权重和强信号模式，无全局状态依赖）──
             layer_inf = infer_layer(
                 file_path=file_path,
                 class_name=name,
@@ -847,6 +1001,7 @@ def infer_all(
                 signal_rules=signal_rules,
                 weights=active_weights,
                 strong_path_patterns=active_strong_patterns,
+                methods=cls.get("methods", []),  # Phase 3: 第 6 路方法签名信号
             )
             if layer_inf.confidence >= min_confidence:
                 parent_layers[name] = layer_inf.inferred_layer
