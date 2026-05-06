@@ -297,16 +297,20 @@ graph TD
     end
 ```
 
+
+
 ### 信号权重详情（六路）
 
-| 信号 | 默认权重 | 典型示例 |
-|------|---------|---------|
-| 路径信号 (`_score_path`) | 25% | `controller/` → ADAPTER（强信号 1.0）；`service/` → APP（强信号 1.0） |
-| 命名信号 (`_score_name`) | 25% | `*ServiceImpl` → APP；`*RepositoryImpl` → DOMAIN |
-| 注解信号 (`_score_annotation`) | 30% | `@RestController` → ADAPTER；`@Repository` → DOMAIN |
-| 继承信号 (`_score_inheritance`) | 10% | `JpaRepository` → DOMAIN(0.90)；`BaseSettings` → PLATFORM |
-| 导入信号 (`_score_import`) | 10% | 高入度 + 框架导入 → DOMAIN/PLATFORM |
-| 方法签名 (`_score_method_signature`) | 0%* | `handle/execute` → ADAPTER；`validate` → DOMAIN |
+
+| 信号                               | 默认权重 | 典型示例                                                       |
+| -------------------------------- | ---- | ---------------------------------------------------------- |
+| 路径信号 (`_score_path`)             | 25%  | `controller/` → ADAPTER（强信号 1.0）；`service/` → APP（强信号 1.0） |
+| 命名信号 (`_score_name`)             | 25%  | `*ServiceImpl` → APP；`*RepositoryImpl` → DOMAIN            |
+| 注解信号 (`_score_annotation`)       | 30%  | `@RestController` → ADAPTER；`@Repository` → DOMAIN         |
+| 继承信号 (`_score_inheritance`)      | 10%  | `JpaRepository` → DOMAIN(0.90)；`BaseSettings` → PLATFORM   |
+| 导入信号 (`_score_import`)           | 10%  | 高入度 + 框架导入 → DOMAIN/PLATFORM                               |
+| 方法签名 (`_score_method_signature`) | 0%*  | `handle/execute` → ADAPTER；`validate` → DOMAIN             |
+
 
 *方法签名信号默认关闭；go_gin / go_ddd profile 激活为 0.05。
 
@@ -335,25 +339,29 @@ ast_overrides:
 
 ## 5. 真实项目验证结果（4 个 stack 压测矩阵）
 
-| 项目 | 语言/框架 | Fixture | 关键验证 |
-|------|---------|---------|---------|
-| Spring Boot Demo | Java | `tests/fixtures/spring-boot-demo/` | Controller→ADAPTER / Repository→DOMAIN / 幂等性 |
-| FastAPI Demo | Python | `tests/fixtures/python-fastapi-demo/` | v5.0 universal layer ID 合规 / python_fastapi profile |
-| Go Gin Demo | Go | `tests/fixtures/go-gin-demo/` | go_gin profile / path 信号主导 / signature 激活 |
-| NestJS Demo | TypeScript | `tests/fixtures/typescript-nestjs-demo/` | ★ v5.0 新增 / @Controller→ADAPTER / @Injectable→APP / @Entity→DOMAIN |
+
+| 项目               | 语言/框架      | Fixture                                  | 关键验证                                                               |
+| ---------------- | ---------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| Spring Boot Demo | Java       | `tests/fixtures/spring-boot-demo/`       | Controller→ADAPTER / Repository→DOMAIN / 幂等性                       |
+| FastAPI Demo     | Python     | `tests/fixtures/python-fastapi-demo/`    | v5.0 universal layer ID 合规 / python_fastapi profile                |
+| Go Gin Demo      | Go         | `tests/fixtures/go-gin-demo/`            | go_gin profile / path 信号主导 / signature 激活                          |
+| NestJS Demo      | TypeScript | `tests/fixtures/typescript-nestjs-demo/` | ★ v5.0 新增 / @Controller→ADAPTER / @Injectable→APP / @Entity→DOMAIN |
+
 
 ---
 
 ## 6. 测试覆盖率（2026-05-06）
 
-| 文件 | 覆盖率 | 状态 |
-|------|--------|------|
-| `code_graph_builder.py` | ~95% | ✅ |
-| `memory_seed_generator.py` | ~99% | ✅ |
-| `signal_fusion.py` | ~92% | ✅ |
-| `ontology_populator.py` | ~86% | ✅ |
-| `schema_evolution.py` | — | 新增，待补全 |
-| `seed_packs/__init__.py` | ~83% | ✅ |
+
+| 文件                         | 覆盖率  | 状态     |
+| -------------------------- | ---- | ------ |
+| `code_graph_builder.py`    | ~95% | ✅      |
+| `memory_seed_generator.py` | ~99% | ✅      |
+| `signal_fusion.py`         | ~92% | ✅      |
+| `ontology_populator.py`    | ~86% | ✅      |
+| `schema_evolution.py`      | —    | 新增，待补全 |
+| `seed_packs/__init__.py`   | ~83% | ✅      |
+
 
 **相关测试文件**：
 
@@ -367,3 +375,4 @@ ast_overrides:
 - `tests/test_code_graph_builder.py`：依赖图构建测试
 - `tests/test_bootstrap_populator.py`：顶层编排器测试
 - `tests/test_ontology_principles.py`：★ 5 条本体设计原则 CI 合规检查
+

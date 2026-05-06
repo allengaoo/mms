@@ -875,23 +875,24 @@ pytest tests/integration/ -m integration              # 集成测试（真实 CL
 pytest tests/ --cov=src/mms --cov-report=html
 ```
 
-**当前覆盖率（2026-05-06）**：全项目整体 **~63%**，Layer 2（Bootstrap 86~99% / Ontology 83% / Memory 63% / Diagnostics 87~99%）。
+**当前覆盖率（2026-05-06）**：全项目整体 **~63%**，Layer 2（Bootstrap 86~~99% / Ontology 83% / Memory 63% / Diagnostics 87~~99%）。
 
 ### TDD 覆盖层（7 阶段 + Layer 2 专项）
 
-| 阶段              | 测试文件                                                        | 覆盖点                                                                    |
-| --------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 1 物理沙箱          | `tests/conftest.py`、`tests/fixtures/spring-boot-demo/`      | 全局 fixture（Spring Boot 靶机、Python 项目、VCR 配置）                           |
-| 2 纯函数           | `test_ast_skeleton.py`（+9）、`test_sanitize.py`（34）           | 语义哈希稳定性（格式化不漂移）、SanitizationGate 全模式                                  |
-| 3 VCR 控制流       | `test_autonomous_runner_control.py`（12）                     | max_turns 阻断、tool_finish 退出、`MaxTurnsExceededError`                    |
-| 4 Bootstrap 宏观  | `test_bootstrap_on_spring_boot.py`（15）                      | Spring Boot fixture 端到端、幂等性、dry_run、detected_stacks                   |
-| 5 安全门控          | `test_arch_check.py`（15）                                    | AC-1~AC-4 阳性 + 阴性（tmp_path 注入，完全离线）                                   |
-| 6 图演化           | `test_edge_decay.py`（+4）、`test_seed_absorber.py`（18）        | GC 物理剪枝、dry_run 不写磁盘、seed_absorber 噪声过滤                                |
-| 7 E2E Pass@1    | `test_layer1_swebench.py`（+9）                               | DualRailRunner 双轨对比、ΔPass@1、在线模式 mock 验证                              |
-| L2 Memory 单元   | `test_memory_engine_unit.py`（81）                            | TaskMatcher/IntentClassifier/MemoryGraph/Injector/memory_actions       |
-| L2 Memory 集成   | `test_memory_engine_integration.py`（21）                     | Bootstrap→Graph→Injector→Matcher 端到端联动                                |
-| L2 E2E         | `test_layer2_e2e.py`（24）+`test_layer2_e2e_extended.py`（32） | 全链路 Prompt 组装 / 跨语言一致性 / Schema↔Memory 一致性                           |
-| L2 诊断模块        | `test_diagnostics.py`（41）                                   | frontmatter 解析 / 数据收集器 / HTML 渲染器 / CLI E2E                           |
+
+| 阶段             | 测试文件                                                       | 覆盖点                                                              |
+| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1 物理沙箱         | `tests/conftest.py`、`tests/fixtures/spring-boot-demo/`     | 全局 fixture（Spring Boot 靶机、Python 项目、VCR 配置）                      |
+| 2 纯函数          | `test_ast_skeleton.py`（+9）、`test_sanitize.py`（34）          | 语义哈希稳定性（格式化不漂移）、SanitizationGate 全模式                             |
+| 3 VCR 控制流      | `test_autonomous_runner_control.py`（12）                    | max_turns 阻断、tool_finish 退出、`MaxTurnsExceededError`              |
+| 4 Bootstrap 宏观 | `test_bootstrap_on_spring_boot.py`（15）                     | Spring Boot fixture 端到端、幂等性、dry_run、detected_stacks              |
+| 5 安全门控         | `test_arch_check.py`（15）                                   | AC-1~AC-4 阳性 + 阴性（tmp_path 注入，完全离线）                              |
+| 6 图演化          | `test_edge_decay.py`（+4）、`test_seed_absorber.py`（18）       | GC 物理剪枝、dry_run 不写磁盘、seed_absorber 噪声过滤                          |
+| 7 E2E Pass@1   | `test_layer1_swebench.py`（+9）                              | DualRailRunner 双轨对比、ΔPass@1、在线模式 mock 验证                         |
+| L2 Memory 单元   | `test_memory_engine_unit.py`（81）                           | TaskMatcher/IntentClassifier/MemoryGraph/Injector/memory_actions |
+| L2 Memory 集成   | `test_memory_engine_integration.py`（21）                    | Bootstrap→Graph→Injector→Matcher 端到端联动                           |
+| L2 E2E         | `test_layer2_e2e.py`（24）+`test_layer2_e2e_extended.py`（32） | 全链路 Prompt 组装 / 跨语言一致性 / Schema↔Memory 一致性                       |
+| L2 诊断模块        | `test_diagnostics.py`（41）                                  | frontmatter 解析 / 数据收集器 / HTML 渲染器 / CLI E2E                      |
 
 
 ---

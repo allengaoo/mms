@@ -133,43 +133,53 @@ class ActionDef:
 
 ### 核心类与方法
 
-**`ObjectTypeRegistry`**
+`**ObjectTypeRegistry**`
 
-| 方法 | 说明 |
-|------|------|
-| `get(type_id)` | 懒加载并返回 `ObjectTypeDef`（首次读取 YAML 后缓存） |
-| `all_ids()` | 返回所有已注册的 ObjectType ID 列表 |
+
+| 方法                            | 说明                                                            |
+| ----------------------------- | ------------------------------------------------------------- |
+| `get(type_id)`                | 懒加载并返回 `ObjectTypeDef`（首次读取 YAML 后缓存）                         |
+| `all_ids()`                   | 返回所有已注册的 ObjectType ID 列表                                     |
 | `validate(type_id, instance)` | 校验实例数据：必填项、枚举约束、正则约束、`validation_rules`，返回 `ValidationResult` |
 
-**`FunctionRegistry`**
 
-| 方法 | 说明 |
-|------|------|
-| `get(fn_id)` | 懒加载并返回 `FunctionDef` |
+`**FunctionRegistry**`
+
+
+| 方法                                      | 说明                           |
+| --------------------------------------- | ---------------------------- |
+| `get(fn_id)`                            | 懒加载并返回 `FunctionDef`         |
 | `register_implementation(fn_id, py_fn)` | 将 Python 函数注册为某 Function 的实现 |
-| `call(fn_id, **kwargs)` | 统一调用接口（校验入参 → 执行 → 校验出参） |
-| `all_ids()` | 返回所有已注册的 Function ID 列表 |
+| `call(fn_id, **kwargs)`                 | 统一调用接口（校验入参 → 执行 → 校验出参）     |
+| `all_ids()`                             | 返回所有已注册的 Function ID 列表      |
 
-**`ActionRegistry`**
 
-| 方法 | 说明 |
-|------|------|
-| `get(action_id)` | 懒加载并返回 `ActionDef` |
-| `check_submission_criteria(action_id, context)` | 检查 Action 的前置条件是否满足 |
-| `all_ids()` | 返回所有已注册的 Action ID 列表 |
+`**ActionRegistry**`
 
-**`RuleEngine`**
 
-| 方法 | 说明 |
-|------|------|
+| 方法                                              | 说明                    |
+| ----------------------------------------------- | --------------------- |
+| `get(action_id)`                                | 懒加载并返回 `ActionDef`    |
+| `check_submission_criteria(action_id, context)` | 检查 Action 的前置条件是否满足   |
+| `all_ids()`                                     | 返回所有已注册的 Action ID 列表 |
+
+
+`**RuleEngine**`
+
+
+| 方法                            | 说明                                                                  |
+| ----------------------------- | ------------------------------------------------------------------- |
 | `execute(action_id, context)` | 按 `ActionDef.rules` 顺序执行：`skip_if` → `function_rule` → `validation` |
 
-**`OntologyRegistry`**（统一入口）
 
-| 方法 | 说明 |
-|------|------|
-| `validate_completeness()` | 启动时校验所有跨引用（link_types / fn_id）是否可解析 |
-| `summary()` | 打印已加载的 ObjectType / Function / Action 数量 |
+`**OntologyRegistry**`（统一入口）
+
+
+| 方法                        | 说明                                       |
+| ------------------------- | ---------------------------------------- |
+| `validate_completeness()` | 启动时校验所有跨引用（link_types / fn_id）是否可解析      |
+| `summary()`               | 打印已加载的 ObjectType / Function / Action 数量 |
+
 
 **全局工厂函数**：
 
@@ -208,6 +218,8 @@ sequenceDiagram
     ObjReg-->>Client: ValidationResult(errors=[])  # 空列表 = 通过
 ```
 
+
+
 ### 4.2 Action 执行流程（以 action_bootstrap 为例）
 
 ```mermaid
@@ -225,34 +237,42 @@ graph TD
     B -- 不通过 --> L[raise SubmissionCriteriaError]
 ```
 
+
+
 ---
 
 ## 5. ObjectType 全景（v5.0，10 种）
 
 ### 5.1 v5.0 新增 ObjectType（共享 _memory_base.yaml）
 
-| ObjectType | ID 前缀 | 典型 tier | 核心字段 | 语义 |
-|------------|---------|----------|---------|------|
-| `Pattern` | `PAT-*` | hot | `pattern_category`, `applicability`, `code_example`, `anti_pattern_risk` | 正向可复用架构模式 |
-| `Decision` | `AD-*` | hot | `status`(proposed/accepted/deprecated), `context`, `decision`, `consequences`, `alternatives` | 架构决策 ADR |
-| `AntiPattern` | `ANTI-*` | warm | `symptoms`, `causes`, `consequences`, `refactoring_path` | 反模式警告 |
-| `BusinessFlow` | `BIZ-*` | warm | `steps_summary`, `involves_layers`, `actors` | 跨层业务流程 |
+
+| ObjectType     | ID 前缀    | 典型 tier | 核心字段                                                                                          | 语义        |
+| -------------- | -------- | ------- | --------------------------------------------------------------------------------------------- | --------- |
+| `Pattern`      | `PAT-*`  | hot     | `pattern_category`, `applicability`, `code_example`, `anti_pattern_risk`                      | 正向可复用架构模式 |
+| `Decision`     | `AD-*`   | hot     | `status`(proposed/accepted/deprecated), `context`, `decision`, `consequences`, `alternatives` | 架构决策 ADR  |
+| `AntiPattern`  | `ANTI-*` | warm    | `symptoms`, `causes`, `consequences`, `refactoring_path`                                      | 反模式警告     |
+| `BusinessFlow` | `BIZ-*`  | warm    | `steps_summary`, `involves_layers`, `actors`                                                  | 跨层业务流程    |
+
 
 ### 5.2 向后兼容 ObjectType
 
-| ObjectType | ID 前缀 | 典型 tier | 核心字段 |
-|------------|---------|----------|---------|
-| `MemoryNode` | `MEM-L-` / `MEM-BOOT-` | hot/warm | `type`(pattern/decision/anti-pattern/business-flow), `layer`, `tier`, `tags`, `ast_pointer` |
-| `ArchDecision` | `AD-` | hot | `decision_context`, `rationale`, `decision_status`, `alternatives_considered` |
+
+| ObjectType     | ID 前缀                  | 典型 tier  | 核心字段                                                                                        |
+| -------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `MemoryNode`   | `MEM-L-` / `MEM-BOOT-` | hot/warm | `type`(pattern/decision/anti-pattern/business-flow), `layer`, `tier`, `tags`, `ast_pointer` |
+| `ArchDecision` | `AD-`                  | hot      | `decision_context`, `rationale`, `decision_status`, `alternatives_considered`               |
+
 
 ### 5.3 代码结构 ObjectType
 
-| ObjectType | 核心字段 |
-|------------|---------|
-| `CodeFile` | `file_path`, `lang`, `fingerprint`, `inferred_layer`, `layer_confidence`, `drift_suspected` |
-| `CodeClass` | `class_fqn`, `bases`, `annotations`, `methods`, `signal_breakdown`, `linked_memory_id` |
-| `CodeModule` | `module_path`, `lang`, `file_count`, `dominant_object_type` |
-| `DomainConcept` | `concept_id`, `label`, `keywords`, `aliases`, `is_auto_generated` |
+
+| ObjectType      | 核心字段                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `CodeFile`      | `file_path`, `lang`, `fingerprint`, `inferred_layer`, `layer_confidence`, `drift_suspected` |
+| `CodeClass`     | `class_fqn`, `bases`, `annotations`, `methods`, `signal_breakdown`, `linked_memory_id`      |
+| `CodeModule`    | `module_path`, `lang`, `file_count`, `dominant_object_type`                                 |
+| `DomainConcept` | `concept_id`, `label`, `keywords`, `aliases`, `is_auto_generated`                           |
+
 
 ### 5.4 v5.0 通用层 ID 枚举
 
@@ -276,30 +296,35 @@ layers:
 
 定义于 `assets/ontology_schema/_config/ontology_design_principles.yaml`，由 `tests/test_ontology_principles.py` 在 CI 中检查所有 ObjectType 和 Action YAML 的合规性。
 
-| ID | 原则 | 违反时的操作 |
-|----|------|------------|
-| `P1_density_over_completeness` | 空值率 > 30% 的字段必须重构或移除 | CI 告警 |
-| `P2_typed_relations_over_text` | 使用 LinkType 代替自由文本描述关系 | 设计审查 |
-| `P3_universal_schema_per_project_config` | 通用 Schema 与项目配置严格分离 | CI 拒绝 |
-| `P4_focused_object_types` | 每个 ObjectType 代表单一实体（禁止 type 字段切换语义） | 设计审查 |
-| `P5_schema_evolvable_with_migration` | Schema 变更必须附迁移脚本（幂等） | CI 拒绝 |
+
+| ID                                       | 原则                                   | 违反时的操作 |
+| ---------------------------------------- | ------------------------------------ | ------ |
+| `P1_density_over_completeness`           | 空值率 > 30% 的字段必须重构或移除                 | CI 告警  |
+| `P2_typed_relations_over_text`           | 使用 LinkType 代替自由文本描述关系               | 设计审查   |
+| `P3_universal_schema_per_project_config` | 通用 Schema 与项目配置严格分离                  | CI 拒绝  |
+| `P4_focused_object_types`                | 每个 ObjectType 代表单一实体（禁止 type 字段切换语义） | 设计审查   |
+| `P5_schema_evolvable_with_migration`     | Schema 变更必须附迁移脚本（幂等）                 | CI 拒绝  |
+
 
 ---
 
-## 7. 测试覆盖率（2026-05-06）
+## 7. 测试覆盖率
 
 `registry.py` 当前覆盖率：**~83%**
 
 **相关测试文件**：
 
-| 测试文件 | 覆盖内容 | 用例数 |
-|----------|----------|--------|
-| `test_ontology_registry.py` | ObjectTypeRegistry / FunctionRegistry / ActionRegistry / RuleEngine / OntologyRegistry 全面单测 | 41 |
-| `test_ontology_principles.py` | ★ 5 条本体设计原则 CI 合规检查（ObjectType/Action YAML 校验） | — |
-| `test_bootstrap_populator.py` | Action `action_bootstrap` 端到端执行 | — |
+
+| 测试文件                          | 覆盖内容                                                                                        | 用例数 |
+| ----------------------------- | ------------------------------------------------------------------------------------------- | --- |
+| `test_ontology_registry.py`   | ObjectTypeRegistry / FunctionRegistry / ActionRegistry / RuleEngine / OntologyRegistry 全面单测 | 41  |
+| `test_ontology_principles.py` | ★ 5 条本体设计原则 CI 合规检查（ObjectType/Action YAML 校验）                                              | —   |
+| `test_bootstrap_populator.py` | Action `action_bootstrap` 端到端执行                                                             | —   |
+
 
 **覆盖缺口（~17%）**：
 
 - `RuleEngine` 复杂嵌套规则链（多个 `function_rule` + `validation` 混合场景）
 - `FunctionRegistry.call` 出参校验路径
 - `OntologyRegistry.validate_completeness()` 的边缘异常处理
+
