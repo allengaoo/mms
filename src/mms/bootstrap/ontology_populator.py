@@ -59,6 +59,8 @@ class BootstrapV2Report:
     memories_generated: int = 0
     memories_per_layer: Dict[str, int] = field(default_factory=dict)
     memory_files: List[str] = field(default_factory=list)
+    seed_memories_loaded: int = 0      # Phase 8: 注入的 seed pack 记忆数量
+    weights_profile_used: str = ""     # Phase 3: 使用的权重 profile 名称
 
     dry_run: bool = False
     errors: List[str] = field(default_factory=list)

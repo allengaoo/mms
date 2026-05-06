@@ -103,7 +103,7 @@ class TestNestJSLayerInference:
 
     def _run_and_get_inferences(self, project_path):
         """运行 bootstrap 并提取层级推断结果（dry_run）。"""
-        from mms.bootstrap.ast_parser import build_ast_index
+        from mms.analysis.ast_skeleton import build_ast_index
         from mms.bootstrap.signal_fusion import infer_all
 
         ast_index = build_ast_index(project_path)

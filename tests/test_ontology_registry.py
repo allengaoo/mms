@@ -415,12 +415,12 @@ class TestOntologyRegistry:
         assert any("id" in e for e in result.errors)
 
     def test_validate_memory_node_invalid_layer(self):
-        """Bootstrap 内部层名（DOMAIN）不符合 MemoryNode schema。"""
+        """完全非法的 layer 值不符合 MemoryNode schema。"""
         reg = get_ontology_registry()
         instance = {
             "id": "MEM-BOOT-002",
             "type": "pattern",
-            "layer": "DOMAIN",   # ← 应使用 L3_domain
+            "layer": "INVALID_LAYER_XYZ",   # 不存在于 v4.x 或 v5.0 的值
             "tier": "warm",
             "tags": ["domain"],
         }
