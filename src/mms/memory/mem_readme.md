@@ -1,6 +1,6 @@
 # MMS Memory 模块 (src/mms/memory)
 
-> **最后更新**：2026-05-05 | Memory Engine v3.1
+> **最后更新**：2026-05-06 | Memory Engine v3.1（兼容 Schema v5.0）
 
 ## 1. 模块定位
 
@@ -50,7 +50,8 @@
 @dataclass
 class MemoryNode:
     id: str
-    layer: str        # CC / PLATFORM / DOMAIN / APP / ADAPTER / L1_platform 等
+    layer: str        # v5.0 通用层 ID：ADAPTER/APP/DOMAIN/PLATFORM/CC/CC_testing 等
+                      # （向后兼容旧版 L5_api/L4_service/L3_ontology 等）
     tier: str         # hot / warm / cold / archive
     tags: List[str]
     cites_files: List[str]
@@ -231,7 +232,7 @@ sequenceDiagram
     participant FS as 文件系统 (Markdown)
 
     EP->>Injector: inject(task="新增订单支付接口")
-    Injector->>IC: classify(task) → (layer=L4_application, op=create)
+    Injector->>IC: classify(task) → (layer=APP, op=create)
     IC-->>Injector: IntentResult(layer, op, confidence=0.85)
 
     Injector->>Resolver: hybrid_search("订单 支付 接口")
@@ -278,45 +279,60 @@ graph LR
 
 ---
 
-## 5. 记忆节点 Front-matter 标准格式（v4.0）
+## 5. 记忆节点 Front-matter 标准格式（v5.0）
+
+v5.0 使用聚焦 ObjectType 代替通用 `MemoryNode`（God Object 拆分），`layer` 字段直接使用通用层 ID：
 
 ```yaml
 ---
-id: MEM-L-021
-type: pattern            # pattern / decision / lesson / fact / constraint
-layer: DOMAIN            # CC / PLATFORM / DOMAIN / APP / ADAPTER / L1_platform 等
-tier: warm               # hot / warm / cold / archive
-tags: [grpc, dto, serialization]
+id: PAT-001                  # Pattern: PAT-* / Decision: AD-* / AntiPattern: ANTI-* / BusinessFlow: BIZ-*
+object_type: pattern         # pattern / decision / anti-pattern / business-flow
+layer: DOMAIN                # v5.0 通用层 ID（ADAPTER/APP/DOMAIN/PLATFORM/CC/CC_testing...）
+tier: warm                   # hot / warm / cold / archive
+tags: [ddd, repository-pattern, domain]
 cites_files:
-  - backend/app/services/user_service.py
+  - backend/domain/user_repository.py
 about_concepts:
-  - grpc
-  - dto
-impacts: [MEM-L-024]
-related_to: [AD-002]
+  - repository
+  - domain-driven-design
+impacts: [AD-002]
 derived_from: [AD-001]
 ast_pointer:
-  file_path: backend/app/services/user_service.py
-  class_name: UserService
+  file_path: backend/domain/user_repository.py
+  class_name: UserRepository
   fingerprint: sha256:abc123
   drift: false
 provenance:
   trigger_type: bootstrap_v2   # bootstrap_v2 | ep_postcheck_passed | manual
-  generated_at: 2026-05-02
-  layer_confidence: 0.85
+  generated_at: 2026-05-06
+  layer_confidence: 0.92
 version: 1
-created_at: 2026-05-02
+created_at: 2026-05-06
 ---
-# UserService — gRPC DTO 序列化规范
+# UserRepository — DDD Repository 模式
 
 ...（正文内容）
 ```
 
+**v4.0 格式（向后兼容，仍受 validator 支持）**：
+
+```yaml
+---
+id: MEM-L-021
+type: pattern            # 旧版 type 字段（向后兼容）
+layer: L3_ontology       # 旧版细粒度 ID（v4.x 向后兼容）
+tier: warm
+tags: [grpc, dto]
+...
+```
+
+> 可通过 `scripts/migrate_layer_v4_to_v5.py --apply` 将 v4.x 格式升级为 v5.0。
+
 ---
 
-## 6. 测试覆盖率（2026-05-05）
+## 6. 测试覆盖率（2026-05-06）
 
-整体 Memory Engine 覆盖率：**63%**
+整体 Memory Engine 覆盖率：**~63%**（兼容 v5.0 通用层 ID）
 
 **相关测试文件**：
 
@@ -330,12 +346,18 @@ created_at: 2026-05-02
 | `test_freshness_checker.py` | 新鲜度检测核心逻辑 | — |
 | `test_template_lib.py` | 模板库懒加载 | — |
 
+**v5.0 兼容性说明**：
+
+`graph_resolver.py` 中的 `_normalize_layer()` 函数处理 v4.x / v5.0 双版本 layer ID：
+- v5.0 通用层 ID（ADAPTER/APP/DOMAIN 等）直接使用
+- v4.x 细粒度 ID（L5_api/L4_service/L3_ontology 等）自动归一化为通用层
+
 **仍有缺口（待完善）**：
 
 | 文件 | 覆盖率 | 缺口描述 |
 |------|--------|---------|
-| `codemap.py` | 29% | `generate_codemap` 主体扫描逻辑，需真实目录 fixture |
-| `entropy_scan.py` | 49% | `run_full_scan` 高阶函数 |
-| `memory_actions.py` | 56% | 真实写入路径（依赖 `_layer_to_dir`） |
-| `dream.py` | 63% | EP 完整蒸馏流程（需 LLM mock） |
-| `intent_classifier.py` | 61% | Level 3 LLM fallback 路径 |
+| `codemap.py` | ~29% | `generate_codemap` 主体扫描逻辑，需真实目录 fixture |
+| `entropy_scan.py` | ~49% | `run_full_scan` 高阶函数 |
+| `memory_actions.py` | ~56% | 真实写入路径（依赖 `_layer_to_dir`） |
+| `dream.py` | ~63% | EP 完整蒸馏流程（需 LLM mock） |
+| `intent_classifier.py` | ~61% | Level 3 LLM fallback 路径 |

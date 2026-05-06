@@ -136,17 +136,19 @@ src/mms/bootstrap/                         Bootstrap v2（六步，零 LLM）
 ├── ontology_populator.py  action_bootstrap 编排器（CLI 主入口）
 │   Step 1    dep_sniffer 技术栈嗅探
 │   Step 1.5  ★ 项目文档扫描（CONTRIBUTING.md/.cursorrules → seed_absorber）
-│   Step 2    种子包注入（v3.1 格式）
-│   Step 3    AST 骨架化（多语言）
+│   Step 2    种子包注入
+│   Step 3    AST 骨架化（多语言：Python/Java/Go/TypeScript）
 │   Step 4    代码依赖图（depends_on / implements 边）
-│   Step 5    五路信号推断（Override Pass 优先 → 信号融合兜底）
-│   Step 6    生成 MEM-BOOT-*.md 初始记忆
+│   Step 5    ★ 六路信号推断（Evaluation DAG：短路→冲突检测→加权融合）
+│   Step 6    生成 MEM-BOOT-*.md 初始记忆（v5.0 通用层 ID）
+│   Step 7    Bootstrap 结构性 GC + Schema 演进反馈报告
 │
-├── signal_fusion.py       ★ YAML-driven Override Pass + 五路信号融合
-│   ├── load_overrides()   从 seed_packs/*/match_conditions.yaml 加载规则
-│   ├── apply_override()   基类/注解/类名后缀三维匹配（短路推断）
-│   └── infer_all()        Override Pass → 五路信号融合（双轮）
+├── signal_fusion.py       ★ Evaluation DAG + 六路信号融合
+│   ├── Stage 1            短路规则（inference_rules.yaml，confidence=0.85~0.98）
+│   ├── Stage 2            冲突检测（gap < 0.15 → 路径 tiebreaker）
+│   └── Stage 3            六路加权：path·name·annotation·inheritance·import·signature
 │
+├── schema_evolution.py    ★ Schema 演进反馈回路（jsonl + markdown 报告）
 ├── code_graph_builder.py  fn_build_code_graph（depends_on/implements 图）
 └── memory_seed_generator.py MEM-BOOT-*.md 初始记忆生成器
 
@@ -165,13 +167,15 @@ src/mms/memory/            记忆图谱（16 个模块）
 ├── task_matcher.py        任务-记忆相关度匹配
 └── private.py             EP 私有工作区
 
-docs/memory/ontology/      YAML 本体定义（无代码修改可扩展）
-├── memory_schema.yaml     记忆节点通用 JSON Schema（front-matter v4.0）
-├── objects/   (8 个 ObjectType YAML)
-├── links/     (8 个 LinkType YAML)
+assets/ontology_schema/    YAML 本体定义（无代码修改可扩展）[Schema v5.0]
+├── memory_schema.yaml     记忆节点通用 JSON Schema（兼容 v4.0/v5.0）
+├── objects/   (10 个 ObjectType YAML，含 v5.0 新增 Pattern/Decision/AntiPattern/BusinessFlow)
+│   └── _memory_base.yaml  ★ 共享基础 Schema（模拟 Palantir Interface）
+├── links/     (9 个 LinkType YAML)
 ├── functions/ (9 个 Function YAML)
 ├── actions/   (5 个 Action YAML)
-└── _config/traversal_paths.yaml  图遍历路径配置
+├── rules/     ★ 独立 Rule 定义（rule_bootstrap_pipeline / rule_memory_quality / rule_post_apply_incremental）
+└── _config/   ★ universal_layers.yaml / ontology_design_principles.yaml / inference_rules.yaml
 
 seed_packs/                框架种子包（YAML 驱动，含 ast_overrides）
 ├── base/                  通用约束（always_inject=true）
@@ -316,22 +320,18 @@ mulan bootstrap [--root PATH] [--min-confidence 0.5] [--max-per-layer 10]
 │  Step 4   代码依赖图（code_graph_builder.py）                         │
 │    → CodeGraph{depends_on, implements, in_degree 索引}              │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Step 5   ★ YAML Override Pass → 五路信号融合                        │
+│  Step 5   ★ Evaluation DAG — 六路信号推断（v5.0）                    │
 │                                                                     │
-│  Pass 1: YAML Override（短路高置信度框架规则）                        │
-│    从 seed_packs/*/match_conditions.yaml 加载 ast_overrides          │
-│    匹配条件（AND 关系）：bases_contains / annotation_contains /       │
-│                         name_suffix（三维可选）                      │
+│  Stage 1: Short-circuit Rules（inference_rules.yaml）                │
+│    命中即停止（confidence=0.85~0.98），覆盖主流框架明确类型            │
+│    示例：@RestController → ADAPTER(0.98) / @Entity → DOMAIN(0.95)   │
+│                                                                     │
+│  Stage 2: YAML Override Pass（seed_packs/*/match_conditions.yaml）  │
+│    bases_contains / annotation_contains / name_suffix               │
 │    命中 → 直接锁定 layer + object_type（confidence=1.0）              │
+│    示例：bases_contains: "JpaRepository" → DOMAIN(1.0)              │
 │                                                                     │
-│    示例规则（spring_boot）：                                          │
-│    ┌──────────────────────────────────────────────────────────┐     │
-│    │ bases_contains: "JpaRepository"                          │     │
-│    │ force_layer: "DOMAIN"  force_object_type: "Repository"  │     │
-│    │ confidence: 1.0                                          │     │
-│    └──────────────────────────────────────────────────────────┘     │
-│                                                                     │
-│  Pass 2: 五路信号融合（未命中 Override 的类）                         │
+│  Stage 3: 六路信号加权融合（未命中上述的类）                           │
 │    ┌────────────┬────────┬─────────────────────────────────────┐    │
 │    │ 信号       │ 权重   │ 示例                                 │    │
 │    ├────────────┼────────┼─────────────────────────────────────┤    │
@@ -340,17 +340,24 @@ mulan bootstrap [--root PATH] [--min-confidence 0.5] [--max-per-layer 10]
 │    │ 注解信号   │ 30%    │ @Repository → DOMAIN                │    │
 │    │ 继承信号   │ 10%    │ JpaRepository → DOMAIN(0.90)        │    │
 │    │ 导入信号   │ 10%    │ 高入度 → DOMAIN/PLATFORM            │    │
+│    │ 方法签名   │  0%*   │ handle/execute → ADAPTER            │    │
 │    └────────────┴────────┴─────────────────────────────────────┘    │
+│    * 默认关闭；Go 项目 profile 可激活（0.05）                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Step 6   生成初始记忆（memory_seed_generator.py）                   │
 │    置信度 ≥ min_confidence → MEM-BOOT-NNN.md                        │
-│    含 tags / cites_files / ast_pointer / layer_confidence           │
+│    layer 字段直接写入 v5.0 通用层 ID（ADAPTER/APP/DOMAIN/PLATFORM/CC）│
+├─────────────────────────────────────────────────────────────────────┤
+│  Step 7   Bootstrap 结构性 GC + Schema 演进反馈                      │
+│    _run_structural_gc()：软归档已删除类的孤立 MEM-BOOT-*.md          │
+│    schema_evolution.py：生成高空字段率/模糊推断/UNKNOWN 统计报告      │
 └─────────────────────────────────────────────────────────────────────┘
 
-验证结果（零 LLM 调用）：
-  FastAPI-Template（Python）：47 文件 / 31 类 → 9 条记忆
-  Go-Clean-Template（Go）  ：98 文件 / 101 类 → 14 条记忆
-  Spring-Petclinic（Java） ：42 文件 / 52 类 → 4 条记忆
+验证结果（零 LLM 调用，4 个 stack 压测矩阵）：
+  FastAPI-Demo（Python）     ：v5.0 universal layer ID 合规
+  Spring-Boot-Demo（Java）   ：Controller→ADAPTER / Repository→DOMAIN / 幂等
+  Go-Gin-Demo（Go）          ：go_gin profile / path 信号主导
+  NestJS-Demo（TypeScript）  ：★ v5.0 新增 / @Controller→ADAPTER / @Entity→DOMAIN
 ```
 
 ---
@@ -396,36 +403,38 @@ mulan ep run EP-NNN  （config.yaml: execution_mode=autonomous）
 
 ---
 
-### ObjectType 全景图（8 种）
+### ObjectType 全景图（v5.0，10 种）
 
 ```
-Layer 1：代码结构对象
-┌─────────────┐   ┌──────────────┐   ┌─────────────────┐
-│  CodeFile   │   │  CodeClass   │   │   CodeModule    │
-│  file_path  │   │  class_fqn   │   │  module_path    │
-│  lang       │   │  bases[]     │   │  lang           │
-│  fingerprint│   │  annotations │   │  file_count     │
-│  inferred_  │   │  methods[]   │   │  inferred_layer │
-│    layer    │   │  inferred_   │   │  object_type_   │
-│  object_type│   │    layer     │   │    hint         │
-│    _hint    │   │  confidence  │   └─────────────────┘
-└─────────────┘   └──────────────┘
+代码结构对象（4 种）
+┌─────────────┐   ┌──────────────┐   ┌─────────────────┐   ┌──────────────────┐
+│  CodeFile   │   │  CodeClass   │   │   CodeModule    │   │  DomainConcept   │
+│  file_path  │   │  class_fqn   │   │  module_path    │   │  concept_id      │
+│  lang       │   │  bases[]     │   │  lang           │   │  keywords[]      │
+│  fingerprint│   │  annotations │   │  file_count     │   │  related_to[]    │
+│  inferred_  │   │  methods[]   │   │  inferred_layer │   │  is_auto_gen     │
+│    layer    │   │  signal_     │   │  dominant_obj_  │   └──────────────────┘
+└─────────────┘   │  breakdown   │   │    type         │
+                  └──────────────┘   └─────────────────┘
 
-Layer 2：记忆图谱对象
-┌─────────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐
-│ MemoryNode  │  │ArchDecision  │  │  Lesson  │  │  Pattern   │
-│ id (MEM-*)  │  │ id (AD-*)    │  │ ep_id    │  │ id (PAT-*) │
-│ layer       │  │ status       │  │ outcome  │  │ reusable   │
-│ tier        │  │ alternatives │  │ root_    │  │ example_   │
-│ tags[]      │  │ consequences │  │   cause  │  │   code     │
-│ cites_files │  │ tier: hot    │  │ tier:warm│  │ tier: hot  │
-│ about_      │  └──────────────┘  └──────────┘  └────────────┘
-│   concepts  │
-│ ast_pointer │  ┌───────────────────────────────────────┐
-│ provenance  │  │          DomainConcept                │
-└─────────────┘  │ concept_id  description  layer       │
-                 │ keywords[]  related_to[]             │
-                 └───────────────────────────────────────┘
+记忆图谱对象（v5.0，共享 _memory_base.yaml）
+┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
+│  Pattern    │  │  Decision    │  │  AntiPattern │  │  BusinessFlow    │
+│ PAT-* 前缀  │  │  AD-* 前缀   │  │  ANTI-* 前缀 │  │  BIZ-* 前缀      │
+│ category    │  │  status      │  │  symptoms    │  │  steps_summary   │
+│ applicab-   │  │  context     │  │  causes      │  │  involves_layers │
+│   ility     │  │  decision    │  │  consequen-  │  │  actors          │
+│ code_example│  │  consequen-  │  │    ces       │  └──────────────────┘
+│ anti_pattern│  │    ces       │  │  refactoring │
+│    _risk    │  │  alternatives│  │    _path     │
+└─────────────┘  └──────────────┘  └──────────────┘
+
+向后兼容（保留）
+┌─────────────┐  ┌──────────────┐
+│ MemoryNode  │  │ ArchDecision │
+│ MEM-* 前缀  │  │  AD-* 前缀   │
+│ (通用节点)  │  │  (旧版ADR)   │
+└─────────────┘  └──────────────┘
 ```
 
 ---
@@ -507,30 +516,28 @@ docs/memory/shared/                      保护系数（GC 淘汰难度）
 └── ADAPTER/     外部适配（REST/DB/MQ）        0.0  ← 最易淘汰
     （各目录随 Bootstrap v2 / EP 蒸馏自动填充）
 
-记忆 front-matter 标准格式（v4.0）：
+记忆 front-matter 标准格式（v5.0）：
 ---
-id: MEM-L-021
-type: pattern            # pattern / decision / lesson / fact
-layer: DOMAIN            # CC / PLATFORM / DOMAIN / APP / ADAPTER
-tier: warm               # hot / warm / cold
-tags: [grpc, dto]
+id: PAT-001                  # Pattern:PAT-* / Decision:AD-* / AntiPattern:ANTI-* / BizFlow:BIZ-*
+object_type: pattern         # pattern / decision / anti-pattern / business-flow
+layer: DOMAIN                # v5.0 通用层：ADAPTER/APP/DOMAIN/PLATFORM/CC/CC_testing...
+tier: warm                   # hot / warm / cold / archive
+tags: [ddd, repository]
 cites_files:
-  - backend/app/services/user_service.py
+  - backend/domain/user_repository.py
 about_concepts:
-  - grpc
-impacts: [MEM-L-024]
-derived_from: [AD-002]
+  - repository
 ast_pointer:
-  file_path: backend/app/services/user_service.py
-  class_name: UserService
+  file_path: backend/domain/user_repository.py
+  class_name: UserRepository
   fingerprint: sha256:abc123
   drift: false
 provenance:
   trigger_type: bootstrap_v2 | ep_postcheck_passed
-  generated_at: 2026-05-02
-  layer_confidence: 0.85
+  generated_at: 2026-05-06
+  layer_confidence: 0.92
 version: 1
-created_at: 2026-05-02
+created_at: 2026-05-06
 ---
 ```
 
@@ -694,7 +701,10 @@ mms/
     ├── cassettes/                 VCR cassette 存储（pytest-recording）
     ├── integration/               集成测试（真实 CLI 调用）
     ├── benchmark/                 Benchmark v2 单元测试
-    └── test_*.py                  单元测试（1063 tests passed）
+    ├── fixtures/go-gin-demo/      ★ Go Gin 靶机
+├── fixtures/python-fastapi-demo/ ★ Python FastAPI 靶机
+├── fixtures/typescript-nestjs-demo/ ★ TypeScript NestJS 靶机（v5.0 新增）
+└── test_*.py                  单元测试
 ```
 
 ---
@@ -859,13 +869,13 @@ mulan ast-diff
 ## 测试
 
 ```bash
-pytest tests/ -v                                      # 全量（1573 passed）
+pytest tests/ -v --ignore=tests/benchmark --ignore=tests/dag --ignore=tests/integration --ignore=tests/execution --ignore=tests/eval  # 全量
 pytest tests/ -m "not slow and not integration"       # 快速单元测试
 pytest tests/integration/ -m integration              # 集成测试（真实 CLI）
 pytest tests/ --cov=src/mms --cov-report=html
 ```
 
-**当前覆盖率（2026-05-05）**：全项目整体 **63%**，Layer 2（Bootstrap 86~99% / Ontology 83% / Memory 63% / Diagnostics 99%）。
+**当前覆盖率（2026-05-06）**：全项目整体 **~63%**，Layer 2（Bootstrap 86~99% / Ontology 83% / Memory 63% / Diagnostics 87~99%）。
 
 ### TDD 覆盖层（7 阶段 + Layer 2 专项）
 
