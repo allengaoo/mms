@@ -1,0 +1,165 @@
+# RuleDef: rule_post_apply_incremental — 增量应用后置规则
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 5：Automation 事件驱动规则（通过 rules 系统实现，不依赖独立 automations/ 模块）
+#
+# 触发场景：
+#   当 Agent 执行代码修改（edit_file / create_file / delete_file）后自动触发，
+#   完成内存层面的增量同步，避免每次都运行完整 bootstrap 带来的性能损耗。
+#
+# 设计依据（用户确认）：
+#   Mulan 中的 automation = rules，无独立 automations/ 目录。
+#   本文件定义的是 post-apply 阶段的 rule，属于 action_apply 的后置检查链。
+#
+# Palantir 对应概念：
+#   Rule — 对 Action 执行逻辑的声明式约束
+#   Event Trigger — 类似 Foundry 的 Webhook/Trigger，由 Action 完成信号触发
+#
+# 版本：v5.0 | 创建于：2026-05-06 | Phase 5
+
+id: rule_group_post_apply_incremental
+label: "增量代码应用后置规则"
+version: "5.0"
+belongs_to_action: action_apply
+trigger:
+  event: "action_apply.completed"
+  condition: "any file was created, modified, or deleted"
+
+declared_principles:
+  - P1_density_over_completeness
+  - P5_schema_evolvable_with_migration
+
+principle_notes: |
+  增量规则避免全量 Bootstrap 的开销（P1：高密度、低 token 消耗）。
+  每条规则都是幂等的，可安全重复触发（P5：可演进 schema 需要可重入操作）。
+
+# ─── 前置条件 ─────────────────────────────────────────────────────────────────
+
+submission_criteria:
+  - criterion_id: apply_result_available
+    description: "必须有 action_apply 的执行结果（受影响的文件列表）"
+    check: "apply_result.affected_files is not None and len > 0"
+    error_message: "action_apply 结果缺失，无法执行增量后置规则"
+
+  - criterion_id: mem_root_writable
+    description: "docs/memory/ 目录可写"
+    check: "docs/memory directory is writable"
+    error_message: "记忆目录不可写"
+
+# ─── 规则链 ──────────────────────────────────────────────────────────────────
+
+rules:
+
+  - rule_id: rule_post_01_classify_changes
+    label: "变更分类"
+    step: 1
+    type: classification_rule
+    implementation: "mms.bootstrap.incremental.classify_apply_changes(affected_files)"
+    inputs: [affected_files]
+    outputs:
+      created_files: "list[FilePath]"
+      modified_files: "list[FilePath]"
+      deleted_files: "list[FilePath]"
+    description: |
+      将 action_apply 的输出按变更类型分类：
+      - 新创建的文件 → 需要 Bootstrap 生成新 MEM-BOOT-*.md
+      - 修改的文件 → 需要更新对应 MEM-BOOT-*.md 的元数据
+      - 删除的文件 → 触发 Structural GC（同步 rule_08_structural_gc 逻辑）
+
+  - rule_id: rule_post_02_parse_new_files
+    label: "解析新增文件"
+    step: 2
+    type: function_rule
+    function: fn_build_ast_index
+    implementation: "mms.bootstrap.ast_parser.parse_files(created_files)"
+    inputs: [created_files]
+    outputs: [incremental_ast_index]
+    skip_if: "len(created_files) == 0"
+    description: |
+      对新创建的源文件进行 AST 解析，提取类名、注解、基类、方法签名等信号。
+      仅处理新文件，不重新扫描整个项目（增量效率保障）。
+
+  - rule_id: rule_post_03_infer_layers_for_new
+    label: "推断新文件层级"
+    step: 3
+    type: function_rule
+    function: fn_infer_layer
+    implementation: "mms.bootstrap.signal_fusion.infer_all(incremental_ast_index)"
+    inputs: [incremental_ast_index]
+    outputs: [incremental_layer_inferences]
+    skip_if: "incremental_ast_index is empty"
+    description: |
+      对新文件的类运行六路信号推断（含 Phase 3 的 method_signature 信号）。
+      使用项目已有的 weights_profile，保持与首次 Bootstrap 一致的推断策略。
+
+  - rule_id: rule_post_04_generate_new_memories
+    label: "生成新记忆节点"
+    step: 4
+    type: function_rule
+    function: fn_generate_memory_md
+    implementation: "mms.bootstrap.memory_seed_generator.generate_for_classes(incremental_layer_inferences)"
+    inputs: [incremental_layer_inferences]
+    outputs: [new_memory_files]
+    skip_if: "incremental_layer_inferences is empty"
+    description: |
+      为推断出的新类生成 MEM-BOOT-*.md 文件。
+      仅生成 code_type 为 Service/Repository/Controller/Entity 等有价值类型的记忆，
+      跳过工具类和常量类（符合 P1 信息密度原则）。
+
+  - rule_id: rule_post_05_update_modified_memories
+    label: "更新已修改文件的记忆"
+    step: 5
+    type: update_rule
+    implementation: "mms.bootstrap.incremental.update_existing_memories(modified_files, mem_root)"
+    inputs: [modified_files, mem_root]
+    outputs: [updated_memory_files]
+    skip_if: "len(modified_files) == 0"
+    description: |
+      对已修改文件对应的 MEM-BOOT-*.md 进行元数据更新：
+      - 更新 provenance.generated_at 时间戳
+      - 若类名/层级发生变化，更新对应字段
+      - 不覆盖人工编辑的正文内容（仅更新 frontmatter）
+      保留原有内容的完整性，避免破坏经人工校正的记忆。
+
+  - rule_id: rule_post_06_gc_deleted_files
+    label: "GC：清理已删除文件对应的记忆"
+    step: 6
+    type: maintenance_rule
+    implementation: "mms.bootstrap.ontology_populator._run_structural_gc_for_files(deleted_files, mem_root)"
+    inputs: [deleted_files, mem_root]
+    outputs: [archived_memory_files]
+    skip_if: "len(deleted_files) == 0"
+    action_on_orphan: archive
+    description: |
+      对删除文件触发结构性 GC：
+      - 扫描 MEM-BOOT-*.md，找到 ast_file 或 class_name 与已删除文件对应的记忆
+      - 软删除（归档到 _archived/），不物理删除
+      与全量 Bootstrap 的 rule_08_structural_gc 逻辑共享实现，
+      但仅处理本次变更的已删除文件（增量效率优化）。
+
+  - rule_id: rule_post_07_emit_schema_evolution_signal
+    label: "发射 Schema 演进信号"
+    step: 7
+    type: side_effect
+    implementation: "mms.bootstrap.schema_evolution.record_incremental_stats(new_memory_files, archived_memory_files)"
+    inputs: [new_memory_files, archived_memory_files, incremental_layer_inferences]
+    outputs: [incremental_stats_entry]
+    skip_if: "dry_run == true"
+    description: |
+      向 schema_evolution_report 追加一条增量执行统计记录（Phase 8 的数据源）：
+      - 新生成记忆数 + 更新数 + 归档数
+      - 模糊推断（inference_ambiguous=true）的类列表
+      - UNKNOWN 层级的类列表
+      数据格式：JSONL（追加写入，不覆盖历史记录）。
+
+# ─── 错误处理 ─────────────────────────────────────────────────────────────────
+
+error_handling:
+  on_rule_failure:
+    default: "log_and_continue"
+    description: |
+      增量规则失败不阻塞主流程（code apply 已完成）。
+      记录错误到 .mms/logs/incremental_errors.log，
+      并在下次全量 Bootstrap 时自动修复不一致状态。
+  on_critical_failure:
+    condition: "rule_post_01 失败（无法分类变更）"
+    action: "skip all subsequent rules and log warning"

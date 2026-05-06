@@ -34,10 +34,10 @@ _MEMORY_ROOT = _ROOT / "docs" / "memory"
 class NodeData:
     """一个记忆节点的核心属性，直接映射到 vis-network 图节点。"""
     id: str
-    label: str           # 显示标签（id 或截断后的 class_name）
+    label: str           # 显示标签（id 或截断后的 class_name），含 ObjectType badge
     layer: str
     tier: str            # hot / warm / cold / archive
-    node_type: str       # decision / pattern / constraint / ...
+    node_type: str       # decision / pattern / anti-pattern / business-flow / ...
     tags: List[str]
     file_path: str       # 相对于项目根目录的记忆文件路径
     title: str           # 鼠标悬浮提示（详细信息）
@@ -46,6 +46,9 @@ class NodeData:
     ast_drift: bool = False
     layer_confidence: float = 0.0
     about_concepts: List[str] = field(default_factory=list)
+    # Phase 7: ObjectType 边框颜色（叠加在 tier 背景色之上）
+    # pattern=紫 / decision=青绿 / anti-pattern=深红 / business-flow=深蓝
+    border_color: str = "#6b7280"  # 默认灰色
 
 
 @dataclass
@@ -273,7 +276,7 @@ class MemoryVizCollector:
         data = collector.collect(project_name="my-project")
     """
 
-    # tier → vis-network 节点颜色
+    # tier → vis-network 节点颜色（节点背景色）
     _TIER_COLORS = {
         "hot":     "#ef4444",  # 红
         "warm":    "#f97316",  # 橙
@@ -281,16 +284,49 @@ class MemoryVizCollector:
         "archive": "#9ca3af",  # 灰
     }
 
-    # layer → 简短标签
+    # Phase 7: ObjectType → 节点边框颜色（区分 4 种记忆语义类型）
+    # 用边框颜色叠加在 tier 背景色之上，实现"tier 填充 + type 边框"双维度编码
+    _OBJECT_TYPE_BORDER_COLORS = {
+        # v5.0 新 ObjectType（拆分自 MemoryNode God Object）
+        "pattern":      "#7c3aed",   # 紫色：正向架构模式（"应该这样做"）
+        "decision":     "#0f766e",   # 青绿色：架构决策 ADR（"为什么这样选"）
+        "anti-pattern": "#b91c1c",   # 深红色：反模式警告（"不要这样做"）
+        "business-flow":"#1d4ed8",   # 深蓝色：跨层业务流程（"端到端流程"）
+        # 兼容旧类型（v4.x 迁移期间保留）
+        "skill":        "#64748b",   # 石板灰：旧 skill 类型
+        "error":        "#dc2626",   # 红：错误记录
+        "lesson":       "#64748b",   # 石板灰：历史遗留（已废弃）
+    }
+
+    # ObjectType → 简短标签后缀（显示在节点标签后）
+    _OBJECT_TYPE_BADGE = {
+        "pattern":      "[P]",
+        "decision":     "[D]",
+        "anti-pattern": "[A]",
+        "business-flow":"[B]",
+        "skill":        "[S]",
+        "error":        "[E]",
+    }
+
+    # layer → 简短标签（v5.0 通用层 ID + v4.x 向后兼容）
     _LAYER_LABELS = {
+        # v5.0 通用层（universal_layers.yaml）
+        "ADAPTER":       "ADPT",
+        "APP":           "APP",
+        "DOMAIN":        "DOM",
+        "PLATFORM":      "PLAT",
+        "CC":            "CC",
+        "CC_testing":    "CC-T",
+        "CC_governance": "CC-G",
+        "BIZ":           "BIZ",
+        "Ops":           "OPS",
+        # v4.x 项目特化 ID（向后兼容，迁移期保留）
         "L1_platform":    "L1",
         "L2_infrastructure": "L2",
         "L3_domain":      "L3",
         "L4_application": "L4",
         "L5_interface":   "L5",
-        "CC":             "CC",
-        "BIZ":            "BIZ",
-        "PLATFORM":       "PLAT",
+        "CC_architecture": "CC-A",
     }
 
     def __init__(self, memory_root: Optional[Path] = None, project_root: Optional[Path] = None):
@@ -357,11 +393,18 @@ class MemoryVizCollector:
                 rel_path = str(md_file)
 
             layer_short = self._LAYER_LABELS.get(layer, layer)
+            # Phase 7: ObjectType 边框颜色（双维度视觉编码）
+            type_badge = self._OBJECT_TYPE_BADGE.get(node_type, "")
+            border_color = self._OBJECT_TYPE_BORDER_COLORS.get(
+                node_type, "#6b7280"  # 默认灰色边框
+            )
+            labeled_text = f"{label_text} {type_badge}".strip() if type_badge else label_text
+
             tooltip = (
                 f"ID: {node_id}\n"
                 f"Layer: {layer} ({layer_short})\n"
                 f"Tier: {tier}\n"
-                f"Type: {node_type}\n"
+                f"ObjectType: {node_type} {type_badge}\n"
                 f"Confidence: {confidence:.0%}\n"
                 + (f"AST: {ast_class} @ {ast_file}\n" if ast_file else "")
                 + (f"Drift: ⚠️ YES\n" if ast_drift else "")
@@ -370,7 +413,7 @@ class MemoryVizCollector:
 
             nodes.append(NodeData(
                 id=node_id,
-                label=label_text,
+                label=labeled_text,
                 layer=layer,
                 tier=tier,
                 node_type=node_type,
@@ -382,6 +425,7 @@ class MemoryVizCollector:
                 ast_drift=ast_drift,
                 layer_confidence=confidence,
                 about_concepts=about_concepts,
+                border_color=border_color,  # Phase 7: ObjectType 边框着色
             ))
 
             # 收集 AST 映射

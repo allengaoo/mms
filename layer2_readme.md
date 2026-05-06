@@ -748,30 +748,132 @@ python3 scripts/visualize_memory.py --memory-root tests/fixtures/go-gin-demo/doc
 
 > 标记说明：✅ = 已实施  🔄 = 进行中  ⏳ = 待实施
 
-| 优先级 | 状态 | 问题                                                                     | 处理结果 / 后续方向                                |
-| --- | --- | ---------------------------------------------------------------------- | ------------------------------------------- |
-| P0  | ✅  | `rules/` 目录缺失，Rule 散落在 Action 的 YAML 字段中                               | 已创建 `assets/ontology_schema/rules/`，含 `rule_bootstrap_pipeline.yaml`（9 条 Rule）和 `rule_memory_quality.yaml`（7 条 Rule） |
-| P1  | ✅  | `signal_weights.yaml` 中 `strong_path_patterns` 等 profile 专有字段尚未被推断引擎加载 | 新增 `get_strong_path_patterns()`；`_score_path()` 和 `infer_layer()` 增加 `strong_path_patterns` 参数；`infer_all()` 自动从 profile 加载并注入 |
-| P1  | ✅  | Bootstrap 删除的类，其旧 MEM-BOOT-*.md 不会自动清理（孤立节点）                           | 新增 `_run_structural_gc()`：对比 `ast_index` 与现有 `MEM-BOOT-*.md`，将孤立节点软归档至 `_archived/`。**注：与 `entropy_scan` 的 LFU 访问频率清理是正交的独立机制** |
-| P1  | ✅  | `codemap.py`（29%）主体扫描逻辑测试缺失                                            | 新增 `tests/test_codemap_unit.py`，25 个单元测试覆盖 `_should_ignore()`、`_build_tree()`、`generate_codemap()` 深度/最近文件/不存在目录等场景 |
-| P2  | ⏳  | `cites_same_file` 边仅在可视化层存在，未建模为 LinkType                              | 评估是否需要持久化存储；当前已在 `assets/ontology_schema/rules/rule_memory_quality.yaml` 的 `rule_mq_02_no_orphan_links` 中声明了引用完整性约束 |
-| P2  | ⏳  | Diagnostics 图可视化无 LLM 语义聚类                                             | 探索基于 embedding 的节点聚类，暂无优先级               |
-| P3  | ⏳  | `fn_detect_drift` 的 sha256 fingerprint 仅覆盖方法签名，不感知类体实现变化               | 考虑结合内容哈希的混合指纹策略（方法签名 + 类级 docstring hash） |
+
+| 优先级 | 状态  | 问题                                                                     | 处理结果 / 后续方向                                                                                                                     |
+| --- | --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| P0  | ✅   | `rules/` 目录缺失，Rule 散落在 Action 的 YAML 字段中                               | 已创建 `assets/ontology_schema/rules/`，含 `rule_bootstrap_pipeline.yaml`（9 条 Rule）和 `rule_memory_quality.yaml`（7 条 Rule）            |
+| P1  | ✅   | `signal_weights.yaml` 中 `strong_path_patterns` 等 profile 专有字段尚未被推断引擎加载 | 新增 `get_strong_path_patterns()`；`_score_path()` 和 `infer_layer()` 增加 `strong_path_patterns` 参数；`infer_all()` 自动从 profile 加载并注入  |
+| P1  | ✅   | Bootstrap 删除的类，其旧 MEM-BOOT-*.md 不会自动清理（孤立节点）                           | 新增 `_run_structural_gc()`：对比 `ast_index` 与现有 `MEM-BOOT-*.md`，将孤立节点软归档至 `_archived/`。**注：与 `entropy_scan` 的 LFU 访问频率清理是正交的独立机制** |
+| P1  | ✅   | `codemap.py`（29%）主体扫描逻辑测试缺失                                            | 新增 `tests/test_codemap_unit.py`，25 个单元测试覆盖 `_should_ignore()`、`_build_tree()`、`generate_codemap()` 深度/最近文件/不存在目录等场景             |
+| P2  | ⏳   | `cites_same_file` 边仅在可视化层存在，未建模为 LinkType                              | 评估是否需要持久化存储；当前已在 `assets/ontology_schema/rules/rule_memory_quality.yaml` 的 `rule_mq_02_no_orphan_links` 中声明了引用完整性约束             |
+| P2  | ⏳   | Diagnostics 图可视化无 LLM 语义聚类                                             | 探索基于 embedding 的节点聚类，暂无优先级                                                                                                      |
+| P3  | ⏳   | `fn_detect_drift` 的 sha256 fingerprint 仅覆盖方法签名，不感知类体实现变化               | 考虑结合内容哈希的混合指纹策略（方法签名 + 类级 docstring hash）                                                                                       |
+
 
 ### 关于 Bootstrap GC 与 LFU 清理的区别
 
 这是两套正交的记忆清理机制，解决的问题层次不同：
 
-| 维度 | Bootstrap 结构性 GC | entropy_scan LFU 频率清理 |
-|------|---------------------|--------------------------|
-| **触发条件** | 源码中类被删除/重命名 | 记忆节点 `access_count=0` 超过 60 天 |
-| **判断标准** | `class_name` 是否在当前 AST index 中 | 查询频率是否低于阈值 |
-| **处理对象** | 仅 `MEM-BOOT-*.md` 节点 | 所有类型的 MemoryNode |
-| **孤立定义** | 代码锚点丢失（**结构性孤立**） | 从未被 Memory Engine 检索过（**使用性孤立**） |
+
+| 维度       | Bootstrap 结构性 GC                          | entropy_scan LFU 频率清理             |
+| -------- | ----------------------------------------- | --------------------------------- |
+| **触发条件** | 源码中类被删除/重命名                               | 记忆节点 `access_count=0` 超过 60 天     |
+| **判断标准** | `class_name` 是否在当前 AST index 中            | 查询频率是否低于阈值                        |
+| **处理对象** | 仅 `MEM-BOOT-*.md` 节点                      | 所有类型的 MemoryNode                  |
+| **孤立定义** | 代码锚点丢失（**结构性孤立**）                         | 从未被 Memory Engine 检索过（**使用性孤立**）  |
 | **实现位置** | `ontology_populator._run_structural_gc()` | `entropy_scan.scan_zero_access()` |
-| **触发时机** | 每次 Bootstrap 运行结束后自动执行 | 手动运行 `entropy_scan.py` 或 CI |
-| **归档策略** | 移至同层 `_archived/`，添加原因注释 | 候选列表输出，不自动移动 |
+| **触发时机** | 每次 Bootstrap 运行结束后自动执行                    | 手动运行 `entropy_scan.py` 或 CI       |
+| **归档策略** | 移至同层 `_archived/`，添加原因注释                  | 候选列表输出，不自动移动                      |
+
 
 两者都使用软删除（归档）而非物理删除，均需人工确认后才最终清理。
 
+---
 
+## 14. Schema v5.0 升级总结（feature/ontology-v5-schema-evolution）
+
+> 本分支实施的完整 9 阶段升级（Phase 9 GraphAdapter 延后至 v6）。
+
+### 14.1 核心变更清单
+
+| Phase | 优先级 | 内容 | 文件/模块 |
+|-------|--------|------|-----------|
+| **0** | P0 | 本体设计原则文件 + CI 合规检查 | `assets/ontology_schema/_config/ontology_design_principles.yaml`<br/>`tests/test_ontology_principles.py` |
+| **1** | P0 | Layer 字段去耦合：废除 `_SCHEMA_LAYER_MAP`，采用通用 9 层 | `assets/ontology_schema/_config/universal_layers.yaml`<br/>`scripts/migrate_layer_v4_to_v5.py` |
+| **2** | P0 | MemoryNode God Object 拆分：→ 4 个聚焦 ObjectType | `assets/ontology_schema/objects/_memory_base.yaml`<br/>`pattern.yaml` / `decision.yaml` / `anti_pattern.yaml` / `business_flow.yaml`<br/>`scripts/migrate_memory_node_to_4_types.py` |
+| **3** | P1 | Signal Fusion 第 6 路：method_signature 信号 | `src/mms/bootstrap/signal_fusion.py` — `_score_method_signature()`<br/>`assets/bootstrap_profiles/signal_weights.yaml` — `signature` 权重 |
+| **4** | P1 | Evaluation DAG：Stage 1 短路 + Stage 2 冲突检测 | `assets/ontology_schema/_config/inference_rules.yaml`<br/>`signal_fusion.py` — `infer_layer()` Stage 2 实现 |
+| **5** | P2 | 增量后置规则（Event-driven via rules） | `assets/ontology_schema/rules/rule_post_apply_incremental.yaml` |
+| **6** | P1 | 真实项目压测矩阵（4 个 stack） | `tests/fixtures/typescript-nestjs-demo/`<br/>`tests/test_bootstrap_on_nestjs.py` |
+| **7** | P1 | README 更新 + memory_viz ObjectType 双维度着色 | `layer2_readme.md`<br/>`src/mms/diagnostics/memory_viz.py` — `border_color` |
+| **8** | P1 | Schema 演进反馈回路（jsonl + markdown） | `src/mms/bootstrap/schema_evolution.py`<br/>`assets/ontology_schema/rules/rule_memory_quality.yaml` 更新 |
+
+### 14.2 本体设计原则（5 条）
+
+| ID | 原则 | 针对的反模式 |
+|----|------|-------------|
+| `P1_density_over_completeness` | 信息密度优先于字段完备性（空值率 > 30% 必须重构） | God Object |
+| `P2_typed_relations_over_text` | 类型化关系优先于文本描述（用 LinkType 而非 description） | 隐式关系 |
+| `P3_universal_schema_per_project_config` | 通用 Schema + 项目特化配置严格分离 | System Silos |
+| `P4_focused_object_types` | 每个 ObjectType 代表单一实体（禁止 type 字段切换语义） | God Object |
+| `P5_schema_evolvable_with_migration` | 任何 Schema 变更必须附迁移脚本（幂等） | 手工迁移 |
+
+### 14.3 Layer 字段 v4 → v5 迁移映射
+
+| v4.x 项目特化 ID | v5.0 通用层 ID | 说明 |
+|-----------------|---------------|------|
+| `L5_api`, `L5_frontend` | `ADAPTER` | 接口/适配层 |
+| `L4_service`, `L4_worker` | `APP` | 应用服务层 |
+| `L3_ontology`, `L3_data_pipeline` | `DOMAIN` | 领域层 |
+| `L2_database`, `L2_messaging`, `L2_cache`, `L2_storage`, `L2_infrastructure` | `PLATFORM` | 平台层 |
+| `L1_security`, `L1_platform` | `PLATFORM` | 平台层（安全/配置） |
+| `CC_architecture`, `Tooling_mms` | `CC` | 横切关注点 |
+| `CC_testing` | `CC_testing` | 测试横切（保持不变） |
+| `CC_governance` | `CC_governance` | 治理横切（保持不变） |
+| `BIZ`, `Ops` | `BIZ`, `Ops` | 业务流/运维（保持不变） |
+
+迁移脚本：`python3 scripts/migrate_layer_v4_to_v5.py --apply`
+
+### 14.4 MemoryNode God Object 拆分详情
+
+```
+MemoryNode (God Object)
+  ├─ type: pattern      → Pattern ObjectType       (前缀: PAT-* / MEM-BOOT-*)
+  ├─ type: decision     → Decision ObjectType      (前缀: AD-*)
+  ├─ type: anti-pattern → AntiPattern ObjectType   (前缀: ANTI-*)
+  └─ type: business-flow → BusinessFlow ObjectType (前缀: BIZ-*)
+
+共享基础 Schema: _memory_base.yaml（模拟 Palantir Interface 复用机制）
+```
+
+迁移脚本：`python3 scripts/migrate_memory_node_to_4_types.py --apply`
+
+### 14.5 Signal Fusion v5.0 — 六路信号
+
+```
+┌─────────────────────────────────────────────────────────┐
+│            Evaluation DAG (Phase 4)                     │
+│  Stage 1: Short-circuit Rules (inference_rules.yaml)    │
+│    命中即停止，返回高置信度层级（0.85~0.98）              │
+│         ↓ 未命中                                        │
+│  Stage 2: Conflict Detection                            │
+│    gap < 0.15 + 已知冲突对 → Tiebreaker / AMBIGUOUS     │
+│         ↓                                               │
+│  Stage 3: Weighted Fallback (signal_weights.yaml)       │
+│    path × wp + name × wn + annotation × wa              │
+│    + inheritance × wi + import × wm + signature × ws    │
+└─────────────────────────────────────────────────────────┘
+
+第 6 路 signature 信号：
+  - 默认权重 0.00（关闭）
+  - Go 无注解项目推荐激活：go_gin profile 已设为 0.05
+  - 方法名关键词（handle/execute/validate/query）→ 层级倾向
+```
+
+### 14.6 memory_viz 双维度 ObjectType 着色
+
+节点视觉编码：
+
+| 维度 | 编码方式 | 含义 |
+|------|---------|------|
+| **背景色** | tier 颜色（热=红/温=橙/冷=蓝/归档=灰） | 访问热度 |
+| **边框色** | ObjectType 颜色 | 语义类型 |
+
+ObjectType 边框颜色：
+
+| ObjectType | 颜色 | 语义 |
+|-----------|------|------|
+| `pattern` | 紫色 `#7c3aed` | 正向架构模式（应该这样做） |
+| `decision` | 青绿色 `#0f766e` | 架构决策 ADR（为什么这样选） |
+| `anti-pattern` | 深红色 `#b91c1c` | 反模式警告（不要这样做） |
+| `business-flow` | 深蓝色 `#1d4ed8` | 跨层业务流程 |

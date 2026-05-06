@@ -93,18 +93,19 @@ def _extract_about_concepts(class_name: str, layer: str) -> List[str]:
 
 # ─── 记忆 Markdown 生成 ───────────────────────────────────────────────────────
 
-# Bootstrap 内部层名 → MemoryNode schema 规范层名（memory_node.yaml enum v4.0 细粒度 ID）
-# Bootstrap 使用 DDD 术语（ADAPTER/APP/DOMAIN），schema v4.0 使用细粒度 ID
-_SCHEMA_LAYER_MAP = {
-    "ADAPTER":  "L5_api",            # HTTP controller / gRPC handler / CLI adapter → API 接口层
-    "APP":      "L4_service",        # Application service / use case orchestrator → 应用服务层
-    "DOMAIN":   "L3_ontology",       # Domain entity / repository / aggregate → 领域层（本体语义）
-    "PLATFORM": "L2_infrastructure", # Database client / config / message broker → 基础设施层
-    "CC":       "CC_architecture",   # Cross-cutting: util / exception / logging → 横切架构层
-    "UNKNOWN":  "CC_architecture",   # Fallback
+# Schema v5.0: Bootstrap 内部 DDD 术语直接对应 universal_layers.yaml 的通用层 ID
+# _SCHEMA_LAYER_MAP 已废除（原因：将项目特化 ID 写入通用 schema 违反 P3 设计原则）
+# 现在 Bootstrap 内部 DDD 术语 = universal_layers.yaml 中的 id，不需要中转
+_DDD_TO_UNIVERSAL_LAYER = {
+    "ADAPTER":  "ADAPTER",    # 接口/适配层（Controller/Handler/Router/前端）
+    "APP":      "APP",        # 应用服务层（Service/UseCase/Orchestrator/Worker）
+    "DOMAIN":   "DOMAIN",     # 领域层（Entity/Aggregate/Repository接口）
+    "PLATFORM": "PLATFORM",   # 平台层（DB/Cache/MQ/Config等基础设施）
+    "CC":       "CC",         # 横切关注点（Util/Exception/常量）
+    "UNKNOWN":  "CC",         # 未知类型归入横切（最保守的兜底）
 }
 
-# 目录名仍保留 Bootstrap 语义（便于开发者理解层级归属）
+# 物理目录名（共享记忆库 docs/memory/shared/ 下的子目录）
 _LAYER_DIR_NAMES = {
     "ADAPTER":  "ADAPTER",
     "APP":      "APP",
@@ -180,7 +181,7 @@ def _render_memory_md(
 
     type_desc = _TYPE_DESCRIPTIONS.get(code_type, f"{code_type} 类型代码对象")
 
-    schema_layer = _SCHEMA_LAYER_MAP.get(layer, layer)
+    schema_layer = _DDD_TO_UNIVERSAL_LAYER.get(layer, layer)
 
     content = f"""\
 ---

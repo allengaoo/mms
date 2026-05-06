@@ -1,0 +1,140 @@
+# Ontology Design Principles — MMS Layer 2 Schema 设计原则
+# ─────────────────────────────────────────────────────────────────
+# 版本：v1.0 | 创建于：2026-05-05 | Schema v5.0 演进锚点
+#
+# 用途：
+#   1. 为所有 ObjectType / LinkType / Function / Action 的设计提供判断基准
+#   2. 作为 CI 检查的参考，每个新建 Schema 文件必须声明 declared_principles 字段
+#   3. 记录每条原则的来源与推导依据，方便未来修订
+#
+# 参考依据：
+#   - Palantir Foundry Ontology Best Practices and Anti-patterns
+#     https://www.palantir.com/docs/foundry/ontology/ontology-best-practices-and-anti-patterns
+#   - RANGER: Repository-level Agent for Graph-Enhanced Retrieval (2025)
+#     https://arxiv.org/html/2509.25257v1
+#   - 木兰项目定位：端侧小模型（<50B）+ 已存在项目 + 跨项目通用性
+#
+# 维护规则：
+#   - 新增原则须经过充分讨论，并附 evidence（证据来源）
+#   - 废弃原则必须记录废弃原因和时间，不直接删除
+#   - 任何 ObjectType / Action YAML 的 declared_principles 字段必须引用此文件中的 id
+
+principles:
+
+  - id: P1_density_over_completeness
+    label: "信息密度优先于字段完备性"
+    statement: |
+      每个 ObjectType 的字段设计以"LLM 注入时的 token 效率"为最高标准。
+      对于任何特定实例，空值率 > 30% 的字段必须重构（移除或拆为子 ObjectType）。
+    rationale: |
+      木兰端侧小模型（<50B）的 context 窗口紧张，本体的核心价值就是高密度上下文注入。
+      若 frontmatter 80% 字段为空（God Object 反模式），则本体的密度优势被完全抵消，
+      与普通文本 RAG 无本质区别。
+      证据：RANGER 2025 证明 graph-based 在 10× 更少 token 下达到 83% 答案质量。
+    violation_examples:
+      - "MemoryNode 用 type 字段一栏装多种实体，导致每种类型 80% 字段为空"
+    evidence:
+      - "Palantir: God Object anti-pattern — most properties are null for any given object"
+      - "RANGER 2025 arxiv:2509.25257 — token 效率 vs embedding 基线"
+    anti_patterns_targeted: [God Object]
+    status: active
+
+  - id: P2_typed_relations_over_text
+    label: "类型化关系优先于文本描述"
+    statement: |
+      对象之间的关系必须用 LinkType 显式建模（cites / contradicts / derived_from 等），
+      不允许将关系描述嵌入 description 自由文本字段。
+    rationale: |
+      LLM 解析 description 中的隐式关系需要额外 reasoning；
+      typed LinkType 可直接 graph 遍历，无需 LLM 推断。
+      在端侧小模型场景下，减少 LLM 推断步骤是关键。
+    violation_examples:
+      - "在 description 里写 '本记忆与 MEM-L-003 相关' 而不是用 link_related_to"
+    evidence:
+      - "Palantir: Link Types are schema definitions of relationships — typed and queryable"
+      - "木兰 memory_viz.py 中已有 cites/about/impacts/contradicts 显式边"
+    anti_patterns_targeted: []
+    status: active
+
+  - id: P3_universal_schema_per_project_config
+    label: "通用 Schema + 项目特化配置严格分离"
+    statement: |
+      assets/ontology_schema/ 下的所有 enum / 字段定义必须跨项目通用（仅依赖软件工程元概念）。
+      项目特化的细分（如 MMS 把 L2 基础设施层拆为 database/messaging/cache/storage）
+      必须放在项目自己的 docs/memory/_system/routing/project_layers.yaml 中，
+      不得写入 schema enum。
+    rationale: |
+      木兰项目需要面向不同软件项目具备通用性（用户要求）。
+      将 MMS 项目特化的 17 个层级 ID 写入 MemoryNode.layer.enum，
+      导致外部项目 bootstrap 时产生语义错位（Spring Boot 项目的 @Entity 类
+      被写成 layer: L3_ontology，因为映射到了 MMS 的"本体领域层"）。
+      这是 Foundry System Silos 反模式的反向版本：把特定项目的层级强加给所有项目。
+    violation_examples:
+      - "MemoryNode.layer.enum 包含 L3_ontology / L5_api / L1_security 等 MMS 专有 ID"
+      - "_SCHEMA_LAYER_MAP 将通用层直接映射到项目特化 ID"
+    evidence:
+      - "Palantir: Model reality, not systems — Object types should represent real-world entities"
+      - "Palantir: System Silos anti-pattern — separate object types for each source system"
+      - "木兰 layers.yaml 包含 tenant_id/RLS/OrbStack 等 MMS 专有关键词"
+    anti_patterns_targeted: [System Silos]
+    status: active
+
+  - id: P4_focused_object_types
+    label: "聚焦的 ObjectType（反对 God Object）"
+    statement: |
+      每个 ObjectType 必须代表一个明确的、单一的软件工程实体。
+      禁止用 type 字段在运行时切换语义（type 字段控制实体种类 = 反模式）。
+      每个 ObjectType 应有自己的必填字段集（不共享 type 字段的不同分支）。
+    rationale: |
+      type 字段切换语义的设计：
+        1. 破坏字段语义的确定性（Pattern 的 forces 字段对 Decision 无意义）
+        2. 无法在 schema 层面强制类型特有的必填字段
+        3. 检索时 LLM 需要先读 type 再判断哪些字段有效，增加推断成本
+      Foundry 明确标注：当你发现自己在问 "What kind of [Object] is this?" 时，
+      就说明这是一个 God Object，应该拆分。
+    violation_examples:
+      - "MemoryNode 同时表示 Pattern / Decision / AntiPattern / BusinessFlow"
+    evidence:
+      - "Palantir: God Object anti-pattern — indicators include type-based property switching"
+      - "Palantir: Keep object types focused — each should represent one distinct entity"
+    anti_patterns_targeted: [God Object]
+    status: active
+
+  - id: P5_schema_evolvable_with_migration
+    label: "Schema 可演进 + 强制迁移路径"
+    statement: |
+      任何 Schema 变更（新增字段、修改 enum、拆分 ObjectType）必须同时提供：
+        1. scripts/migrate_*.py — 自动迁移现有实例数据
+        2. CHANGELOG 条目 — 说明变更动机和影响
+      禁止在没有迁移脚本的情况下进行破坏性 schema 变更。
+      迁移脚本必须是幂等的（多次运行结果一致）。
+    rationale: |
+      木兰项目当前是过渡阶段（阶段 1），预期 schema 会多次演进。
+      若没有自动迁移路径，每次 schema 变更都需要手工处理历史数据，
+      这会极大降低 schema 演进速度，违背"过渡阶段积累经验"的核心目标。
+      Python + 文本存储的可迁移性优势只有在提供自动化工具时才能完全发挥。
+    violation_examples:
+      - "直接修改 ObjectType 字段类型而不提供迁移脚本"
+      - "新增必填字段但不为现有实例提供默认值"
+    evidence:
+      - "木兰定位：Python + 文本 = 可迁移性，必须配合自动化工具实现"
+      - "过渡阶段 KPI = schema 演进速度，迁移工具是必要条件"
+    anti_patterns_targeted: []
+    status: active
+
+# ─── 废弃原则记录区（不删除，供审计） ────────────────────────────────────────────
+deprecated_principles: []
+
+# ─── Schema 文件合规检查说明 ───────────────────────────────────────────────────
+compliance_check:
+  required_field: "declared_principles"
+  description: |
+    每个新建的 ObjectType / Action YAML 必须包含 declared_principles 字段，
+    列出该设计遵循的原则 ID（如 [P1_density_over_completeness, P4_focused_object_types]）。
+    CI 中的 test_ontology_principles.py 会检查此字段的存在性。
+  example: |
+    declared_principles:
+      - P1_density_over_completeness
+      - P4_focused_object_types
+    principle_notes: |
+      拆分自 MemoryNode God Object，每种实体仅包含自身必填字段，空值率 < 10%。

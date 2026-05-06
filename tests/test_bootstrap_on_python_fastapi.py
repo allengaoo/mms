@@ -202,14 +202,16 @@ class TestFastAPISchemaConformance:
     VALID_ID_PATTERN = re.compile(r"^(MEM-L-|MEM-BOOT-|AD-|BIZ-|ENV-|MEM-DB-)[0-9A-Z-]+")
     # v4.0：支持细粒度层 ID（规范值）和粗粒度别名（向后兼容）
     VALID_LAYERS = {
-        # 细粒度层 ID（v4.0 规范值）
+        # v5.0 通用层 ID（universal_layers.yaml，Schema Source of Truth）
+        "ADAPTER", "APP", "DOMAIN", "PLATFORM", "CC",
+        "CC_testing", "CC_governance", "BIZ", "Ops",
+        # v4.x 项目特化 ID（向后兼容，迁移期内有效）
         "L5_frontend", "L5_api", "L4_service", "L4_worker",
         "L3_ontology", "L3_data_pipeline",
         "L2_database", "L2_messaging", "L2_cache", "L2_storage",
-        "L1_security", "CC_architecture", "CC_testing", "CC_governance",
-        "BIZ", "Ops", "Tooling_mms",
-        # 粗粒度别名（v3.x 向后兼容）
-        "L1_platform", "L2_infrastructure", "L3_domain", "L4_application", "L5_interface", "CC",
+        "L1_security", "CC_architecture", "CC_governance", "Tooling_mms",
+        # v3.x 粗粒度别名（更早期兼容）
+        "L1_platform", "L2_infrastructure", "L3_domain", "L4_application", "L5_interface",
     }
     VALID_TYPES = {"lesson", "pattern", "decision", "anti-pattern", "business-flow"}
     VALID_TIERS = {"hot", "warm", "cold", "archive"}
@@ -272,10 +274,8 @@ class TestFastAPISchemaConformance:
                 assert layer in self.VALID_LAYERS, (
                     f"{md_file.name} layer='{layer}' 不在 schema 允许值中 {self.VALID_LAYERS}"
                 )
-                # 确认不再使用旧的 Bootstrap 内部层名
-                assert layer not in {"ADAPTER", "APP", "DOMAIN", "PLATFORM"}, (
-                    f"{md_file.name} 使用了 Bootstrap 内部层名而非 schema 规范值"
-                )
+                # Schema v5.0: ADAPTER/APP/DOMAIN/PLATFORM 现在就是正规的 universal 层 ID
+                # （_SCHEMA_LAYER_MAP 已废除，v4 细粒度 ID 在迁移期内仍有效）
 
     def test_generated_type_is_valid(self, isolated_fastapi):
         """生成的 type 字段在 MemoryNode schema 允许的枚举中。"""
