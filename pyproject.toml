@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta:__legacy__"
 
 [project]
 name = "mulan"
@@ -20,6 +20,8 @@ dependencies = [
     "urllib3>=1.26",
     # 结构化日志
     "structlog>=23.0",
+    # 跨进程文件锁（AIU feedback 统计写入）
+    "filelock>=3.12",
 ]
 
 [project.optional-dependencies]
@@ -36,13 +38,14 @@ claude = [
 ]
 ollama = []  # Ollama 通过 HTTP 调用，无额外依赖
 
-# Tree-sitter AST 解析 Sidecar（可选，用于增强 Java/Go 解析精度）
+# Tree-sitter AST 解析（Java/Go/TypeScript 主路径，可自动降级）
 # 安装方式：pip install "mulan[tree_sitter]"
 # 启用方式：config.yaml 中设置 analysis.use_tree_sitter: true
 tree_sitter = [
     "tree-sitter>=0.23",
     "tree-sitter-java>=0.23",
     "tree-sitter-go>=0.23",
+    "tree-sitter-typescript>=0.23",
 ]
 
 # Benchmark（ES + Milvus 检索）
@@ -98,6 +101,7 @@ markers = [
     "integration: 集成测试（需要外部服务）",
     "benchmark: Benchmark 评估测试",
     "eval: Layer 1 E2E Eval 测试（可在 CI Mock 模式或本地真实模式下运行）",
+    "vcr: HTTP 录制回放测试（pytest-recording / VCR）",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

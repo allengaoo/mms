@@ -48,7 +48,7 @@ description: |
   最终决策：五路加权得分 → 超过 0.6 置信度的层直接采用；低于 0.4 → UNKNOWN
 
 implementation:
-  module: "src.mms.analysis.signal_fusion"
+  module: "src.mms.bootstrap.signal_fusion"
   function: "infer_layer(code_class: CodeClass, code_graph: CodeGraph) -> LayerInference"
 
 inputs:

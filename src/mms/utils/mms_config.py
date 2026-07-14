@@ -383,17 +383,22 @@ class MmsConfig:
         是否启用 Tree-sitter 作为 Java/Go AST 解析后端。
         默认 False（使用内置正则解析器）。
         启用条件：1. 此配置为 true；2. 已安装 pip install "mulan[tree_sitter]"
-        fallback: config.yaml → analysis.use_tree_sitter (default=false)
+        fallback: config.yaml → analysis.use_tree_sitter (default=true)
         """
-        return bool(_get(self._raw, "analysis", "use_tree_sitter", default=False))
+        return bool(_get(self._raw, "analysis", "use_tree_sitter", default=True))
 
     @property
     def analysis_tree_sitter_languages(self) -> list:
         """
         Tree-sitter 启用时处理的语言列表。Python 始终使用标准库 ast，不在此列表中。
-        fallback: config.yaml → analysis.tree_sitter_languages (default=["java", "go"])
+        fallback: config.yaml → analysis.tree_sitter_languages
         """
-        val = _get(self._raw, "analysis", "tree_sitter_languages", default=["java", "go"])
+        val = _get(
+            self._raw,
+            "analysis",
+            "tree_sitter_languages",
+            default=["java", "go", "typescript", "tsx"],
+        )
         return list(val) if isinstance(val, (list, tuple)) else ["java", "go"]
 
     # ── benchmark ─────────────────────────────────────────────────────────────

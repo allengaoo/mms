@@ -2,7 +2,8 @@
 id: MEM-L-XXX
 title: 集成测试节点
 type: lesson
-layer: CC_architecture
+object_type: Pattern
+layer: CC
 dimension: 架构
 tags: ["integration", "test"]
 about_concepts: ["integration", "test"]

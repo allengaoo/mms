@@ -28,6 +28,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from mms.adapters import get_repository
+from mms.ports import MemoryRepository
+
 _HERE = Path(__file__).resolve().parent
 try:
     from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
@@ -96,14 +99,23 @@ class FreshnessChecker:
     与 doc_drift.py 分离，职责清晰，互不干扰。
     """
 
-    def __init__(self, memory_root: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        memory_root: Optional[Path] = None,
+        repository: Optional[MemoryRepository] = None,
+    ) -> None:
         self._memory_root = memory_root
+        memory_dir = memory_root or (_ROOT / "docs" / "memory")
+        self._repository = repository or get_repository(memory_root=memory_dir)
         self._graph = None
 
     def _get_graph(self):
         if self._graph is None:
             from mms.memory.graph_resolver import MemoryGraph
-            self._graph = MemoryGraph(memory_root=self._memory_root)
+            self._graph = MemoryGraph(
+                memory_root=self._memory_root,
+                repository=self._repository,
+            )
         return self._graph
 
     def _file_content_fingerprint(self, file_path: str) -> Optional[str]:
@@ -126,6 +138,16 @@ class FreshnessChecker:
         if not abs_path.exists():
             return None
         try:
+            if abs_path.suffix in (".java", ".go", ".ts", ".tsx"):
+                from mms.analysis.ast_skeleton import _compute_source_fingerprint
+                language = {
+                    ".java": "java",
+                    ".go": "go",
+                    ".ts": "typescript",
+                    ".tsx": "tsx",
+                }[abs_path.suffix]
+                source = abs_path.read_text(encoding="utf-8", errors="ignore")
+                return _compute_source_fingerprint(source, language)
             import ast as _ast
             source = abs_path.read_text(encoding="utf-8", errors="ignore")
             tree = _ast.parse(source)
@@ -198,17 +220,12 @@ class FreshnessChecker:
                 # 从 ast_pointer 提取 fingerprint 和 class_name
                 node_fp: Optional[str] = None
                 node_class: Optional[str] = None
-                try:
-                    import re as _re
-                    raw_content = node.path.read_text(encoding="utf-8", errors="ignore")
-                    fp_match = _re.search(r"fingerprint:\s*(sha256:[a-f0-9]+|[a-f0-9]{8,})", raw_content)
-                    if fp_match:
-                        node_fp = fp_match.group(1)
-                    cls_match = _re.search(r"class_name:\s*(\S+)", raw_content)
-                    if cls_match:
-                        node_class = cls_match.group(1).strip()
-                except Exception:  # noqa: BLE001
-                    pass
+                record = self._repository.get(node.id)
+                if record is not None:
+                    ast_pointer = record.metadata.get("ast_pointer", {})
+                    if isinstance(ast_pointer, dict):
+                        node_fp = str(ast_pointer.get("fingerprint") or "") or None
+                        node_class = str(ast_pointer.get("class_name") or "") or None
 
                 if self._fingerprint_changed(file_path, node_fp, class_name=node_class):
                     stale.add(node.id)

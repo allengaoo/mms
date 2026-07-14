@@ -7,9 +7,12 @@
 
 **核心价值**：
 
-- **知识复用**：将历次 EP 执行产生的架构决策、教训和模式沉淀为可检索的记忆图谱，新任务执行时精准注入，减少重复错误
-- **框架感知**：Bootstrap v2 通过 YAML 驱动的多信号融合，自动理解项目的分层架构（无需人工标注）
+- **知识复用**：将历次 EP 执行产生的架构决策、模式与反模式沉淀为可检索的记忆图谱，新任务执行时精准注入，减少重复错误
+- **框架感知**：Bootstrap v2 通过 YAML 驱动的六路信号融合 + Tree-sitter/AST，自动理解项目的分层架构（无需人工标注）
+- **存储解耦**：记忆读写统一走 `MemoryRepository` 端口（当前默认 `MarkdownRepository`），索引与写入闭环，避免双索引/静默脱节
 - **双轨执行**：Track A（UnitRunner 串行流水线）适合小模型；Track B（Autonomous ReAct 循环）适合有 Tool-Calling 能力的大模型，共享同一套工具层
+
+> **现代化状态（2026-07）**：Phase 1–3 已完成——端口解耦、Schema v5 单索引、Tree-sitter 主路径均已落地并通过回归。Memoria 稳定版 PoC 因自定义 metadata 无法原生往返被判定 No-Go，暂不切换持久层；详见 [`docs/plans/modernization/`](docs/plans/modernization/)。
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
@@ -27,8 +30,8 @@
 ║  Track B: execution/autonomous_runner （ReAct 循环，大模型自治）               ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  第二层：知识本体层（Knowledge Ontology）                                      ║
-║  Palantir 动态本体 + 记忆图谱 + 图遍历检索 + Bootstrap 冷启动                  ║
-║  ontology/ + bootstrap/ + memory/                                             ║
+║  Palantir 动态本体 + MemoryRepository + Schema v5 索引 + Bootstrap/Tree-sitter ║
+║  ports/ + adapters/ + ontology/ + bootstrap/ + memory/                        ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  第三层：代码生成层（Code Generation）                                          ║
 ║  记忆上下文注入 → LLM 生成 Diff → 双角色评审                                   ║
@@ -124,68 +127,61 @@ src/mms/execution/
 ### Layer 2：知识本体层
 
 ```
+src/mms/ports/                          ★ 存储中立端口（Phase 1）
+├── repository.py          MemoryRecord / MemoryRepository / MemoryQuery
+├── projection.py          OntologyProjection + FrontMatterProjection
+├── version_store.py       VersionStore + NullVersionStore
+└── code_parser.py         CodeParser（复用 ASTParserProtocol）
+
+src/mms/adapters/                       ★ 端口适配器
+├── markdown_repo.py       MarkdownRepository（默认后端：原子写 / 版本递增 / 归档 / 索引钩子 / 进程缓存）
+└── __init__.py            get_repository() 工厂（当前仅 markdown）
+
 src/mms/ontology/
 └── registry.py            OntologyRegistry（ObjectType/Fn/Action 统一管理）
-    ├── ObjectTypeRegistry 加载 objects/*.yaml，validate(type_id, inst)
-    ├── FunctionRegistry   加载 functions/*.yaml，call(fn_id, **kwargs)
-    ├── ActionRegistry     加载 actions/*.yaml，check_submission_criteria
-    ├── RuleEngine         按 ActionDef.rules 顺序执行
-    └── OntologyRegistry   统一入口，validate_completeness()
 
-src/mms/bootstrap/                         Bootstrap v2（六步，零 LLM）
+src/mms/bootstrap/                      Bootstrap v2（零 LLM）
 ├── ontology_populator.py  action_bootstrap 编排器（CLI 主入口）
 │   Step 1    dep_sniffer 技术栈嗅探
-│   Step 1.5  ★ 项目文档扫描（CONTRIBUTING.md/.cursorrules → seed_absorber）
+│   Step 1.5  项目文档扫描（CONTRIBUTING.md/.cursorrules → seed_absorber）
 │   Step 2    种子包注入
-│   Step 3    AST 骨架化（多语言：Python/Java/Go/TypeScript）
+│   Step 3    AST 骨架化：Python(ast) / Java·Go·TS(Tree-sitter，缺依赖则 Regex)
 │   Step 4    代码依赖图（depends_on / implements 边）
-│   Step 5    ★ 六路信号推断（Evaluation DAG：短路→冲突检测→加权融合）
-│   Step 6    生成 MEM-BOOT-*.md 初始记忆（v5.0 通用层 ID）
-│   Step 7    Bootstrap 结构性 GC + Schema 演进反馈报告
-│
-├── signal_fusion.py       ★ Evaluation DAG + 六路信号融合
-│   ├── Stage 1            短路规则（inference_rules.yaml，confidence=0.85~0.98）
-│   ├── Stage 2            冲突检测（gap < 0.15 → 路径 tiebreaker）
-│   └── Stage 3            六路加权：path·name·annotation·inheritance·import·signature
-│
-├── schema_evolution.py    ★ Schema 演进反馈回路（jsonl + markdown 报告）
-├── code_graph_builder.py  fn_build_code_graph（depends_on/implements 图）
-└── memory_seed_generator.py MEM-BOOT-*.md 初始记忆生成器
+│   Step 5    六路信号推断（Evaluation DAG：短路→冲突检测→加权融合）
+│   Step 6    生成 MEM-BOOT-*.md（v5.0 通用层 ID）
+│   Step 7    结构性 GC（经 Repository）+ Schema 演进反馈报告
+├── signal_fusion.py       Evaluation DAG + 六路信号融合（唯一正式实现）
+├── schema_evolution.py    Schema 演进反馈回路
+├── code_graph_builder.py  fn_build_code_graph
+└── memory_seed_generator.py MEM-BOOT 生成（经 Repository.put）
 
-src/mms/memory/            记忆图谱（16 个模块）
-├── graph_resolver.py      知识图谱核心（hybrid_search / typed_explore）
-├── injector.py            记忆注入（检索 → 压缩 → Cursor 上下文前缀）
-├── intent_classifier.py   3 级意图漏斗（RBO → 本体匹配 → LLM）
-├── memory_functions.py    纯函数层（quality_score / provenance）
+src/mms/memory/                         记忆图谱（读写统一走 Repository）
+├── graph_resolver.py      知识图谱（hybrid_search / typed_explore；跨实例解析缓存）
+├── injector.py            记忆注入（读 MEMORY_INDEX.json Schema v5）
 ├── memory_actions.py      有状态动作（write / 矛盾检测 / archive）
-├── link_registry.py       LinkType YAML 注册表
-├── freshness_checker.py   记忆新鲜度检测（fn_detect_drift）
-├── graph_health.py        图健康监控
-├── dream.py               autoDream（git 历史 → 知识草稿 + auto-link）
-├── entropy_scan.py        孤儿/过时记忆检测（驱动 mulan gc）
-├── codemap.py / funcmap.py / repo_map.py / template_lib.py
-├── task_matcher.py        任务-记忆相关度匹配
-└── private.py             EP 私有工作区
+├── dream.py / private.py  promote 写入 Repository → 索引即时可见
+├── entropy_scan.py        LFU 扫描 + run_gc / --apply-gc 闭环
+├── freshness_checker.py   fn_detect_drift（parser-independent fingerprint）
+├── intent_classifier.py / link_registry.py / graph_health.py
+└── task_matcher.py / codemap.py / funcmap.py / repo_map.py / …
 
-assets/ontology_schema/    YAML 本体定义（无代码修改可扩展）[Schema v5.0]
-├── memory_schema.yaml     记忆节点通用 JSON Schema（兼容 v4.0/v5.0）
-├── objects/   (10 个 ObjectType YAML，含 v5.0 新增 Pattern/Decision/AntiPattern/BusinessFlow)
-│   └── _memory_base.yaml  ★ 共享基础 Schema（模拟 Palantir Interface）
-├── links/     (9 个 LinkType YAML)
-├── functions/ (9 个 Function YAML)
-├── actions/   (5 个 Action YAML)
-├── rules/     ★ 独立 Rule 定义（rule_bootstrap_pipeline / rule_memory_quality / rule_post_apply_incremental）
-└── _config/   ★ universal_layers.yaml / ontology_design_principles.yaml / inference_rules.yaml
+src/mms/core/indexer.py                 ★ Schema v5 增量索引器
+  tree: universal layer → ObjectType → memories[]
+  put/delete/update_stats 由 MarkdownRepository 写后钩子驱动
 
-seed_packs/                框架种子包（YAML 驱动，含 ast_overrides）
-├── base/                  通用约束（always_inject=true）
-├── spring_boot/           ★ 13 条 ast_overrides（@RestController/JpaRepository 等）
-├── fastapi_sqlmodel/      ★ 9 条 ast_overrides（SQLModel/BaseSettings 等）
-├── python_django/         ★ 13 条 ast_overrides（models.Model/APIView 等）
-├── go_gin/
-├── palantir_arch/
-└── react_zustand/
+assets/ontology_schema/                 YAML 本体定义 [Schema v5.0]
+├── objects/   Pattern / Decision / AntiPattern / BusinessFlow + 代码结构对象
+│   └── _memory_base.yaml  共享基础 Schema（模拟 Palantir Interface）
+├── links/ functions/ actions/ rules/
+└── _config/   universal_layers.yaml / inference_rules.yaml / …
+
+seed_packs/                             框架种子包（YAML + ast_overrides）
+├── base/ spring_boot/ fastapi_sqlmodel/ python_django/
+├── go_gin/ palantir_arch/ react_zustand/
+└── …
 ```
+
+唯一运行时索引：`docs/memory/MEMORY_INDEX.json`（幂等重建：`python scripts/migrate_index_v5.py`）。
 
 ---
 
@@ -215,27 +211,30 @@ LLM 任务路由：
 ### Layer 4：安全验证层
 
 ```
-src/mms/analysis/          代码静态分析（14 个模块）
-├── ast_skeleton.py        多语言 AST 骨架化（Python/Java/Go/TS）
+src/mms/analysis/          代码静态分析
+├── ast_skeleton.py        多语言 AST 骨架化；Java/Go/TS 经 parsers factory
 ├── dep_sniffer.py         技术栈嗅探（pom.xml / go.mod / requirements.txt）
 ├── arch_check.py          架构约束扫描（6 条硬规则）
 ├── arch_resolver.py       层 → 文件路径解析
 ├── ast_diff.py            AST diff（接口契约变更检测）
 ├── doc_drift.py           文档漂移检测
 ├── ontology_syncer.py     本体 YAML ↔ AST 同步
-├── signal_fusion.py       信号融合（Layer 4 副本，供架构分析调用）
 ├── seed_absorber.py       Rule Absorber（URL/文件 → YAML 种子包）
-└── parsers/               AST 解析器适配层（protocol/factory/regex/tree_sitter）
+└── parsers/               ★ Tree-sitter 主路径 + RegexFallback
+    ├── factory.py         get_parser(lang)：缺依赖自动降级
+    ├── tree_sitter_parser.py  Java / Go / TypeScript·TSX
+    ├── regex_parser.py    降级实现（与改造前行为一致）
+    └── protocol.py
 
-src/mms/diagnostics/       ★ 记忆图谱诊断工具（Layer 4 新增）
+src/mms/diagnostics/       记忆图谱诊断工具
 ├── memory_viz.py          数据收集器（扫描 docs/memory/ → NodeData/EdgeData/AstMapping）
-└── html_renderer.py       HTML 渲染器（3 Tab 自包含页面：图谱/AST 树/映射表）
+└── html_renderer.py       HTML 渲染器（3 Tab：图谱/AST 树/映射表）
 
 src/mms/core/              基础 I/O（安全写入）
-├── sanitize.py            SanitizationGate（API Key / JWT / IP 脱敏，支持 MMS_SANITIZE_EXTRA 自定义正则）
+├── sanitize.py            SanitizationGate（API Key / JWT / IP 脱敏）
 ├── writer.py              安全文件写入（集成脱敏屏障）
 ├── reader.py              编码自适应读取（TTL 缓存）
-└── indexer.py             记忆索引构建器（MEMORY_INDEX.json）
+└── indexer.py             Schema v5 MEMORY_INDEX.json 增量更新器
 
 src/mms/observability/     MDR 诊断基础设施
 ├── logger.py              全局告警日志（alert_mulan.log，按天轮转）
@@ -313,8 +312,10 @@ mulan bootstrap [--root PATH] [--min-confidence 0.5] [--max-per-layer 10]
 │  Step 2   种子包注入（seed_packs/{stack}/）                           │
 │    → docs/memory/seed_packs/{stack}/memories/AC-*.md               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Step 3   AST 骨架化（ast_skeleton.py）                              │
-│    Python(ast 模块) / Java / Go / TypeScript（正则）                 │
+│  Step 3   AST 骨架化（ast_skeleton.py → parsers factory）            │
+│    Python: 标准库 ast                                               │
+│    Java / Go / TypeScript: Tree-sitter（缺依赖自动 RegexFallback）   │
+│    fingerprint: parser-independent（双模式切换零漂移）               │
 │    → ast_index.json（file_path → {classes, methods, imports}）      │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Step 4   代码依赖图（code_graph_builder.py）                         │
@@ -583,128 +584,55 @@ mms/
 │   ├── ontology/                  动态本体注册表
 │   │   └── registry.py            OntologyRegistry
 │   │
-│   ├── bootstrap/                 Bootstrap v2
-│   │   ├── signal_fusion.py       ★ YAML Override Pass + 五路信号融合
-│   │   ├── ontology_populator.py  ★ 6 步编排（含 Step 1.5 文档扫描）
-│   │   ├── code_graph_builder.py  依赖图构建
-│   │   └── memory_seed_generator.py 初始记忆生成
-│   │
-│   ├── workflow/                  EP 工作流编排
-│   │   ├── ep_runner.py           ★ Capability Router（Track A/B 路由）
-│   │   ├── synthesizer.py         意图合成
-│   │   ├── ep_parser.py / ep_wizard.py
-│   │   ├── precheck.py / postcheck.py
-│   │   └── migration_gate.py
-│   │
+│   ├── bootstrap/                 Bootstrap v2（六路信号 + Tree-sitter）
+│   │   ├── signal_fusion.py / ontology_populator.py / schema_evolution.py
+│   │   ├── code_graph_builder.py / memory_seed_generator.py
+│   ├── workflow/                  EP 工作流（ep_runner Capability Router）
 │   ├── dag/                       DAG & AIU 引擎
-│   │   ├── aiu_types.py           AIU 枚举（9 族 / 43 种）
-│   │   ├── aiu_cost_estimator.py  CBO 代价估算
-│   │   ├── aiu_feedback.py        3 级回退
-│   │   ├── aiu_registry.py        Schema-Driven 动态注册表
-│   │   ├── task_decomposer.py     AIU 分解器
-│   │   └── dag_model.py
-│   │
-│   ├── execution/                 Unit 执行层
-│   │   ├── unit_runner.py         Unit 自动执行（3-Strike + SandboxRollback）
-│   │   ├── autonomous_runner.py   ★ Track B ReAct 循环
-│   │   ├── unit_generate.py / unit_context.py / unit_compare.py
-│   │   ├── file_applier.py / sandbox.py / sandboxed_runner.py
-│   │   └── internal_reviewer.py / unit_cmd.py / fix_gen.py
-│   │
-│   ├── memory/                    记忆图谱
-│   │   ├── graph_resolver.py      知识图谱（hybrid_search / typed_explore）
-│   │   ├── injector.py            记忆注入
-│   │   ├── intent_classifier.py   3 级意图漏斗
-│   │   ├── memory_functions.py / memory_actions.py
-│   │   ├── link_registry.py / freshness_checker.py / graph_health.py
-│   │   ├── dream.py / entropy_scan.py
-│   │   └── codemap.py / funcmap.py / repo_map.py / template_lib.py / ...
-│   │
+│   ├── execution/                 UnitRunner + Autonomous ReAct
+│   ├── memory/                    记忆图谱（经 MemoryRepository）
+│   │   ├── graph_resolver.py / injector.py / dream.py / private.py
+│   │   ├── entropy_scan.py / freshness_checker.py / memory_actions.py
+│   │   └── …
+│   ├── ports/                     ★ 存储中立端口
+│   │   ├── repository.py / projection.py / version_store.py / code_parser.py
+│   ├── adapters/                  ★ MarkdownRepository 等适配器
+│   │   └── markdown_repo.py
 │   ├── analysis/                  代码静态分析
-│   │   ├── ast_skeleton.py        多语言 AST 骨架化
-│   │   ├── dep_sniffer.py / arch_check.py / arch_resolver.py
-│   │   ├── ast_diff.py / doc_drift.py / ontology_syncer.py
-│   │   ├── signal_fusion.py / seed_absorber.py
+│   │   ├── ast_skeleton.py / dep_sniffer.py / arch_check.py
+│   │   ├── seed_absorber.py
 │   │   └── parsers/（protocol / factory / regex / tree_sitter）
-│   │
-│   ├── providers/                 LLM 适配器
-│   │   ├── bailian.py             ★ 含 complete_with_tools()
-│   │   ├── claude.py / gemini.py / ollama.py
-│   │   └── factory.py / base.py
-│   │
-│   ├── diagnostics/               ★ 记忆图谱诊断工具
-│   │   ├── memory_viz.py          数据收集器
-│   │   └── html_renderer.py       HTML 渲染器
-│   │
-│   ├── observability/             MDR 诊断基础设施
-│   │   ├── logger.py / incident.py / audit.py / tracer.py
-│   │
-│   ├── resilience/                可靠性原语
-│   │   ├── circuit_breaker.py / retry.py / checkpoint.py
-│   │
-│   ├── trace/                     EP 级诊断追踪
-│   │   ├── event.py / tracer.py / collector.py / reporter.py
-│   │
-│   ├── core/                      基础 I/O
-│   │   ├── sanitize.py / writer.py / reader.py / indexer.py
-│   │
-│   └── utils/                     工具集
-│       ├── mms_config.py / validate.py / verify.py
-│       ├── _paths.py / ci_hook.py / model_tracker.py / router.py
+│   ├── providers/                 LLM 适配器（bailian ★ complete_with_tools）
+│   ├── diagnostics/               记忆图谱诊断（memory_viz + html_renderer）
+│   ├── observability/ resilience/ trace/
+│   ├── core/                      sanitize / writer / reader / indexer(v5)
+│   └── utils/                     mms_config / validate / verify / _paths / …
 │
 ├── docs/memory/
-│   ├── ontology/                  YAML 本体定义
-│   │   ├── memory_schema.yaml     front-matter v4.0 JSON Schema
-│   │   ├── objects/ links/ functions/ actions/ _config/
-│   │
-│   ├── shared/                    积累的共享记忆（5 层目录）
-│   │   └── CC/ PLATFORM/ DOMAIN/ APP/ ADAPTER/
-│   │       （Bootstrap / EP 蒸馏后自动填充）
-│   │
-│   ├── seed_packs/                种子记忆（66+ 条，8 个包）
-│   │   └── python_fastapi / java_spring_boot / go_microservice /
-│   │       typescript_nestjs / cross_cutting / python_sqlalchemy /
-│   │       infrastructure_redis / infrastructure_devops
-│   │
-│   ├── _system/                   系统运行时文件
-│   │   ├── config.yaml            ★ 含 agent 配置块（execution_mode 等）
-│   │   ├── ast_index.json / code_graph.json / MEMORY_INDEX.json
-│   │   ├── routing/               意图路由元数据
-│   │   │   ├── layers.yaml        层定义（CC_testing / CC_governance / BIZ / Tooling_mms）
-│   │   │   ├── intent_map.yaml    意图规则（知识查询 / 静态分析 / 重构 等新操作类型）
-│   │   │   └── operations.yaml    操作类型定义（含 knowledge_query / analyze / refactor）
-│   │   └── schemas/（aiu_types_extended.yaml / aius/）
-│   │
+│   ├── MEMORY_INDEX.json          ★ 唯一运行时索引（Schema v5：layer → ObjectType）
+│   ├── shared/                    共享记忆（universal layer 目录）
+│   │   └── CC/ PLATFORM/ …        （Bootstrap / promote 后自动填充）
+│   ├── seed_packs/                种子记忆（多语言 + 横切包）
+│   ├── _system/                   config.yaml / ast_index.json / routing/ …
+│   │   └── memory_index.deprecated.json  （旧索引 tombstone，指向 MEMORY_INDEX.json）
 │   ├── private/                   EP 私有工作区 + 诊断数据
-│   │   ├── EP-NNN/                私有草稿
-│   │   ├── trace/                 诊断 trace 数据
-│   │   └── mdr/alert/ mdr/incident/
-│   │
-│   └── templates/                 EP 任务模板（9 种）
+│   └── templates/
 │
-├── seed_packs/                    框架种子包（YAML 驱动）
-│   ├── base/ spring_boot/ fastapi_sqlmodel/ python_django/
-│   ├── go_gin/ palantir_arch/ react_zustand/
-│   └── {match_conditions.yaml（含 ast_overrides）/ constraints/ ontology/}
-│
-├── benchmark/
-│   ├── run_benchmark.py           ★ 主入口（原 run_benchmark_v2.py）
-│   ├── v2/                        Benchmark v2（三层模块化，活跃维护）
-│   │   ├── layer1_swebench/       ★ L1：ΔPass@1（DualRailRunner 双轨对比）
-│   │   ├── layer2_memory/         L2：记忆质量（D1~D4 维度）
-│   │   └── layer3_safety/         L3：安全门控（离线，< 1s）
-│   └── v1_legacy/                 ★ 已废弃（原 benchmark/src/，仅历史参考）
-│
+├── docs/plans/modernization/      ★ Phase 0–5 执行计划与验收记录
+├── scripts/
+│   ├── migrate_index_v5.py        幂等重建 MEMORY_INDEX.json
+│   ├── migrate_fingerprints.py    Bootstrap fingerprint 迁移
+│   └── benchmark_baseline.py      现代化基线采集
+├── seed_packs/                    框架种子包（YAML + ast_overrides）
+├── benchmarks/                    Phase 0 固定查询集与基线 JSON
+├── spike/memoria_poc/             Memoria 决策门 PoC（不合主干）
+├── benchmark/                     Benchmark v2（L1/L2/L3）
 └── tests/
-    ├── conftest.py                ★ 全局 fixture（isolated_spring_boot / vcr_config）
-    ├── fixtures/spring-boot-demo/ ★ Java Spring Boot 靶机（7 个 Java 文件）
-    ├── cassettes/                 VCR cassette 存储（pytest-recording）
-    ├── integration/               集成测试（真实 CLI 调用）
-    ├── benchmark/                 Benchmark v2 单元测试
-    ├── fixtures/go-gin-demo/      ★ Go Gin 靶机
-├── fixtures/python-fastapi-demo/ ★ Python FastAPI 靶机
-├── fixtures/typescript-nestjs-demo/ ★ TypeScript NestJS 靶机（v5.0 新增）
-└── test_*.py                  单元测试
+    ├── fixtures/                  spring-boot / go-gin / python-fastapi / nestjs
+    ├── test_memory_ports.py / test_markdown_repository.py / test_ports_contract.py
+    ├── test_index_v5.py / test_gc_loop.py / test_graph_cache.py
+    ├── test_tree_sitter_extraction.py / test_fingerprint_stability.py
+    └── test_*.py
 ```
 
 ---
@@ -715,8 +643,11 @@ mms/
 
 ```bash
 git clone https://github.com/allengaoo/mms.git ~/code/mms
-pip install pyyaml structlog openai
-echo 'alias mulan="python3 $HOME/code/mms/cli.py"' >> ~/.zshrc && source ~/.zshrc
+cd ~/code/mms
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+# 可选：启用 Tree-sitter 三语言 grammar（Java/Go/TypeScript）
+pip install -e ".[tree_sitter]"
 mulan --help
 ```
 
@@ -819,8 +750,12 @@ mulan list --layer DOMAIN
 mulan graph stats
 mulan graph explore AD-002
 mulan graph file backend/api/routes.py
-mulan gc
+mulan gc                      # 重建 MEMORY_INDEX.json + 只读熵扫描
+mulan gc --update-index-only  # 只重建索引
+mulan gc --apply-gc           # 重建索引并执行 LFU 降级/归档
+mulan gc --dry-run --apply-gc # 预览生命周期动作
 mulan validate --changed-only
+python scripts/migrate_index_v5.py   # 幂等全量重建索引
 ```
 
 ### 种子包管理
@@ -875,24 +810,15 @@ pytest tests/integration/ -m integration              # 集成测试（真实 CL
 pytest tests/ --cov=src/mms --cov-report=html
 ```
 
-**当前覆盖率（2026-05-06）**：全项目整体 **~63%**，Layer 2（Bootstrap 86~~99% / Ontology 83% / Memory 63% / Diagnostics 87~~99%）。
+### 现代化相关新增测试（2026-07）
 
-### TDD 覆盖层（7 阶段 + Layer 2 专项）
+| 类别 | 测试文件 | 覆盖点 |
+| --- | --- | --- |
+| 端口契约 | `test_memory_ports.py` / `test_ports_contract.py` / `test_no_bypass_writes.py` | front-matter 往返、Repository 契约、禁止绕过写入 |
+| 索引 / GC | `test_index_v5.py` / `test_gc_loop.py` / `test_graph_cache.py` | v5 索引钩子、LFU 闭环、跨实例缓存失效 |
+| Tree-sitter | `test_tree_sitter_extraction.py` / `test_parser_dispatch.py` / `test_fingerprint_stability.py` | 三语言提取、分发降级、双模式 fingerprint 一致 |
 
-
-| 阶段             | 测试文件                                                       | 覆盖点                                                              |
-| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| 1 物理沙箱         | `tests/conftest.py`、`tests/fixtures/spring-boot-demo/`     | 全局 fixture（Spring Boot 靶机、Python 项目、VCR 配置）                      |
-| 2 纯函数          | `test_ast_skeleton.py`（+9）、`test_sanitize.py`（34）          | 语义哈希稳定性（格式化不漂移）、SanitizationGate 全模式                             |
-| 3 VCR 控制流      | `test_autonomous_runner_control.py`（12）                    | max_turns 阻断、tool_finish 退出、`MaxTurnsExceededError`              |
-| 4 Bootstrap 宏观 | `test_bootstrap_on_spring_boot.py`（15）                     | Spring Boot fixture 端到端、幂等性、dry_run、detected_stacks              |
-| 5 安全门控         | `test_arch_check.py`（15）                                   | AC-1~AC-4 阳性 + 阴性（tmp_path 注入，完全离线）                              |
-| 6 图演化          | `test_edge_decay.py`（+4）、`test_seed_absorber.py`（18）       | GC 物理剪枝、dry_run 不写磁盘、seed_absorber 噪声过滤                          |
-| 7 E2E Pass@1   | `test_layer1_swebench.py`（+9）                              | DualRailRunner 双轨对比、ΔPass@1、在线模式 mock 验证                         |
-| L2 Memory 单元   | `test_memory_engine_unit.py`（81）                           | TaskMatcher/IntentClassifier/MemoryGraph/Injector/memory_actions |
-| L2 Memory 集成   | `test_memory_engine_integration.py`（21）                    | Bootstrap→Graph→Injector→Matcher 端到端联动                           |
-| L2 E2E         | `test_layer2_e2e.py`（24）+`test_layer2_e2e_extended.py`（32） | 全链路 Prompt 组装 / 跨语言一致性 / Schema↔Memory 一致性                       |
-| L2 诊断模块        | `test_diagnostics.py`（41）                                  | frontmatter 解析 / 数据收集器 / HTML 渲染器 / CLI E2E                      |
+既有 Layer 2 / Bootstrap / Diagnostics / Autonomous Runner 测试集仍为回归基线。
 
 
 ---
@@ -921,9 +847,10 @@ gc:
     gamma: 0.3     # 图结构重要性（in-degree）
 
 analysis:
-  use_tree_sitter: false
+  use_tree_sitter: true                 # Java/Go/TS 默认 Tree-sitter；缺依赖自动降级
+  tree_sitter_languages: [java, go, typescript, tsx]
 
-# ★ 弹性工具链配置（Sprint 2）
+# 弹性工具链配置
 agent:
   execution_mode: "pipeline"        # pipeline | autonomous | auto
   autonomous_models: []             # 支持 Tool-Calling 的模型名

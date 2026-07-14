@@ -13,7 +13,12 @@ ASTParserProtocol 的接口。Python 路径使用标准库 ast，不在此模块
 """
 from __future__ import annotations
 
-from mms.analysis.ast_skeleton import FileSkeleton, _parse_java, _parse_go
+from mms.analysis.ast_skeleton import (
+    FileSkeleton,
+    _parse_go,
+    _parse_java,
+    _parse_typescript,
+)
 
 
 class RegexFallbackParser:
@@ -25,11 +30,15 @@ class RegexFallbackParser:
     """
 
     def __init__(self, lang: str) -> None:
-        if lang not in ("java", "go"):
-            raise ValueError(f"RegexFallbackParser 仅支持 java/go，收到: {lang!r}")
+        if lang not in ("java", "go", "typescript", "tsx"):
+            raise ValueError(
+                f"RegexFallbackParser 仅支持 java/go/typescript，收到: {lang!r}"
+            )
         self._lang = lang
 
     def extract_skeleton(self, source: str, rel_path: str) -> FileSkeleton:
         if self._lang == "java":
             return _parse_java(source, rel_path)
-        return _parse_go(source, rel_path)
+        if self._lang == "go":
+            return _parse_go(source, rel_path)
+        return _parse_typescript(source, rel_path)

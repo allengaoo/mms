@@ -497,6 +497,7 @@ def _run_structural_gc(
     project_root: Path,
     dry_run: bool,
     log,
+    repository=None,
 ) -> List[str]:
     """
     Rule 08: 结构性 GC — 将孤立的 MEM-BOOT-*.md 归档（软删除）。
@@ -505,9 +506,8 @@ def _run_structural_gc(
     （即对应的源码类已被删除/重命名）。
 
     归档策略：
-        - 将孤立节点移至同层的 _archived/ 子目录（不物理删除）
-        - 归档文件名添加 .orphan 后缀，方便识别
-        - 在归档文件头部追加注释说明归档原因
+        - 通过 MemoryRepository.delete(archive=True) 软删除
+        - 具体归档目录由存储适配器决定
 
     Args:
         ast_index:      最新的 AST index（来自本次 Bootstrap 运行）
@@ -518,12 +518,12 @@ def _run_structural_gc(
     Returns:
         已归档的文件路径列表（相对 project_root）
     """
-    import re as _re
-    import shutil
-
     shared_dir = project_root / "docs" / "memory" / "shared"
     if not shared_dir.exists():
         return []
+    if repository is None:
+        from mms.adapters import get_repository
+        repository = get_repository(memory_root=shared_dir.parent)
 
     # 构建当前所有 class_name 的集合（用于快速查找）
     current_class_names: set = set()
@@ -535,41 +535,39 @@ def _run_structural_gc(
 
     archived: List[str] = []
 
-    for md_path in sorted(shared_dir.rglob("MEM-BOOT-*.md")):
-        # 跳过已在 _archived 目录中的文件
-        if "_archived" in md_path.parts:
+    boot_records = sorted(
+        (
+            record
+            for record in repository.load_all()
+            if record.id.startswith("MEM-BOOT-")
+            and record.path is not None
+            and shared_dir in record.path.parents
+        ),
+        key=lambda record: record.id,
+    )
+    for record in boot_records:
+        md_path = record.path
+        if md_path is None:
             continue
 
-        try:
-            text = md_path.read_text(encoding="utf-8", errors="ignore")
-            m = _re.search(r"class_name:\s*(\S+)", text)
-            if not m:
-                continue
-            class_name = m.group(1).strip()
-        except Exception:
+        ast_pointer = record.metadata.get("ast_pointer", {})
+        class_name = (
+            str(ast_pointer.get("class_name", "")).strip()
+            if isinstance(ast_pointer, dict)
+            else ""
+        )
+        if not class_name:
             continue
 
         if class_name in current_class_names:
             continue  # 对应类仍然存在，保留
 
-        # 对应类已消失 → 归档
-        archived_dir = md_path.parent / "_archived"
-        archived_path = archived_dir / (md_path.stem + ".orphan.md")
-
         rel = str(md_path.relative_to(project_root))
         if dry_run:
             log(f"  🗑  [dry-run] 孤立节点待归档: {rel}")
         else:
-            archived_dir.mkdir(parents=True, exist_ok=True)
-            # 在文件头部追加归档说明
-            import datetime as _dt
-            archive_header = (
-                f"<!-- ARCHIVED: class '{class_name}' no longer exists in AST index. "
-                f"Archived by structural GC on {_dt.date.today()}. -->\n"
-            )
-            archived_path.write_text(archive_header + text, encoding="utf-8")
-            md_path.unlink()
-            log(f"  🗑  孤立节点已归档: {rel} → _archived/{archived_path.name}")
+            repository.delete(record.id, archive=True)
+            log(f"  🗑  孤立节点已归档: {rel}")
 
         archived.append(rel)
 

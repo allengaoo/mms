@@ -25,6 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from mms.adapters import get_repository
+from mms.ports import FrontMatterProjection, MemoryRepository
+
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent.parent
 _MEMORY_ROOT = _ROOT / "docs" / "memory"
@@ -134,6 +137,7 @@ def create_memory_node(
     dry_run: bool = False,
     skip_quality_check: bool = False,
     skip_duplicate_check: bool = False,
+    repository: Optional[MemoryRepository] = None,
 ) -> ActionResult:
     """
     Action: 创建记忆节点
@@ -150,16 +154,21 @@ def create_memory_node(
     from mms.memory.memory_functions import (  # type: ignore[import]
         build_provenance, format_memory_content,
     )
-    from mms.memory.dream import _layer_to_dir, _get_next_mem_id  # type: ignore[import]
-
     if memory_root is None:
         memory_root = _MEMORY_ROOT
+    repo = repository or get_repository(memory_root=memory_root)
 
     warnings: List[str] = []
 
     # 构建 provenance
     provenance = build_provenance(ep_id, aiu_id)
-    new_id = _get_next_mem_id()
+    nums = [
+        int(match.group(1))
+        for memory_id in repo.list_ids()
+        for match in [re.match(r"MEM-L-(\d+)$", memory_id)]
+        if match
+    ]
+    new_id = f"MEM-L-{(max(nums) + 1) if nums else 1:03d}"
     content = format_memory_content(insight, provenance, new_id)
 
     # ── 前置条件检查 ──────────────────────────────────────────────────────
@@ -189,10 +198,11 @@ def create_memory_node(
             warnings=warnings,
         )
 
-    target_dir = _layer_to_dir(insight.layer)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    file_path = target_dir / f"{new_id}.md"
-    file_path.write_text(content, encoding="utf-8")
+    record = FrontMatterProjection().parse(content)
+    stored = repo.put(record)
+    file_path = stored.path
+    if file_path is None:
+        return ActionResult(success=False, error="Repository 未返回记忆文件路径")
 
     return ActionResult(
         success=True,
@@ -207,6 +217,7 @@ def update_memory_staleness(
     drift_suspected: bool,
     memory_root: Optional[Path] = None,
     reason: str = "file_ast_fingerprint_changed",
+    repository: Optional[MemoryRepository] = None,
 ) -> ActionResult:
     """
     Action: 更新记忆的新鲜度标记
@@ -216,42 +227,21 @@ def update_memory_staleness(
     """
     if memory_root is None:
         memory_root = _MEMORY_ROOT
-
-    target_file: Optional[Path] = None
-    for md_file in memory_root.glob("**/*.md"):
-        if "_system" in str(md_file) or "templates" in str(md_file):
-            continue
-        content = md_file.read_text(encoding="utf-8")
-        if re.search(rf"^id:\s*{re.escape(node_id)}\s*$", content, re.MULTILINE):
-            target_file = md_file
-            break
-
-    if target_file is None:
+    repo = repository or get_repository(memory_root=memory_root)
+    record = repo.get(node_id)
+    if record is None:
         return ActionResult(success=False, error=f"记忆节点 {node_id} 不存在")
 
-    content = target_file.read_text(encoding="utf-8")
-    updated = re.sub(
-        r"^drift_suspected:\s*.+$",
-        f"drift_suspected: {str(drift_suspected).lower()}",
-        content,
-        flags=re.MULTILINE,
-    )
-
-    if updated == content:
-        # drift_suspected 字段不存在，在 front-matter 中添加
-        updated = re.sub(
-            r"^(version:.*$)",
-            rf"drift_suspected: {str(drift_suspected).lower()}\n\1",
-            content,
-            flags=re.MULTILINE,
-            count=1,
-        )
-
-    target_file.write_text(updated, encoding="utf-8")
+    metadata = dict(record.metadata)
+    metadata["drift_suspected"] = drift_suspected
+    metadata["drift_reason"] = reason
+    stored = repo.put(record.copy(metadata=metadata))
+    if stored.path is None:
+        return ActionResult(success=False, error="Repository 未返回记忆文件路径")
     return ActionResult(
         success=True,
         node_id=node_id,
-        file_path=str(target_file.relative_to(_ROOT)),
+        file_path=str(stored.path.relative_to(_ROOT)),
     )
 
 

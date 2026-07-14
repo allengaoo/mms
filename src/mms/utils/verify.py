@@ -23,8 +23,10 @@ import sys
 from pathlib import Path
 from typing import List, Set, Tuple
 
+from mms.utils._paths import _PROJECT_ROOT
+
 # ── 路径常量 ─────────────────────────────────────────────────────────────────
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT = _PROJECT_ROOT
 _MEMORY_ROOT = _ROOT / "docs" / "memory"
 _INDEX_PATH = _MEMORY_ROOT / "MEMORY_INDEX.json"
 _DOCS_ARCH = _ROOT / "docs" / "architecture"
@@ -131,16 +133,15 @@ def check_index() -> List[str]:
         idx = json.load(f)
 
     indexed_paths = _collect_index_paths(idx.get("tree", []))
-    stats = idx.get("stats", {})
-
-    # 实际文件列表
+    # v5 索引只覆盖 active shared 记忆；seed packs、模板和本体说明不是运行时节点。
+    shared_root = _MEMORY_ROOT / "shared"
     actual_files = {
         md.relative_to(_MEMORY_ROOT)
-        for md in _MEMORY_ROOT.rglob("*.md")
-        if "_system" not in md.parts
-        and "archive" not in md.parts
-        and "templates" not in md.parts
-        and md.name != "CONTRIBUTING.md"
+        for md in shared_root.rglob("*.md")
+        if "archive" not in md.parts
+        and "_archived" not in md.parts
+        and md.name not in ("CONTRIBUTING.md", "README.md")
+        and md.read_text(encoding="utf-8", errors="ignore").startswith("---")
     }
 
     # 在索引中但文件不存在（用路径集合做反向校验）
@@ -154,11 +155,10 @@ def check_index() -> List[str]:
         for o in sorted(orphans):
             errors.append(f"[index] 孤立文件（未在索引中）: {o}")
 
-    # stats 字段校验
     actual_count = len(actual_files)
-    if stats.get("total") != actual_count:
+    if len(indexed_paths) != actual_count:
         errors.append(
-            f"[index] stats.total={stats.get('total')} 与实际文件数 {actual_count} 不符"
+            f"[index] 条目数 {len(indexed_paths)} 与实际文件数 {actual_count} 不符"
         )
 
     return errors

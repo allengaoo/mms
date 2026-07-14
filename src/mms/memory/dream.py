@@ -27,6 +27,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from mms.adapters import get_repository
+from mms.ports import FrontMatterProjection, MemoryRepository
+
 _HERE = Path(__file__).resolve().parent
 
 try:
@@ -543,21 +546,18 @@ access_count: 0
 
 # ── promote 流程 ──────────────────────────────────────────────────────────────
 
-def _get_next_mem_id() -> str:
-    """从 MEMORY_INDEX.json 推算下一个可用的 MEM-L-XXX ID"""
-    index_file = _MEMORY_ROOT / "MEMORY_INDEX.json"
-    try:
-        idx = json.loads(index_file.read_text(encoding="utf-8"))
-        nodes = idx.get("nodes", [])
-        nums = [
-            int(re.search(r"\d+", n["id"]).group())
-            for n in nodes
-            if re.match(r"MEM-L-\d+", n.get("id", ""))
-            and re.search(r"\d+", n.get("id", ""))
-        ]
-        return f"MEM-L-{(max(nums) + 1) if nums else 1:03d}"
-    except Exception:
-        return "MEM-L-XXX"
+def _get_next_mem_id(
+    repository: Optional[MemoryRepository] = None,
+) -> str:
+    """从 Repository 中推算下一个可用的 MEM-L-XXX ID。"""
+    repo = repository or get_repository(memory_root=_MEMORY_ROOT)
+    nums = [
+        int(match.group(1))
+        for memory_id in repo.list_ids()
+        for match in [re.match(r"MEM-L-(\d+)$", memory_id)]
+        if match
+    ]
+    return f"MEM-L-{(max(nums) + 1) if nums else 1:03d}"
 
 
 def _layer_to_dir(layer: str) -> Path:
@@ -589,7 +589,10 @@ def _layer_to_dir(layer: str) -> Path:
     return universal_mapping["CC"]
 
 
-def promote_draft(draft_path: Path) -> Optional[Path]:
+def promote_draft(
+    draft_path: Path,
+    repository: Optional[MemoryRepository] = None,
+) -> Optional[Path]:
     """将单条草稿提升为正式记忆（交互式）"""
     content = draft_path.read_text(encoding="utf-8")
     print(f"\n{_B}─── 草稿预览 ───────────────────────────────────────────{_X}")
@@ -600,7 +603,8 @@ def promote_draft(draft_path: Path) -> Optional[Path]:
     layer_m = re.search(r"^layer:\s*(.+)$", content, re.MULTILINE)
     layer = layer_m.group(1).strip() if layer_m else "CC"
     target_dir = _layer_to_dir(layer)
-    new_id = _get_next_mem_id()
+    repo = repository or get_repository(memory_root=_MEMORY_ROOT)
+    new_id = _get_next_mem_id(repo)
 
     print(f"\n  建议 ID：{_C}{new_id}{_X}")
     print(f"  目标目录：{target_dir.relative_to(_ROOT)}")
@@ -622,18 +626,16 @@ def promote_draft(draft_path: Path) -> Optional[Path]:
     new_content = re.sub(r"^id:\s*.*$", f"id: {new_id}", content, flags=re.MULTILINE)
     new_content = re.sub(r"^status:\s*draft.*\n?", "", new_content, flags=re.MULTILINE)
 
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / f"{new_id}.md"
-    try:
-        from mms.core.sanitize import sanitize_or_raise
-        new_content = sanitize_or_raise(new_content, path_hint=str(target_path))
-    except ImportError:
-        pass
-    target_path.write_text(new_content, encoding="utf-8")
+    projection = FrontMatterProjection()
+    record = projection.parse(new_content)
+    metadata = dict(record.metadata)
+    metadata.update(_auto_link(new_content, metadata))
+    stored = repo.put(record.copy(metadata=metadata))
+    target_path = stored.path
+    if target_path is None:
+        _err("Repository 未返回记忆文件路径")
+        return None
     draft_path.unlink()
-
-    # Auto-Link：promote 后自动建立图边（cites_files, about_concepts）
-    _apply_auto_link_to_file(target_path)
 
     _ok(f"已提升：{target_path.relative_to(_ROOT)}")
     print(f"  {_D}下一步：mms validate + mms gc 更新索引{_X}")

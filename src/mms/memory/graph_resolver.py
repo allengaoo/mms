@@ -31,6 +31,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from mms.adapters import get_repository
+from mms.ports import MemoryRepository
+
 _HERE = Path(__file__).resolve().parent
 try:
     from mms.utils._paths import _PROJECT_ROOT as _ROOT  # type: ignore[import]
@@ -223,8 +226,13 @@ class MemoryGraph:
     解析 front-matter 建立内存索引，后续操作均在内存中完成。
     """
 
-    def __init__(self, memory_root: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        memory_root: Optional[Path] = None,
+        repository: Optional[MemoryRepository] = None,
+    ) -> None:
         self._root = memory_root or _MEMORY_ROOT
+        self._repository = repository or get_repository(memory_root=self._root)
         self._nodes: Dict[str, MemoryNode] = {}
         self._file_to_ids: Dict[str, List[str]] = {}       # 文件路径 → 记忆 ID（cites 反向索引）
         self._concept_to_ids: Dict[str, List[str]] = {}    # DomainConcept → 记忆 ID（about 反向索引）
@@ -238,96 +246,48 @@ class MemoryGraph:
         self._loaded = True
 
     def _load_all(self) -> None:
-        """扫描所有记忆文件，建立索引。"""
-        for md in self._root.rglob("*.md"):
-            # 跳过系统目录、模板、存档
-            parts_set = set(md.parts)
-            if "_system" in parts_set or "templates" in parts_set or "archive" in parts_set:
-                continue
-            if md.name in ("CONTRIBUTING.md", "README.md"):
-                continue
-
+        """从 Repository 加载所有记忆并建立图索引。"""
+        for record in self._repository.load_all():
             try:
-                text = md.read_text(encoding="utf-8", errors="ignore")
-                fm = _parse_frontmatter(text)
-
-                mem_id = fm.get("id", md.stem)
-                if not mem_id:
-                    continue
-
-                # 提取标题
-                title = ""
-                for line in text.splitlines():
-                    if line.startswith("# "):
-                        raw = line[2:].strip()
-                        # 去掉 "ID · " 前缀
-                        title = raw.split("·", 1)[-1].strip() if "·" in raw else raw
-                        break
-
-                # 解析 related_to（可能是对象列表或字符串列表）
-                raw_related = fm.get("related_to", fm.get("related_memories", []))
                 related_list: List[Dict] = []
-                for item in (raw_related or []):
+                for item in record.related_to:
                     if isinstance(item, dict):
                         related_list.append(item)
                     elif isinstance(item, str) and item.strip():
                         related_list.append({"id": item.strip(), "reason": ""})
 
-                # 解析 cites_files
-                cites = fm.get("cites_files", [])
-                if isinstance(cites, str):
-                    cites = [cites]
-
-                # 解析 impacts
-                impacts = fm.get("impacts", [])
-                if isinstance(impacts, str):
-                    impacts = [impacts]
-
-                # 解析 v4.0 新增 Layer 2 图边字段（向后兼容：缺失时为空列表）
-                about_concepts = fm.get("about_concepts", []) or []
-                if isinstance(about_concepts, str):
-                    about_concepts = [about_concepts]
-
-                contradicts = fm.get("contradicts", []) or []
-                if isinstance(contradicts, str):
-                    contradicts = [contradicts]
-
-                derived_from = fm.get("derived_from", []) or []
-                if isinstance(derived_from, str):
-                    derived_from = [derived_from]
-
                 node = MemoryNode(
-                    id=mem_id,
-                    path=md,
-                    tier=str(fm.get("tier", "warm")).strip("\"'"),
-                    layer=_normalize_layer(str(fm.get("layer", ""))),
-                    tags=fm.get("tags", []) or [],
+                    id=record.id,
+                    path=record.path or self._root / f"{record.id}.md",
+                    tier=record.tier,
+                    layer=_normalize_layer(record.layer),
+                    tags=record.tags,
                     related_to=related_list,
-                    cites_files=[str(f) for f in cites] if cites else [],
-                    impacts=[str(i) for i in impacts] if impacts else [],
-                    about_concepts=[str(c) for c in about_concepts],
-                    contradicts=[str(c) for c in contradicts],
-                    derived_from=[str(d) for d in derived_from],
-                    title=title,
-                    module=str(fm.get("module", "")).strip("\"'"),
-                    source_ep=str(fm.get("source_ep", "")).strip("\"'"),
-                    version=int(fm.get("version", 1)) if fm.get("version") is not None else 1,
-                    generalized=bool(fm.get("generalized", False)),
-                    dimension=str(fm.get("dimension", "")).strip("\"'"),
+                    cites_files=record.cites_files,
+                    impacts=record.impacts,
+                    about_concepts=record.about_concepts,
+                    contradicts=record.contradicts,
+                    derived_from=record.derived_from,
+                    title=record.title,
+                    module=str(record.provenance.get("module", "")).strip("\"'"),
+                    source_ep=str(record.provenance.get("source_ep", "")).strip("\"'"),
+                    version=record.version,
+                    generalized=bool(record.provenance.get("generalized", False)),
+                    dimension=str(record.provenance.get("dimension", "")).strip("\"'"),
                 )
-                self._nodes[mem_id] = node
+                self._nodes[record.id] = node
 
                 # 建立文件→记忆的反向索引（cites 边）
                 for fpath in node.cites_files:
                     norm = fpath.strip()
                     if norm:
-                        self._file_to_ids.setdefault(norm, []).append(mem_id)
+                        self._file_to_ids.setdefault(norm, []).append(record.id)
 
                 # 建立 DomainConcept→记忆的反向索引（about 边）
                 for concept_id in node.about_concepts:
                     concept_id = concept_id.strip()
                     if concept_id:
-                        self._concept_to_ids.setdefault(concept_id, []).append(mem_id)
+                        self._concept_to_ids.setdefault(concept_id, []).append(record.id)
 
             except Exception:  # noqa: BLE001
                 continue
@@ -907,10 +867,16 @@ class MemoryGraph:
         original_tier = node.tier
         node.tier = "archive"
 
-        # 更新磁盘文件：tier 字段
-        ok1 = self._update_frontmatter_field(node_id, "tier", "archive", memory_root)
-        # 更新磁盘文件：archive_reason 字段
-        ok2 = self._update_frontmatter_field(node_id, "archive_reason", reason, memory_root)
+        record = self._repository.get(node_id)
+        if record is None:
+            node.tier = original_tier
+            return False
+        metadata = dict(record.metadata)
+        metadata["archive_reason"] = reason
+        self._repository.put(
+            record.copy(tier="archive", metadata=metadata)
+        )
+        ok1 = True
 
         if ok1:
             # 更新 in-degree：降级节点的出边不再贡献入度
@@ -933,35 +899,16 @@ class MemoryGraph:
         Returns:
             是否成功找到并更新了文件
         """
-        import re as _re
-        import yaml as _yaml
-
-        # 找到文件路径
-        for md in memory_root.rglob("*.md"):
-            try:
-                text = md.read_text(encoding="utf-8", errors="ignore")
-                fm_match = _re.match(r"^---\s*\n(.*?)\n---\s*\n", text, _re.DOTALL)
-                if not fm_match:
-                    continue
-                fm = _yaml.safe_load(fm_match.group(1)) or {}
-                if str(fm.get("id", "")) != str(node_id):
-                    continue
-
-                # 找到目标文件，更新 front-matter
-                fm[field_name] = field_value
-                new_fm_str = _yaml.dump(
-                    fm,
-                    default_flow_style=False,
-                    allow_unicode=True,
-                    sort_keys=False,
-                ).rstrip()
-                body = text[fm_match.end():]
-                new_text = f"---\n{new_fm_str}\n---\n{body}"
-                md.write_text(new_text, encoding="utf-8")
-                return True
-            except Exception:  # noqa: BLE001
-                continue
-        return False
+        record = self._repository.get(node_id)
+        if record is None:
+            return False
+        if field_name == "tier":
+            self._repository.put(record.copy(tier=str(field_value)))
+        else:
+            metadata = dict(record.metadata)
+            metadata[field_name] = field_value
+            self._repository.put(record.copy(metadata=metadata))
+        return True
 
 
 # ── CLI 入口（调试用）─────────────────────────────────────────────────────────

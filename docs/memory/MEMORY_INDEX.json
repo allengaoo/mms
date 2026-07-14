@@ -1,0 +1,165 @@
+{
+  "schema_version": "5.0",
+  "tree": [
+    {
+      "node_id": "ADAPTER",
+      "layer": "ADAPTER",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "APP",
+      "layer": "APP",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "DOMAIN",
+      "layer": "DOMAIN",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "PLATFORM",
+      "layer": "PLATFORM",
+      "trigger_keywords": [],
+      "nodes": [
+        {
+          "node_id": "PLATFORM:Pattern",
+          "object_type": "Pattern",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "PAT-BOOT-001",
+              "title": "TraceConfig — 平台配置，定义横切基础设施（安全/配置/Bean 注册等）",
+              "object_type": "Pattern",
+              "layer": "PLATFORM",
+              "node_id": "PLATFORM",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "config",
+                "configuration",
+                "cross-cutting",
+                "infrastructure",
+                "trace"
+              ],
+              "file": "shared/PLATFORM/PAT-BOOT-001.md"
+            },
+            {
+              "id": "PAT-BOOT-002",
+              "title": "MmsConfig — 平台配置，定义横切基础设施（安全/配置/Bean 注册等）",
+              "object_type": "Pattern",
+              "layer": "PLATFORM",
+              "node_id": "PLATFORM",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "config",
+                "configuration",
+                "cross-cutting",
+                "infrastructure",
+                "mms"
+              ],
+              "file": "shared/PLATFORM/PAT-BOOT-002.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "CC",
+      "layer": "CC",
+      "trigger_keywords": [],
+      "nodes": [
+        {
+          "node_id": "CC:Decision",
+          "object_type": "Decision",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "AD-SEED-001",
+              "title": "AD-SEED-001: 分层架构边界约束（通用）",
+              "object_type": "Decision",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "architecture",
+                "layering",
+                "separation-of-concerns",
+                "cold-start",
+                "seed"
+              ],
+              "file": "shared/CC/AD-SEED-001.md"
+            },
+            {
+              "id": "AD-SEED-002",
+              "title": "AD-SEED-002: API 接口契约规范（通用）",
+              "object_type": "Decision",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "api",
+                "contract",
+                "response-format",
+                "error-handling",
+                "cold-start",
+                "seed"
+              ],
+              "file": "shared/CC/AD-SEED-002.md"
+            }
+          ]
+        },
+        {
+          "node_id": "CC:Pattern",
+          "object_type": "Pattern",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "MEM-L-XXX",
+              "title": "集成测试节点",
+              "object_type": "Pattern",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "integration",
+                "test"
+              ],
+              "file": "shared/CC/MEM-L-XXX.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "CC_testing",
+      "layer": "CC_testing",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "CC_governance",
+      "layer": "CC_governance",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "BIZ",
+      "layer": "BIZ",
+      "trigger_keywords": [],
+      "nodes": []
+    },
+    {
+      "node_id": "Ops",
+      "layer": "Ops",
+      "trigger_keywords": [],
+      "nodes": []
+    }
+  ]
+}

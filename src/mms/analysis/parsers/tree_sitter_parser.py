@@ -1,202 +1,388 @@
-"""
-tree_sitter_parser.py — Tree-sitter AST 解析器（Sidecar 实现）
+"""Tree-sitter parser for Java, Go and TypeScript skeletons."""
 
-仅在 config.yaml 中 analysis.use_tree_sitter: true 且已安装
-  pip install "mulan[tree_sitter]"
-时才会被激活。未安装时抛出清晰的 ImportError，factory.py 负责降级。
-
-设计约束：
-  - Python 路径始终使用 ast 标准库，不走 Tree-sitter
-  - 仅处理 Java 和 Go（正则解析的主要盲区语言）
-  - 懒加载：模块 import 时不加载 tree-sitter，只在 extract_skeleton() 首次调用时初始化
-  - 线程安全：_init_parser() 通过 functools.lru_cache 保证单例
-"""
 from __future__ import annotations
 
 import functools
-from typing import Any, List
+import re
+from typing import Any, Iterable, List, Optional
 
-from mms.analysis.ast_skeleton import (
-    ClassSkeleton,
-    FileSkeleton,
-    MethodSkeleton,
-)
+from mms.analysis.ast_skeleton import ClassSkeleton, FileSkeleton, MethodSkeleton
+
+_MAX_SOURCE_BYTES = 1024 * 1024
 
 
-def _require_tree_sitter() -> Any:
-    """导入 tree_sitter，不可用时给出明确安装提示。"""
+def _require_tree_sitter() -> None:
     try:
         import tree_sitter  # noqa: F401
-        return tree_sitter
-    except ImportError:
+    except ImportError as error:
         raise ImportError(
-            "Tree-sitter 未安装。请运行：pip install \"mulan[tree_sitter]\"\n"
-            "或在 config.yaml 中设置 analysis.use_tree_sitter: false 禁用此功能。"
-        )
+            'Tree-sitter 未安装，请运行 pip install "mulan[tree_sitter]"'
+        ) from error
 
 
 @functools.lru_cache(maxsize=4)
-def _get_java_parser() -> Any:
-    """懒加载并缓存 Java Tree-sitter 解析器实例。"""
+def _get_parser(lang_name: str) -> Any:
     _require_tree_sitter()
     try:
-        import tree_sitter_java  # type: ignore[import]
         from tree_sitter import Language, Parser
-        lang = Language(tree_sitter_java.language())
-        parser = Parser(lang)
-        return parser, lang
-    except Exception as e:
-        raise ImportError(f"tree-sitter-java 初始化失败: {e}") from e
+
+        if lang_name == "java":
+            import tree_sitter_java as grammar
+
+            language = Language(grammar.language())
+        elif lang_name == "go":
+            import tree_sitter_go as grammar
+
+            language = Language(grammar.language())
+        elif lang_name in ("typescript", "tsx"):
+            import tree_sitter_typescript as grammar
+
+            capsule = (
+                grammar.language_tsx()
+                if lang_name == "tsx"
+                else grammar.language_typescript()
+            )
+            language = Language(capsule)
+        else:
+            raise ValueError(f"unsupported tree-sitter language: {lang_name}")
+        return Parser(language)
+    except Exception as error:
+        raise ImportError(f"tree-sitter-{lang_name} 初始化失败: {error}") from error
 
 
-@functools.lru_cache(maxsize=4)
-def _get_go_parser() -> Any:
-    """懒加载并缓存 Go Tree-sitter 解析器实例。"""
-    _require_tree_sitter()
+def _walk(node: Any) -> Iterable[Any]:
+    yield node
+    for child in node.named_children:
+        yield from _walk(child)
+
+
+def _text(node: Optional[Any], source: bytes) -> str:
+    if node is None:
+        return ""
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
+
+
+def _field(node: Any, name: str) -> Optional[Any]:
     try:
-        import tree_sitter_go  # type: ignore[import]
-        from tree_sitter import Language, Parser
-        lang = Language(tree_sitter_go.language())
-        parser = Parser(lang)
-        return parser, lang
-    except Exception as e:
-        raise ImportError(f"tree-sitter-go 初始化失败: {e}") from e
-
-
-# ── Java SCM 查询（S-Expression 风格） ──────────────────────────────────────
-
-_JAVA_CLASS_QUERY = """
-[
-  (class_declaration name: (identifier) @class.name)
-  (interface_declaration name: (identifier) @class.name)
-  (enum_declaration name: (identifier) @class.name)
-  (record_declaration name: (identifier) @class.name)
-  (annotation_type_declaration name: (identifier) @class.name)
-]
-"""
-
-_JAVA_METHOD_QUERY = """
-[
-  (method_declaration name: (identifier) @method.name)
-  (constructor_declaration name: (identifier) @method.name)
-]
-"""
-
-# ── Go SCM 查询 ──────────────────────────────────────────────────────────────
-
-_GO_TYPE_QUERY = """
-[
-  (type_spec name: (type_identifier) @type.name)
-]
-"""
-
-_GO_FUNC_QUERY = """
-[
-  (function_declaration name: (identifier) @func.name)
-  (method_declaration name: (field_identifier) @method.name
-                      receiver: (parameter_list
-                        (parameter_declaration
-                          type: [(pointer_type (type_identifier) @recv.type)
-                                 (type_identifier) @recv.type
-                                 (generic_type (type_identifier) @recv.type)])))
-]
-"""
-
-
-def _run_query(ts_module: Any, lang: Any, query_str: str, node: Any) -> List[Any]:
-    """运行 Tree-sitter 查询，返回 (node, capture_name) 列表。"""
-    try:
-        query = lang.query(query_str)
-        return query.captures(node)
+        return node.child_by_field_name(name)
     except Exception:
+        return None
+
+
+def _direct(node: Any, *types: str) -> List[Any]:
+    allowed = set(types)
+    return [child for child in node.named_children if child.type in allowed]
+
+
+def _annotations(node: Any, source: bytes) -> List[str]:
+    result = []
+    for child in node.named_children:
+        candidates = (
+            child.named_children if child.type == "modifiers" else [child]
+        )
+        for candidate in candidates:
+            if "annotation" not in candidate.type and candidate.type != "decorator":
+                continue
+            raw = _text(candidate, source).strip().lstrip("@")
+            if raw:
+                result.append(re.sub(r"\s+", " ", raw))
+    return result
+
+
+def _split_types(parameters: Optional[Any], source: bytes) -> List[str]:
+    if parameters is None:
         return []
+    result = []
+    for parameter in parameters.named_children:
+        type_node = _field(parameter, "type")
+        raw = _text(type_node, source).strip()
+        if not raw:
+            text = _text(parameter, source).strip()
+            tokens = text.split()
+            raw = tokens[-1] if len(tokens) == 1 else " ".join(tokens[:-1])
+        raw = raw.replace("...", "[]").strip()
+        if raw:
+            result.append(re.sub(r"\s+", " ", raw))
+    return result
 
 
 class TreeSitterParser:
-    """
-    Tree-sitter AST 解析器（Sidecar 实现）。
-
-    提供比正则解析更精准的结构提取，特别是对复杂泛型、注解、嵌套类的处理。
-    降级策略由 factory.py 负责：tree-sitter 不可用时自动回退到 RegexFallbackParser。
-    """
-
     def __init__(self, lang: str) -> None:
-        if lang not in ("java", "go"):
-            raise ValueError(f"TreeSitterParser 仅支持 java/go，收到: {lang!r}")
+        if lang not in ("java", "go", "typescript", "tsx"):
+            raise ValueError(f"TreeSitterParser 不支持: {lang!r}")
         self._lang = lang
 
     def extract_skeleton(self, source: str, rel_path: str) -> FileSkeleton:
+        lang = "typescript" if self._lang == "tsx" else self._lang
+        if not source.strip() or len(source.encode("utf-8")) > _MAX_SOURCE_BYTES:
+            return FileSkeleton(path=rel_path, lang=lang)
+        parser = _get_parser(self._lang)
+        source_bytes = source.encode("utf-8")
+        tree = parser.parse(source_bytes)
         if self._lang == "java":
-            return self._parse_java(source, rel_path)
-        return self._parse_go(source, rel_path)
+            return self._parse_java(tree.root_node, source_bytes, rel_path)
+        if self._lang == "go":
+            return self._parse_go(tree.root_node, source_bytes, rel_path)
+        return self._parse_typescript(tree.root_node, source_bytes, rel_path)
 
-    def _parse_java(self, source: str, rel_path: str) -> FileSkeleton:
-        parser, lang = _get_java_parser()
-        tree = parser.parse(source.encode())
+    def _parse_java(
+        self,
+        root: Any,
+        source: bytes,
+        rel_path: str,
+    ) -> FileSkeleton:
         skeleton = FileSkeleton(path=rel_path, lang="java")
+        for node in root.named_children:
+            if node.type == "package_declaration":
+                skeleton.package = (
+                    _text(node, source).replace("package", "", 1).rstrip(";").strip()
+                )
+            elif node.type == "import_declaration":
+                raw = _text(node, source).rstrip(";").split(".")[-1].strip()
+                if raw and raw != "*":
+                    skeleton.imports.append(raw)
 
-        # 提取类/接口/enum/record
-        class_captures = _run_query(None, lang, _JAVA_CLASS_QUERY, tree.root_node)
-        class_names = [node.text.decode() for node, _ in class_captures if hasattr(node, "text")]
+        class_types = {
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+            "record_declaration",
+            "annotation_type_declaration",
+        }
 
-        # 提取方法（不区分归属，全部放在第一个类下，作为骨架对比用途）
-        method_captures = _run_query(None, lang, _JAVA_METHOD_QUERY, tree.root_node)
-        methods = [
-            MethodSkeleton(name=node.text.decode(), signature="()")
-            for node, _ in method_captures
-            if hasattr(node, "text")
-        ]
-
-        # 构建简单类骨架（骨架对比场景不需要精确归属）
-        for cname in class_names:
-            cls = ClassSkeleton(name=cname, bases=[])
+        def add_class(node: Any, parent: str = "") -> None:
+            name = _text(_field(node, "name"), source)
+            if not name:
+                return
+            qualified_name = f"{parent}.{name}" if parent else name
+            bases = []
+            for field_name, prefix in (
+                ("superclass", "extends"),
+                ("interfaces", "implements"),
+            ):
+                raw = _text(_field(node, field_name), source).strip()
+                raw = re.sub(rf"^{prefix}\s+", "", raw)
+                if raw:
+                    bases.extend(
+                        item.strip().split("<", 1)[0]
+                        for item in raw.split(",")
+                        if item.strip()
+                    )
+            cls = ClassSkeleton(
+                name=qualified_name,
+                bases=bases,
+                annotations=_annotations(node, source),
+            )
+            body = _field(node, "body")
+            if body is not None:
+                for member in body.named_children:
+                    if member.type in ("method_declaration", "constructor_declaration"):
+                        method_name = _text(_field(member, "name"), source)
+                        if not method_name:
+                            continue
+                        parameters = _field(member, "parameters")
+                        parameter_types = _split_types(parameters, source)
+                        return_type = _text(_field(member, "type"), source).strip()
+                        if member.type == "constructor_declaration":
+                            return_type = name
+                        signature = f"({', '.join(parameter_types)})"
+                        if return_type:
+                            signature += f" -> {return_type}"
+                        cls.methods.append(
+                            MethodSkeleton(
+                                name=method_name,
+                                signature=signature,
+                                annotations=_annotations(member, source),
+                            )
+                        )
             skeleton.classes.append(cls)
-        if skeleton.classes and methods:
-            skeleton.classes[0].methods = methods
+            if body is not None:
+                for nested in body.named_children:
+                    if nested.type in class_types:
+                        add_class(nested, qualified_name)
 
+        for node in root.named_children:
+            if node.type in class_types:
+                add_class(node)
+        skeleton.imports = sorted(set(skeleton.imports))
         return skeleton
 
-    def _parse_go(self, source: str, rel_path: str) -> FileSkeleton:
-        parser, lang = _get_go_parser()
-        tree = parser.parse(source.encode())
+    def _parse_go(
+        self,
+        root: Any,
+        source: bytes,
+        rel_path: str,
+    ) -> FileSkeleton:
         skeleton = FileSkeleton(path=rel_path, lang="go")
+        structs = {}
+        for node in _walk(root):
+            if node.type == "package_clause":
+                skeleton.package = _text(node, source).replace("package", "", 1).strip()
+            elif node.type == "import_spec":
+                path_node = _field(node, "path")
+                raw = _text(path_node, source).strip('"`')
+                if raw:
+                    skeleton.imports.append(raw.rsplit("/", 1)[-1])
+            elif node.type == "type_spec":
+                name = _text(_field(node, "name"), source)
+                type_node = _field(node, "type")
+                if not name or type_node is None:
+                    continue
+                if type_node.type not in ("struct_type", "interface_type"):
+                    continue
+                kind = "interface" if type_node.type == "interface_type" else "struct"
+                bases = [kind]
+                body = _field(type_node, "body")
+                if body is None:
+                    body = next(
+                        (
+                            child
+                            for child in type_node.named_children
+                            if child.type in (
+                                "field_declaration_list",
+                                "method_spec_list",
+                            )
+                        ),
+                        None,
+                    )
+                if body is not None:
+                    for member in body.named_children:
+                        if member.type == "field_declaration" and _field(member, "name") is None:
+                            embedded_node = _field(member, "type")
+                            if embedded_node is None and member.named_children:
+                                embedded_node = member.named_children[-1]
+                            embedded = _text(embedded_node, source).lstrip("*")
+                            if embedded:
+                                bases.append(embedded)
+                structs[name] = ClassSkeleton(name=name, bases=bases)
 
-        # 提取 struct/interface 类型
-        type_captures = _run_query(None, lang, _GO_TYPE_QUERY, tree.root_node)
-        structs: dict[str, ClassSkeleton] = {}
-        for node, cap_name in type_captures:
-            if cap_name == "type.name" and hasattr(node, "text"):
-                name = node.text.decode()
-                structs[name] = ClassSkeleton(name=name, bases=["struct"])
-
-        # 提取函数和方法（含 receiver 归属）
-        func_captures = _run_query(None, lang, _GO_FUNC_QUERY, tree.root_node)
-        recv_map: dict[str, str] = {}  # func_node_id -> recv_type
-        func_names: list[tuple[str, str | None]] = []
-
-        i = 0
-        while i < len(func_captures):
-            node, cap_name = func_captures[i]
-            if cap_name in ("func.name", "method.name") and hasattr(node, "text"):
-                func_name = node.text.decode()
-                recv_type = None
-                # 下一个 capture 可能是 recv.type
-                if i + 1 < len(func_captures):
-                    next_node, next_cap = func_captures[i + 1]
-                    if next_cap == "recv.type" and hasattr(next_node, "text"):
-                        recv_type = next_node.text.decode()
-                        i += 1
-                func_names.append((func_name, recv_type))
-            i += 1
-
-        for fname, recv in func_names:
-            m = MethodSkeleton(name=fname, signature="()")
-            if recv:
-                if recv not in structs:
-                    structs[recv] = ClassSkeleton(name=recv, bases=["struct"])
-                structs[recv].methods.append(m)
+        for node in _walk(root):
+            if node.type not in ("function_declaration", "method_declaration"):
+                continue
+            name = _text(_field(node, "name"), source)
+            if not name:
+                continue
+            parameter_types = _split_types(_field(node, "parameters"), source)
+            signature = f"({', '.join(parameter_types)})"
+            method = MethodSkeleton(name=name, signature=signature)
+            receiver = ""
+            if node.type == "method_declaration":
+                receiver_text = _text(_field(node, "receiver"), source)
+                matches = re.findall(r"\*?([A-Z]\w*)", receiver_text)
+                receiver = matches[-1] if matches else ""
+            if receiver:
+                structs.setdefault(
+                    receiver,
+                    ClassSkeleton(name=receiver, bases=["struct"]),
+                ).methods.append(method)
             else:
-                skeleton.top_level_functions.append(m)
+                skeleton.top_level_functions.append(method)
 
         skeleton.classes = list(structs.values())
+        skeleton.imports = sorted(set(skeleton.imports))
+        return skeleton
+
+    def _parse_typescript(
+        self,
+        root: Any,
+        source: bytes,
+        rel_path: str,
+    ) -> FileSkeleton:
+        skeleton = FileSkeleton(path=rel_path, lang="typescript")
+        class_types = {
+            "class_declaration",
+            "abstract_class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+        }
+        declarations = []
+        declaration_annotations = {}
+        for root_node in root.named_children:
+            if root_node.type == "import_statement":
+                raw = _text(root_node, source)
+                match = re.search(r"import\s*\{([^}]+)\}", raw)
+                if match:
+                    for item in match.group(1).split(","):
+                        name = item.strip().split(" as ")[-1].strip()
+                        if name and name[0].isupper():
+                            skeleton.imports.append(name)
+                continue
+            if root_node.type == "export_statement":
+                pending = []
+                for child in root_node.named_children:
+                    if child.type == "decorator":
+                        pending.append(_text(child, source).strip().lstrip("@"))
+                    else:
+                        declarations.append(child)
+                        if pending:
+                            declaration_annotations[id(child)] = list(pending)
+                            pending = []
+            else:
+                declarations.append(root_node)
+
+        for node in declarations:
+            if node.type == "function_declaration":
+                name = _text(_field(node, "name"), source)
+                params = _split_types(_field(node, "parameters"), source)
+                if name:
+                    skeleton.top_level_functions.append(
+                        MethodSkeleton(name=name, signature=f"({', '.join(params)})")
+                    )
+                continue
+            if node.type not in class_types:
+                continue
+            name = _text(_field(node, "name"), source)
+            if not name:
+                continue
+            bases = []
+            for child in node.named_children:
+                if child.type == "class_heritage":
+                    raw = _text(child, source)
+                    bases.extend(
+                        item.strip().split("<", 1)[0]
+                        for item in re.split(r"\bextends\b|\bimplements\b|,", raw)
+                        if item.strip()
+                    )
+            cls = ClassSkeleton(
+                name=name,
+                bases=bases,
+                annotations=declaration_annotations.get(
+                    id(node),
+                    _annotations(node, source),
+                ),
+            )
+            body = _field(node, "body")
+            if body is not None:
+                pending_annotations = []
+                for member in body.named_children:
+                    if member.type == "decorator":
+                        pending_annotations.append(
+                            _text(member, source).strip().lstrip("@")
+                        )
+                        continue
+                    if member.type not in (
+                        "method_definition",
+                        "method_signature",
+                        "abstract_method_signature",
+                    ):
+                        pending_annotations = []
+                        continue
+                    method_name = _text(_field(member, "name"), source)
+                    if not method_name:
+                        continue
+                    params = _split_types(_field(member, "parameters"), source)
+                    cls.methods.append(
+                        MethodSkeleton(
+                            name=method_name,
+                            signature=f"({', '.join(params)})",
+                            annotations=(
+                                list(pending_annotations)
+                                or _annotations(member, source)
+                            ),
+                            is_async="async" in _text(member, source).split("(", 1)[0],
+                        )
+                    )
+                    pending_annotations = []
+            skeleton.classes.append(cls)
+        skeleton.imports = sorted(set(skeleton.imports))
         return skeleton

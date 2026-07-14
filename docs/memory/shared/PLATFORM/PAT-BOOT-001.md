@@ -1,7 +1,8 @@
 ---
 id: PAT-BOOT-001
 type: pattern
-layer: L1_security
+object_type: Pattern
+layer: PLATFORM
 dimension: architecture
 source_ep: EP-000
 tier: warm

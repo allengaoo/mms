@@ -9,6 +9,7 @@
 **核心设计原则**：
 
 - **零 LLM 依赖**：整个冷启动过程仅依赖 YAML 规则和 AST 分析，无 LLM 调用（< 5 秒）。
+- **Tree-sitter 主解析器**：Java、Go、TypeScript/TSX 默认走 Tree-sitter，Python 继续使用标准库 `ast`；依赖缺失或显式关闭时自动回退到经过回归验证的 RegexFallbackParser。
 - **YAML 驱动**：推断规则完全由 `seed_packs/*/match_conditions.yaml` 和 `assets/ontology_schema/_config/inference_rules.yaml` 驱动，不硬编码业务逻辑。
 - **六路信号融合 + Evaluation DAG**：三阶段推断（Stage 1 短路 → Stage 2 冲突检测 → Stage 3 六路加权融合）。
 - **覆盖优先**：YAML Override Pass 在信号融合之前短路高置信度框架规则（confidence=1.0）。
@@ -264,7 +265,7 @@ graph TD
     end
 
     subgraph Step3 ["Step 3 AST 骨架化（build_ast_index）"]
-        H --> I[多语言解析: Python / Java / Go / TypeScript]
+        H --> I[Python ast / Java·Go·TypeScript Tree-sitter<br/>依赖缺失时自动 Regex fallback]
         I --> J[ast_index.json: file_path → classes / methods / imports]
     end
 

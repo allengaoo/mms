@@ -690,6 +690,44 @@ def _strip_param_names(sig: str) -> str:
     return f"({', '.join(result_params)}){ret_str}"
 
 
+def normalize_signature(signature: str) -> str:
+    """Canonicalize signatures before fingerprinting across parser backends."""
+    normalized = re.sub(r"\s+", " ", signature.strip())
+    normalized = re.sub(r"\s*([(),<>\[\]])\s*", r"\1", normalized)
+    normalized = re.sub(r"\s*->\s*", " -> ", normalized)
+    return _strip_param_names(normalized)
+
+
+def _compute_source_fingerprint(source: str, lang: str) -> str:
+    """Parser-independent semantic fingerprint for non-Python languages."""
+    without_comments = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.DOTALL)
+    patterns = {
+        "java": (
+            r"\b(?:class|interface|enum|record)\s+\w+[^{;]*",
+            r"\b\w[\w<>\[\], ?]*\s+\w+\s*\([^)]*\)",
+        ),
+        "go": (
+            r"\btype\s+\w+(?:\[[^\]]*\])?\s+(?:struct|interface)",
+            r"\bfunc\s+(?:\([^)]*\)\s*)?\w+\s*\([^)]*\)(?:\s*[^{\n]+)?",
+        ),
+        "typescript": (
+            r"\b(?:class|interface|enum)\s+\w+[^{;]*",
+            r"\b(?:async\s+)?\w+\s*\([^)]*\)\s*(?::\s*[^;{\n]+)?",
+        ),
+    }
+    language = "typescript" if lang == "tsx" else lang
+    facts = []
+    for pattern in patterns.get(language, ()):
+        facts.extend(re.findall(pattern, without_comments, flags=re.MULTILINE))
+    normalized = sorted(
+        re.sub(r"\s+", " ", fact).strip()
+        for fact in facts
+        if str(fact).strip()
+    )
+    content = "\n".join(normalized)
+    return "sha256:" + hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
 def _compute_fingerprint(skeleton: FileSkeleton) -> str:
     """
     基于语义骨架计算 SHA-256 指纹（用于 ast_diff 变更检测）。
@@ -703,10 +741,10 @@ def _compute_fingerprint(skeleton: FileSkeleton) -> str:
     for cls in sorted(skeleton.classes, key=lambda c: c.name):
         parts.append(f"class:{cls.name}({','.join(cls.bases)})")
         for m in sorted(cls.methods, key=lambda x: x.name):
-            sem_sig = _strip_param_names(m.signature)
+            sem_sig = normalize_signature(m.signature)
             parts.append(f"  method:{m.name}{sem_sig}")
     for fn in sorted(skeleton.top_level_functions, key=lambda x: x.name):
-        sem_sig = _strip_param_names(fn.signature)
+        sem_sig = normalize_signature(fn.signature)
         parts.append(f"func:{fn.name}{sem_sig}")
     content = "\n".join(parts)
     return "sha256:" + hashlib.sha256(content.encode()).hexdigest()[:16]
@@ -717,8 +755,14 @@ def _compute_fingerprint(skeleton: FileSkeleton) -> str:
 class AstSkeletonBuilder:
     """项目 AST 骨架全量扫描器。"""
 
-    def __init__(self, root: Path = _ROOT, scan_dirs=None):
+    def __init__(
+        self,
+        root: Path = _ROOT,
+        scan_dirs=None,
+        use_tree_sitter: Optional[bool] = None,
+    ):
         self.root = root
+        self.use_tree_sitter = use_tree_sitter
         # 优先使用显式传入的 scan_dirs，否则通过 _resolve_scan_dirs 自动检测
         self.scan_dirs = scan_dirs if scan_dirs is not None else _resolve_scan_dirs(root)
 
@@ -736,7 +780,8 @@ class AstSkeletonBuilder:
                 rel = str(file_path.relative_to(self.root))
                 skeleton = self._parse_file(file_path, rel, lang_hint)
                 if skeleton and (skeleton.classes or skeleton.top_level_functions):
-                    skeleton.fingerprint = _compute_fingerprint(skeleton)
+                    if not skeleton.fingerprint:
+                        skeleton.fingerprint = _compute_fingerprint(skeleton)
                     index[rel] = asdict(skeleton)
                     count += 1
         return index
@@ -769,11 +814,30 @@ class AstSkeletonBuilder:
         if suffix in _PYTHON_EXTS:
             return _parse_python(source, rel)
         elif suffix in _TS_EXTS:
-            return _parse_typescript(source, rel)
+            from mms.analysis.parsers.factory import get_parser
+            lang = "tsx" if suffix == ".tsx" else "typescript"
+            skeleton = get_parser(
+                lang,
+                use_tree_sitter=self.use_tree_sitter,
+            ).extract_skeleton(source, rel)
+            skeleton.fingerprint = _compute_source_fingerprint(source, lang)
+            return skeleton
         elif suffix in _JAVA_EXTS:
-            return _parse_java(source, rel)
+            from mms.analysis.parsers.factory import get_parser
+            skeleton = get_parser(
+                "java",
+                use_tree_sitter=self.use_tree_sitter,
+            ).extract_skeleton(source, rel)
+            skeleton.fingerprint = _compute_source_fingerprint(source, "java")
+            return skeleton
         elif suffix in _GO_EXTS:
-            return _parse_go(source, rel)
+            from mms.analysis.parsers.factory import get_parser
+            skeleton = get_parser(
+                "go",
+                use_tree_sitter=self.use_tree_sitter,
+            ).extract_skeleton(source, rel)
+            skeleton.fingerprint = _compute_source_fingerprint(source, "go")
+            return skeleton
         return None
 
 
@@ -781,9 +845,10 @@ def build_ast_index(
     root: Path = _ROOT,
     output: Path = _OUTPUT,
     dry_run: bool = False,
+    use_tree_sitter: Optional[bool] = None,
 ) -> Dict[str, dict]:
     """构建并保存 AST 索引。"""
-    builder = AstSkeletonBuilder(root=root)
+    builder = AstSkeletonBuilder(root=root, use_tree_sitter=use_tree_sitter)
     index = builder.build()
 
     if not dry_run:

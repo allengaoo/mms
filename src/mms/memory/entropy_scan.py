@@ -33,7 +33,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-_ROOT = Path(__file__).resolve().parents[2]
+from mms.adapters import get_repository
+from mms.ports import MemoryRepository
+from mms.utils._paths import _PROJECT_ROOT
+
+_ROOT = _PROJECT_ROOT
 _MEMORY_ROOT = _ROOT / "docs" / "memory"
 _INDEX_PATH = _MEMORY_ROOT / "MEMORY_INDEX.json"
 _PRIVATE_DIR = _MEMORY_ROOT / "private"
@@ -75,13 +79,15 @@ def _collect_index_entries(tree: list) -> Dict[str, dict]:
 
 
 def _actual_memory_files() -> Set[Path]:
+    shared_root = _MEMORY_ROOT / "shared"
     return {
-        md for md in _MEMORY_ROOT.rglob("*.md")
+        md for md in shared_root.rglob("*.md")
         if "_system" not in md.parts
         and "archive" not in md.parts
+        and "_archived" not in md.parts
         and "templates" not in md.parts
         and "private" not in md.parts
-        and md.name != "CONTRIBUTING.md"
+        and md.name not in ("CONTRIBUTING.md", "README.md")
     }
 
 
@@ -265,6 +271,16 @@ def main() -> int:
         action="store_true",
         help="CI 模式：有 error 级别问题则 exit 1",
     )
+    parser.add_argument(
+        "--apply-gc",
+        action="store_true",
+        help="执行 LFU 降级/归档并同步索引（默认仅扫描）",
+    )
+    parser.add_argument(
+        "--current-ep",
+        default="EP-0",
+        help="边衰减使用的当前 EP ID",
+    )
     args = parser.parse_args()
 
     # 加载索引
@@ -348,6 +364,14 @@ def main() -> int:
             if args.threshold in ("info", "warn"):
                 _warn(f"{ep_id} — 已 {days} 天未关闭，建议执行 mms private close {ep_id}")
                 warn_count += 1
+
+    if args.apply_gc:
+        print("\n▶ LFU 生命周期与边衰减")
+        gc_stats = run_gc(current_ep=args.current_ep)
+        _ok(
+            f"降级 {gc_stats['downgraded']}，归档 {gc_stats['archived']}，"
+            f"边衰减 {gc_stats['edges_decayed']}，边剪枝 {gc_stats['edges_pruned']}"
+        )
 
     # 汇总
     print(f"\n{'─' * 55}")
@@ -587,6 +611,7 @@ def compute_eviction_score(
 def rank_eviction_candidates(
     memory_root: Path = _MEMORY_ROOT,
     top_n: int = 10,
+    repository: MemoryRepository | None = None,
 ) -> List[Dict]:
     """
     使用三维度评分对记忆库中的节点排名，返回最应被淘汰的 top_n 条记忆。
@@ -596,39 +621,27 @@ def rank_eviction_candidates(
         按淘汰评分降序排列的记忆列表，每项包含：
         {id, score, layer, access_count, days_since_access, graph_importance, issues}
     """
+    repo = repository or get_repository(memory_root=memory_root)
     try:
         from mms.memory.graph_resolver import MemoryGraph  # type: ignore[import]
-        graph = MemoryGraph(memory_root=memory_root)
+        graph = MemoryGraph(memory_root=memory_root, repository=repo)
         graph._ensure_loaded()
     except Exception:
         graph = None
 
     candidates = []
 
-    for md in memory_root.rglob("*.md"):
-        parts_set = set(md.parts)
-        if "_system" in parts_set or "templates" in parts_set or "archive" in parts_set:
-            continue
-        if md.name in ("CONTRIBUTING.md", "README.md"):
+    shared_root = memory_root / "shared"
+    for record in repo.load_all():
+        if record.path is None or shared_root not in record.path.parents:
             continue
 
         try:
-            text = md.read_text(encoding="utf-8", errors="ignore")
-            fm_m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
-            if not fm_m:
-                continue
-            fm_text = fm_m.group(1)
-
-            def _fm_val(key: str, default: str = "") -> str:
-                m = re.search(rf"^{key}:\s*(.+)$", fm_text, re.MULTILINE)
-                return m.group(1).strip().strip("\"'") if m else default
-
-            node_id = _fm_val("id", md.stem)
-            layer = _fm_val("layer", "APP")
-            access_count = int(_fm_val("access_count", "0") or "0")
-            drift_suspected = _fm_val("drift_suspected", "false").lower() == "true"
-
-            last_accessed_str = _fm_val("last_accessed", "")
+            node_id = record.id
+            layer = record.layer or "APP"
+            access_count = record.access_count
+            drift_suspected = bool(record.metadata.get("drift_suspected", False))
+            last_accessed_str = str(record.metadata.get("last_accessed") or "")
             if last_accessed_str:
                 try:
                     last_dt = datetime.strptime(last_accessed_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -658,6 +671,7 @@ def rank_eviction_candidates(
                 "id": node_id,
                 "score": score,
                 "layer": layer,
+                "tier": record.tier,
                 "access_count": access_count,
                 "days_since_access": days_since,
                 "graph_importance": round(graph_importance, 3),
@@ -669,6 +683,57 @@ def rank_eviction_candidates(
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
     return candidates[:top_n]
+
+
+def apply_eviction_candidates(
+    candidates: List[Dict],
+    *,
+    repository: MemoryRepository,
+    downgrade_threshold: float = 0.65,
+    archive_threshold: float = 0.90,
+    dry_run: bool = False,
+) -> Dict[str, int]:
+    """Apply deterministic LFU lifecycle transitions through Repository."""
+    stats = {"downgraded": 0, "archived": 0, "unchanged": 0}
+    next_tier = {"hot": "warm", "warm": "cold"}
+    for candidate in candidates:
+        memory_id = candidate["id"]
+        tier = candidate.get("tier", "warm")
+        score = float(candidate.get("score", 0.0))
+        if tier == "cold" and score >= archive_threshold:
+            if not dry_run:
+                repository.delete(memory_id, archive=True)
+            stats["archived"] += 1
+        elif tier in next_tier and score >= downgrade_threshold:
+            if not dry_run:
+                repository.update_stats(memory_id, tier=next_tier[tier])
+            stats["downgraded"] += 1
+        else:
+            stats["unchanged"] += 1
+    return stats
+
+
+def run_gc(
+    memory_root: Path = _MEMORY_ROOT,
+    *,
+    current_ep: str = "EP-0",
+    dry_run: bool = False,
+    repository: MemoryRepository | None = None,
+) -> Dict[str, int]:
+    """Run ranking, lifecycle transitions and edge decay as one closed loop."""
+    repo = repository or get_repository(memory_root=memory_root)
+    candidates = rank_eviction_candidates(
+        memory_root,
+        top_n=max(len(repo.list_ids()), 1),
+        repository=repo,
+    )
+    stats = apply_eviction_candidates(
+        candidates,
+        repository=repo,
+        dry_run=dry_run,
+    )
+    edge_stats = decay_edges(current_ep=current_ep, dry_run=dry_run)
+    return {**stats, **{f"edges_{key}": value for key, value in edge_stats.items()}}
 
 
 if __name__ == "__main__":

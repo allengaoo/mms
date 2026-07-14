@@ -1,0 +1,634 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-14T07:10:13.139550+00:00",
+  "git_revision": "f0d316d93782363327b7370fd80bbc5c93e5671d",
+  "fixtures": {
+    "python_fastapi": {
+      "fixture": "python_fastapi",
+      "path": "tests/fixtures/python-fastapi-demo",
+      "ast": {
+        "files": 6,
+        "classes": 9,
+        "methods": 17,
+        "class_methods": 17,
+        "top_level_functions": 0,
+        "annotations": 4,
+        "imports": 23,
+        "files_by_language": {
+          "python": 6
+        }
+      },
+      "code_graph": {
+        "nodes": 9,
+        "edges": 8,
+        "cycles": 0
+      },
+      "inference": {
+        "classes": 9,
+        "layer_distribution": {
+          "ADAPTER": 1,
+          "APP": 1,
+          "DOMAIN": 6,
+          "PLATFORM": 1
+        },
+        "unknown_count": 0,
+        "ambiguous_count": 0
+      },
+      "bootstrap_report": {
+        "detected_stacks": [
+          "base",
+          "fastapi_sqlmodel",
+          "palantir_arch"
+        ],
+        "stack_confidence": 0.33,
+        "injected_seed_packs": [
+          "base",
+          "fastapi_sqlmodel",
+          "palantir_arch"
+        ],
+        "files_scanned": 6,
+        "classes_found": 9,
+        "methods_found": 17,
+        "graph_nodes": 9,
+        "graph_edges": 8,
+        "cycle_count": 0,
+        "classes_inferred": 9,
+        "classes_skipped": 0,
+        "layer_distribution": {
+          "ADAPTER": 1,
+          "PLATFORM": 1,
+          "DOMAIN": 6,
+          "APP": 1
+        },
+        "memories_generated": 0,
+        "memories_per_layer": {},
+        "seed_memories_loaded": 0,
+        "weights_profile_used": "",
+        "dry_run": true,
+        "errors": []
+      },
+      "timings": {
+        "ast_ms": 2.822,
+        "code_graph_ms": 0.13,
+        "inference_ms": 16.887,
+        "bootstrap_total_ms": 15.469
+      }
+    },
+    "go_gin": {
+      "fixture": "go_gin",
+      "path": "tests/fixtures/go-gin-demo",
+      "ast": {
+        "files": 8,
+        "classes": 12,
+        "methods": 29,
+        "class_methods": 15,
+        "top_level_functions": 14,
+        "annotations": 0,
+        "imports": 13,
+        "files_by_language": {
+          "go": 8
+        }
+      },
+      "code_graph": {
+        "nodes": 12,
+        "edges": 0,
+        "cycles": 0
+      },
+      "inference": {
+        "classes": 12,
+        "layer_distribution": {
+          "ADAPTER": 3,
+          "APP": 3,
+          "CC": 1,
+          "DOMAIN": 4,
+          "PLATFORM": 1
+        },
+        "unknown_count": 0,
+        "ambiguous_count": 2
+      },
+      "bootstrap_report": {
+        "detected_stacks": [
+          "base",
+          "go_gin",
+          "go_grpc"
+        ],
+        "stack_confidence": 0.28,
+        "injected_seed_packs": [
+          "base",
+          "go_gin"
+        ],
+        "files_scanned": 8,
+        "classes_found": 12,
+        "methods_found": 15,
+        "graph_nodes": 12,
+        "graph_edges": 0,
+        "cycle_count": 0,
+        "classes_inferred": 5,
+        "classes_skipped": 7,
+        "layer_distribution": {
+          "ADAPTER": 3,
+          "PLATFORM": 1,
+          "DOMAIN": 4,
+          "CC": 1,
+          "APP": 3
+        },
+        "memories_generated": 0,
+        "memories_per_layer": {},
+        "seed_memories_loaded": 0,
+        "weights_profile_used": "",
+        "dry_run": true,
+        "errors": []
+      },
+      "timings": {
+        "ast_ms": 1.666,
+        "code_graph_ms": 0.057,
+        "inference_ms": 2.704,
+        "bootstrap_total_ms": 5.021
+      }
+    },
+    "java_spring_boot": {
+      "fixture": "java_spring_boot",
+      "path": "tests/fixtures/spring-boot-demo",
+      "ast": {
+        "files": 8,
+        "classes": 8,
+        "methods": 17,
+        "class_methods": 17,
+        "top_level_functions": 0,
+        "annotations": 0,
+        "imports": 38,
+        "files_by_language": {
+          "java": 8
+        }
+      },
+      "code_graph": {
+        "nodes": 8,
+        "edges": 15,
+        "cycles": 0
+      },
+      "inference": {
+        "classes": 8,
+        "layer_distribution": {
+          "ADAPTER": 3,
+          "APP": 2,
+          "DOMAIN": 1
+        },
+        "unknown_count": 2,
+        "ambiguous_count": 0
+      },
+      "bootstrap_report": {
+        "detected_stacks": [
+          "base",
+          "spring_boot"
+        ],
+        "stack_confidence": 0.57,
+        "injected_seed_packs": [
+          "base",
+          "spring_boot"
+        ],
+        "files_scanned": 8,
+        "classes_found": 8,
+        "methods_found": 17,
+        "graph_nodes": 8,
+        "graph_edges": 15,
+        "cycle_count": 0,
+        "classes_inferred": 6,
+        "classes_skipped": 2,
+        "layer_distribution": {
+          "ADAPTER": 3,
+          "DOMAIN": 1,
+          "APP": 2
+        },
+        "memories_generated": 0,
+        "memories_per_layer": {},
+        "seed_memories_loaded": 0,
+        "weights_profile_used": "",
+        "dry_run": true,
+        "errors": []
+      },
+      "timings": {
+        "ast_ms": 6.392,
+        "code_graph_ms": 0.081,
+        "inference_ms": 5.633,
+        "bootstrap_total_ms": 12.101
+      }
+    },
+    "typescript_nestjs": {
+      "fixture": "typescript_nestjs",
+      "path": "tests/fixtures/typescript-nestjs-demo",
+      "ast": {
+        "files": 11,
+        "classes": 12,
+        "methods": 56,
+        "class_methods": 56,
+        "top_level_functions": 0,
+        "annotations": 0,
+        "imports": 59,
+        "files_by_language": {
+          "typescript": 11
+        }
+      },
+      "code_graph": {
+        "nodes": 12,
+        "edges": 10,
+        "cycles": 0
+      },
+      "inference": {
+        "classes": 12,
+        "layer_distribution": {
+          "ADAPTER": 3,
+          "APP": 2,
+          "CC": 1,
+          "DOMAIN": 3,
+          "PLATFORM": 3
+        },
+        "unknown_count": 0,
+        "ambiguous_count": 0
+      },
+      "bootstrap_report": {
+        "detected_stacks": [
+          "base"
+        ],
+        "stack_confidence": 0.53,
+        "injected_seed_packs": [
+          "base"
+        ],
+        "files_scanned": 11,
+        "classes_found": 12,
+        "methods_found": 56,
+        "graph_nodes": 12,
+        "graph_edges": 10,
+        "cycle_count": 0,
+        "classes_inferred": 10,
+        "classes_skipped": 2,
+        "layer_distribution": {
+          "PLATFORM": 3,
+          "CC": 1,
+          "DOMAIN": 3,
+          "APP": 2,
+          "ADAPTER": 3
+        },
+        "memories_generated": 0,
+        "memories_per_layer": {},
+        "seed_memories_loaded": 0,
+        "weights_profile_used": "",
+        "dry_run": true,
+        "errors": []
+      },
+      "timings": {
+        "ast_ms": 3.693,
+        "code_graph_ms": 0.087,
+        "inference_ms": 1.966,
+        "bootstrap_total_ms": 6.042
+      }
+    }
+  },
+  "retrieval": {
+    "query_count": 20,
+    "covered_layers": [
+      "ADAPTER",
+      "APP",
+      "BIZ",
+      "CC",
+      "CC_governance",
+      "CC_testing",
+      "DOMAIN",
+      "Ops",
+      "PLATFORM"
+    ],
+    "covered_object_types": [
+      "AntiPattern",
+      "BusinessFlow",
+      "Decision",
+      "Pattern"
+    ],
+    "latency_p95_ms": 0.016,
+    "queries": [
+      {
+        "id": "adapter_api",
+        "expected_layers": [
+          "ADAPTER"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D8"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.066
+      },
+      {
+        "id": "adapter_database",
+        "expected_layers": [
+          "ADAPTER"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D9"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.013
+      },
+      {
+        "id": "adapter_messaging",
+        "expected_layers": [
+          "ADAPTER"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D6"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.01
+      },
+      {
+        "id": "app_workflow",
+        "expected_layers": [
+          "APP"
+        ],
+        "expected_object_types": [
+          "BusinessFlow"
+        ],
+        "detected_layers": [
+          "APP",
+          "APP-D5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      },
+      {
+        "id": "app_cqrs",
+        "expected_layers": [
+          "APP"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "DOMAIN",
+          "DOMAIN-D2",
+          "APP",
+          "APP-D5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.01
+      },
+      {
+        "id": "domain_aggregate",
+        "expected_layers": [
+          "DOMAIN"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "DOMAIN",
+          "DOMAIN-D2"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.008
+      },
+      {
+        "id": "domain_decision",
+        "expected_layers": [
+          "DOMAIN"
+        ],
+        "expected_object_types": [
+          "Decision"
+        ],
+        "detected_layers": [
+          "DOMAIN",
+          "DOMAIN-D2"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.008
+      },
+      {
+        "id": "domain_antipattern",
+        "expected_layers": [
+          "DOMAIN"
+        ],
+        "expected_object_types": [
+          "AntiPattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D9",
+          "DOMAIN",
+          "DOMAIN-D2"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      },
+      {
+        "id": "platform_auth",
+        "expected_layers": [
+          "PLATFORM"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "DOMAIN",
+          "DOMAIN-D1",
+          "PLATFORM",
+          "PLATFORM-D1"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.01
+      },
+      {
+        "id": "platform_observability",
+        "expected_layers": [
+          "PLATFORM"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D6"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      },
+      {
+        "id": "cc_error_handling",
+        "expected_layers": [
+          "CC"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      },
+      {
+        "id": "cc_arch_decision",
+        "expected_layers": [
+          "CC"
+        ],
+        "expected_object_types": [
+          "Decision"
+        ],
+        "detected_layers": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.008
+      },
+      {
+        "id": "testing_unit",
+        "expected_layers": [
+          "CC_testing"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "L5",
+          "L5-D10"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.015
+      },
+      {
+        "id": "testing_integration",
+        "expected_layers": [
+          "CC_testing"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "L5",
+          "L5-D10"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.016
+      },
+      {
+        "id": "governance_schema",
+        "expected_layers": [
+          "CC_governance"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D6",
+          "DOMAIN",
+          "DOMAIN-D2"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.011
+      },
+      {
+        "id": "governance_antipattern",
+        "expected_layers": [
+          "CC_governance"
+        ],
+        "expected_object_types": [
+          "AntiPattern"
+        ],
+        "detected_layers": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.011
+      },
+      {
+        "id": "biz_order",
+        "expected_layers": [
+          "BIZ"
+        ],
+        "expected_object_types": [
+          "BusinessFlow"
+        ],
+        "detected_layers": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      },
+      {
+        "id": "biz_rule",
+        "expected_layers": [
+          "BIZ"
+        ],
+        "expected_object_types": [
+          "Decision"
+        ],
+        "detected_layers": [
+          "DOMAIN",
+          "DOMAIN-D2",
+          "DOMAIN-D1"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.008
+      },
+      {
+        "id": "ops_deploy",
+        "expected_layers": [
+          "Ops"
+        ],
+        "expected_object_types": [
+          "Pattern"
+        ],
+        "detected_layers": [
+          "ADAPTER",
+          "ADAPTER-D3"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.011
+      },
+      {
+        "id": "ops_rollback",
+        "expected_layers": [
+          "Ops"
+        ],
+        "expected_object_types": [
+          "BusinessFlow",
+          "Decision"
+        ],
+        "detected_layers": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "memory_ids": [],
+        "latency_ms": 0.009
+      }
+    ]
+  },
+  "memory_graph": {
+    "stats": {
+      "total_nodes": 73,
+      "total_edges": 1,
+      "total_file_refs": 53,
+      "tier_warm": 36,
+      "tier_hot": 37
+    },
+    "load_ms": 13.739
+  }
+}

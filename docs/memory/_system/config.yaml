@@ -128,10 +128,10 @@ analysis:
   # 将此字段设为 true 并安装 pip install "mulan[tree_sitter]" 后
   # Java/Go 代码将改用 Tree-sitter 进行精确解析。
   # Python 始终使用标准库 ast，不受此配置影响。
-  use_tree_sitter: false
+  use_tree_sitter: true
 
   # Tree-sitter 启用时处理的语言（Python 始终使用 ast，无需在此列出）
-  tree_sitter_languages: [java, go]
+  tree_sitter_languages: [java, go, typescript, tsx]
 
 
 # ── GC 配置（垃圾回收） ────────────────────────────────────────────────────────

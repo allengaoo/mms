@@ -3,7 +3,8 @@ id: BIZ-XXX                        # 唯一 ID，格式 BIZ-NNN
 layer: BIZ                         # 固定为 BIZ（业务逻辑维度）
 module: ontology                   # 业务子模块（ontology/pipeline/governance/platform）
 dimension: D0                      # D0 = 业务语义维度（跨 D1~D10）
-type: business-flow                # business-flow | actor-model | constraint | edge-case
+type: business-flow
+object_type: BusinessFlow                # business-flow | actor-model | constraint | edge-case
 tier: hot                          # hot | warm | cold
 tags: [object-type, crud, tenant]  # 业务相关标签
 source_ep: EP-XXX

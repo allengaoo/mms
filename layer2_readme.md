@@ -418,7 +418,7 @@ flowchart TD
     S2["Step 2: 种子包注入<br/>install_packs(detected_stacks)<br/>→ docs/memory/shared/CC/AD-SEED-*.md"]
     S2 --> S3
 
-    S3["Step 3: AST 骨架化<br/>build_ast_index(project_root)<br/>→ ast_index {file: {classes, methods...}}"]
+    S3["Step 3: AST 骨架化<br/>Python ast；Java/Go/TS Tree-sitter<br/>依赖缺失自动 Regex fallback"]
     S3 --> S4
 
     S4["Step 4: 代码依赖图<br/>build_code_graph(ast_index)<br/>→ code_graph.json"]
@@ -455,13 +455,18 @@ flowchart TD
 
 1. 扫描 shared/**/MEM-BOOT-*.md，提取 {class_name: fingerprint}
 2. 对每个 AST 扫描到的 class：
-   a. 计算当前 fingerprint：SHA-256(sorted(method_name:signature))
+   a. 计算当前 fingerprint：对源码声明头做规范化后的 parser-independent SHA-256
    b. 若 class_name 在已有记录 且 fingerprint 相同 → SKIP（幂等）
    c. 否则 → 写入/覆盖 MEM-BOOT-*.md（新增或更新）
 3. Structural GC：比对 ast_index 与现有 MEM-BOOT-*.md
-   d. class_name 不再存在于 AST 中 → 软归档至 _archived/
+   d. class_name 不再存在于 AST 中 → 通过 Repository 软归档至 archive/
 
 覆盖场景：
+
+- Java：类/接口/record、嵌套类、extends/implements、类与方法注解、签名和 imports；
+- Go：struct/interface、receiver 方法、嵌入类型、顶层函数和 imports；
+- TypeScript/TSX：class/interface/enum、NestJS decorators、方法签名和 imports；
+- Regex 与 Tree-sitter 共享 parser-independent fingerprint，切换解析器不会制造全量漂移。
   ✅ 代码未变 → fingerprint 不变 → SKIP（幂等）
   ✅ 方法签名变更 → fingerprint 变 → 重新生成
   ✅ 新增类 → 不在已有记录 → 新建节点
@@ -737,10 +742,10 @@ python3 scripts/visualize_memory.py \
 
 ## 13. 已知局限与后续计划
 
-| 优先级 | 问题                                                              | 后续方向                                   |
-| --- | --------------------------------------------------------------- | -------------------------------------- |
-| P2  | `cites_same_file` 边仅在可视化层存在，未建模为 LinkType                      | 评估是否需要持久化存储                            |
-| P2  | Diagnostics 图可视化无 LLM 语义聚类                                     | 探索基于 embedding 的节点聚类，暂无优先级             |
-| P3  | `fn_detect_drift` 的 sha256 fingerprint 仅覆盖方法签名，不感知类体实现变化       | 考虑内容哈希混合指纹策略（方法签名 + 类级 docstring hash） |
-| P9  | Memory Engine 直接操作文件系统，扩展性受限（延后至 v6） | GraphAdapter 内部抽象层，解耦物理存储              |
 
+| 优先级 | 问题                                                       | 后续方向                                   |
+| --- | -------------------------------------------------------- | -------------------------------------- |
+| P2  | `cites_same_file` 边仅在可视化层存在，未建模为 LinkType                | 评估是否需要持久化存储                            |
+| P2  | Diagnostics 图可视化无 LLM 语义聚类                               | 探索基于 embedding 的节点聚类，暂无优先级             |
+| P3  | parser-independent fingerprint 覆盖声明头，不感知方法体内部实现变化 | 评估声明指纹与内容哈希混合策略，避免实现变化漏检 |
+| P9  | MarkdownRepository 跨实例缓存仍需扫描文件签名，72 节点下二次图谱加载约为首次的 17.3% | 规模增长后评估 watcher 或持久化变更日志 |

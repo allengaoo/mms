@@ -22,7 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from mms.adapters import get_repository
 from mms.bootstrap.signal_fusion import LayerInference, ObjectTypeMapping
+from mms.ports import FrontMatterProjection, MemoryRepository
 
 # ─── 数据类 ──────────────────────────────────────────────────────────────────
 
@@ -243,6 +245,7 @@ def generate_seed_memories(
     dry_run: bool = False,
     id_prefix: str = "MEM-BOOT",
     existing_fingerprints: Optional[Dict[str, str]] = None,
+    repository: Optional[MemoryRepository] = None,
 ) -> GeneratorReport:
     """
     为推断结果中的核心类生成初始 MemoryNode 文件。
@@ -260,6 +263,8 @@ def generate_seed_memories(
         GeneratorReport
     """
     report = GeneratorReport()
+    repo = repository or get_repository(memory_root=output_dir.parent)
+    projection = FrontMatterProjection()
     layer_counts: Dict[str, int] = {}
     counter = 1
     _existing_fps = existing_fingerprints or {}
@@ -277,7 +282,11 @@ def generate_seed_memories(
         for cls in (file_data.get("classes") or []):
             name = cls.get("name", "")
             fqn = f"{file_path}::{name}"
-            class_data_index[fqn] = {**cls, "file_path": file_path}
+            class_data_index[fqn] = {
+                **cls,
+                "file_path": file_path,
+                "file_fingerprint": file_data.get("fingerprint", ""),
+            }
 
     for class_fqn, (layer_inf, obj_map) in sorted_items:
         # 跳过低置信度
@@ -309,7 +318,11 @@ def generate_seed_memories(
 
         methods_list = cls_data.get("methods", [])
         # 计算真实 fingerprint（方法签名哈希），用于漂移检测
-        fingerprint = cls_data.get("fingerprint", "") or _compute_fingerprint(methods_list)
+        fingerprint = (
+            cls_data.get("file_fingerprint", "")
+            or cls_data.get("fingerprint", "")
+            or _compute_fingerprint(methods_list)
+        )
 
         # 增量幂等检查：若已有同类名记忆且 fingerprint 相同，跳过生成
         # 注意：fingerprint 可能为 "" (无方法类)，两者均为 "" 时也视为未变化
@@ -338,8 +351,9 @@ def generate_seed_memories(
         out_path = layer_dir / f"{memory_id}.md"
 
         if not dry_run:
-            layer_dir.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(content, encoding="utf-8")
+            stored = repo.put(projection.parse(content))
+            if stored.path is not None:
+                out_path = stored.path
 
         report.generated.append(GeneratedMemory(
             memory_id=memory_id,

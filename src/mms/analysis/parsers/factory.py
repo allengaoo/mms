@@ -36,9 +36,9 @@ def get_parser(lang: str, use_tree_sitter: bool | None = None) -> "ASTParserProt
     """
     from mms.analysis.parsers.regex_parser import RegexFallbackParser
 
-    if lang not in ("java", "go"):
+    if lang not in ("java", "go", "typescript", "tsx"):
         raise ValueError(
-            f"get_parser() 仅支持 java/go（Python 使用 ast 标准库，无需此工厂）。"
+            f"get_parser() 仅支持 java/go/typescript（Python 使用 ast 标准库）。"
             f"收到: {lang!r}"
         )
 
@@ -53,7 +53,7 @@ def get_parser(lang: str, use_tree_sitter: bool | None = None) -> "ASTParserProt
             ts_langs = []
     else:
         use_ts = use_tree_sitter
-        ts_langs = ["java", "go"]
+        ts_langs = ["java", "go", "typescript", "tsx"]
 
     if not use_ts or lang not in ts_langs:
         return RegexFallbackParser(lang)
@@ -63,7 +63,14 @@ def get_parser(lang: str, use_tree_sitter: bool | None = None) -> "ASTParserProt
         from mms.analysis.parsers.tree_sitter_parser import TreeSitterParser
         parser = TreeSitterParser(lang)
         # 做一次最小测试，确认 tree-sitter 库已正确安装
-        parser.extract_skeleton("", f"_probe.{lang}")
+        extension = {"typescript": "ts", "tsx": "tsx"}.get(lang, lang)
+        probe_source = {
+            "java": "class Probe {}",
+            "go": "package probe\ntype Probe struct{}",
+            "typescript": "class Probe {}",
+            "tsx": "class Probe {}",
+        }[lang]
+        parser.extract_skeleton(probe_source, f"_probe.{extension}")
         return parser
     except (ImportError, Exception) as e:
         logger.warning(

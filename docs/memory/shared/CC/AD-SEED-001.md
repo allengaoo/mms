@@ -1,9 +1,10 @@
 ---
 id: AD-SEED-001
-layer: CC_architecture
+layer: CC
 dimension: architecture
 module: architecture
 type: decision
+object_type: Decision
 tier: hot
 tags: [architecture, layering, separation-of-concerns, cold-start, seed]
 source_ep: EP-130

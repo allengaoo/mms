@@ -1,9 +1,10 @@
 ---
 id: AD-SEED-002
-layer: CC_architecture
+layer: CC
 dimension: architecture
 module: architecture
 type: decision
+object_type: Decision
 tier: hot
 tags: [api, contract, response-format, error-handling, cold-start, seed]
 source_ep: EP-130

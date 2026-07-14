@@ -1,0 +1,5 @@
+{
+  "deprecated": true,
+  "replacement": "../MEMORY_INDEX.json",
+  "schema_version": "5.0"
+}

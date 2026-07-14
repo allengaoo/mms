@@ -592,7 +592,7 @@ def _print_distill_reminder(ep_norm: str, results: Dict, project_root: Optional[
     """打印知识沉淀提示，含距上次 distill 的天数和判断框架"""
     root = project_root or Path.cwd()
     # 尝试读取上次 GC 日期（distill 时间的近似值）
-    memory_index = root / "docs" / "memory" / "_system" / "memory_index.json"
+    memory_index = root / "docs" / "memory" / "MEMORY_INDEX.json"
     last_gc_str = "unknown"
     days_since: object = "?"
     try:

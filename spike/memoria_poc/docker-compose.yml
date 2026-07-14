@@ -1,0 +1,84 @@
+name: mms-memoria-poc
+
+services:
+  embedding-stub:
+    image: python@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
+    working_dir: /app
+    command: ["python", "/app/embedding_stub.py"]
+    volumes:
+      - ./embedding_stub.py:/app/embedding_stub.py:ro
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  matrixone-init:
+    image: ${MATRIXONE_IMAGE:-matrixorigin/matrixone:3.0.17}
+    user: root
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        chown -R ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} /mo-data &&
+        mkdir -p /logs &&
+        chown -R ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} /logs
+    volumes:
+      - ${POC_DATA_DIR:-./data-v0.4.0}/matrixone:/mo-data
+      - ${POC_DATA_DIR:-./data-v0.4.0}/logs/matrixone:/logs
+
+  matrixone:
+    image: ${MATRIXONE_IMAGE:-matrixorigin/matrixone:3.0.17}
+    hostname: matrixone
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    depends_on:
+      matrixone-init:
+        condition: service_completed_successfully
+    ports:
+      - "6001:6001"
+    volumes:
+      - ${POC_DATA_DIR:-./data-v0.4.0}/matrixone:/mo-data
+      - ${POC_DATA_DIR:-./data-v0.4.0}/logs/matrixone:/logs
+      - ${MEMORIA_SOURCE_DIR:?Run setup_runtime.sh first}/config/matrixone:/etc/memoria:ro
+    entrypoint: ["/mo-service"]
+    command: ["-debug-http=:12345", "-launch", "/etc/memoria/launch.toml"]
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/6001' 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ${MEMORIA_SOURCE_DIR}
+      dockerfile: memoria/Dockerfile
+      args:
+        RUST_VERSION: 1.85.1
+    hostname: memoria-api
+    depends_on:
+      embedding-stub:
+        condition: service_healthy
+      matrixone:
+        condition: service_healthy
+    ports:
+      - "8100:8100"
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    volumes:
+      - ${POC_DATA_DIR:-./data-v0.4.0}/logs/api:/var/log/memoria
+    environment:
+      RUST_LOG: info,memoria_api=info,memoria_service=info
+      DATABASE_URL: mysql://root:111@matrixone:6001/memoria
+      MASTER_KEY: ${MEMORIA_MASTER_KEY:?Set MEMORIA_MASTER_KEY in .env}
+      EMBEDDING_PROVIDER: openai
+      EMBEDDING_MODEL: mms-poc-deterministic
+      EMBEDDING_DIM: "32"
+      EMBEDDING_API_KEY: local-poc-key
+      EMBEDDING_BASE_URL: http://embedding-stub:8080/v1
+      MEMORIA_GOVERNANCE_ENABLED: "false"
+    restart: unless-stopped

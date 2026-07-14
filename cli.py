@@ -576,35 +576,66 @@ def cmd_distill(args: argparse.Namespace) -> int:
 def cmd_gc(args: argparse.Namespace) -> int:
     dry_run = getattr(args, "dry_run", False)
     update_index_only = getattr(args, "update_index_only", False)
-
-    # GC 核心逻辑：LFU tier 重计算 + 索引更新
-    index_file = _MEMORY_ROOT / "MEMORY_INDEX.json"
-    if dry_run:
-        count = len(list(_MEMORY_ROOT.rglob("*.md")))
-        info(f"[dry-run] 发现 {count} 个记忆文件，GC 完成后将重建索引")
-        return 0
+    apply_gc = getattr(args, "apply_gc", False)
 
     try:
-        from mms.core.indexer import IncrementalIndexer  # type: ignore
+        from mms.adapters import MarkdownRepository
+        from mms.core.indexer import IncrementalIndexer
+        from mms.memory.entropy_scan import run_gc
 
-        info("正在重建记忆索引（GC）…")
-        indexer = IncrementalIndexer(index_file=index_file)
-        info("✅ 索引重建完成")
-    except Exception as e:
-        warn(f"GC 索引操作失败：{e}")
+        repository = MarkdownRepository(_MEMORY_ROOT)
+        shared_root = _MEMORY_ROOT / "shared"
+        records = [
+            record
+            for record in repository.load_all()
+            if record.path is not None and shared_root in record.path.parents
+        ]
+        if dry_run:
+            info(f"[dry-run] 将重建索引：{len(records)} 条 shared 记忆")
+            if apply_gc:
+                stats = run_gc(_MEMORY_ROOT, dry_run=True, repository=repository)
+                info(
+                    f"[dry-run] LFU 计划：降级 {stats['downgraded']}，"
+                    f"归档 {stats['archived']}"
+                )
+            return 0
 
-    # GC 完成后自动运行熵扫描，输出清理建议
-    if not update_index_only and not dry_run:
-        info("GC 完成，正在运行熵扫描…")
+        info("正在重建 MEMORY_INDEX.json …")
+        index = IncrementalIndexer(_MEMORY_ROOT / "MEMORY_INDEX.json").rebuild(
+            records,
+            _MEMORY_ROOT,
+        )
+        entry_count = sum(
+            len(type_node.get("memories", []))
+            for layer in index.get("tree", [])
+            for type_node in layer.get("nodes", [])
+        )
+        info(f"✅ 索引重建完成（{entry_count} 条）")
+
+        if update_index_only:
+            return 0
+
+        if apply_gc:
+            info("正在执行 LFU 生命周期与边衰减…")
+            stats = run_gc(_MEMORY_ROOT, dry_run=False, repository=repository)
+            info(
+                f"✅ GC 完成：降级 {stats['downgraded']}，归档 {stats['archived']}，"
+                f"边衰减 {stats.get('edges_decayed', 0)}"
+            )
+            return 0
+
+        info("索引已重建；运行熵扫描（只读建议，使用 --apply-gc 才会执行生命周期动作）…")
         entropy_script = _SRC_DIR / "mms" / "memory" / "entropy_scan.py"
         if entropy_script.exists():
-            subprocess.run(
+            return subprocess.run(
                 [sys.executable, str(entropy_script), "--threshold", "warn"],
                 cwd=str(_PROJECT_ROOT),
-            )
-        else:
-            warn(f"熵扫描脚本未找到：{entropy_script}")
-    return 0
+            ).returncode
+        warn(f"熵扫描脚本未找到：{entropy_script}")
+        return 0
+    except Exception as e:
+        error(f"GC 失败：{e}")
+        return 1
 
 
 # ─── validate 命令 ────────────────────────────────────────────────────────────
@@ -851,16 +882,27 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="系统状态总览（Provider 可用性 / 熔断器 / 记忆统计）")
 
     # distill
-    p_distill = sub.add_parser("distill", help="EP 知识蒸馏（qwen3-32b）")
+    p_distill = sub.add_parser(
+        "distill",
+        help="EP 知识蒸馏（历史入口；模块已迁移到 dream/postcheck，当前可能不可用）",
+    )
     p_distill.add_argument("--ep", required=True, metavar="EP-NNN", help="EP 编号")
     p_distill.add_argument("--ep-file", metavar="PATH", help="EP 文件路径（覆盖自动查找）")
     p_distill.add_argument("--dry-run", action="store_true", help="仅预览，不写入")
     p_distill.add_argument("--resume", metavar="TRACE_ID", help="从断点恢复")
 
     # gc
-    p_gc = sub.add_parser("gc", help="垃圾回收（LFU tier 重计算 + 索引更新）")
+    p_gc = sub.add_parser(
+        "gc",
+        help="重建 MEMORY_INDEX.json；可选执行 LFU 生命周期归档",
+    )
     p_gc.add_argument("--dry-run", action="store_true", help="仅预览，不修改文件")
     p_gc.add_argument("--update-index-only", action="store_true", help="只重建索引")
+    p_gc.add_argument(
+        "--apply-gc",
+        action="store_true",
+        help="执行 LFU 降级/归档与边衰减（默认仅重建索引 + 只读扫描）",
+    )
 
     # validate
     p_val = sub.add_parser("validate", help="记忆文件 Schema 校验")

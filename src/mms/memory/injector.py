@@ -30,6 +30,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from mms.adapters import get_repository
+from mms.ports import MemoryRepository
+
 # ── 路径常量 ──────────────────────────────────────────────────────────────────
 _SCRIPT_DIR   = Path(__file__).parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent.parent
@@ -51,54 +54,54 @@ _KEYWORD_LAYER_MAP: List[Tuple[List[str], List[str]]] = [
       "apiresponse", "protable", "前端", "页面", "react", "zustand", "store",
       "component", "组件", "button", "权限按钮", "permissiongate",
       "grpc", "graphql", "websocket", "sse"],
-     ["ADAPTER", "ADAPTER-D8"]),
+     ["ADAPTER"]),
 
     (["kafka", "avro", "schema", "序列化", "message", "消息", "topic",
       "schema-registry", "normalize", "rabbitmq", "event", "事件"],
-     ["ADAPTER", "ADAPTER-D6"]),
+     ["ADAPTER"]),
 
     (["mysql", "postgres", "session", "transaction", "事务", "alembic", "migration",
       "session.begin", "autobegin", "hibernate", "jpa", "mybatis", "gorm",
       "sqlalchemy", "orm", "索引", "index", "数据库"],
-     ["ADAPTER", "ADAPTER-D9"]),
+     ["ADAPTER"]),
 
     (["redis", "cache", "缓存", "ttl", "evict", "caffeine", "ehcache"],
-     ["ADAPTER", "ADAPTER-D7"]),
+     ["ADAPTER"]),
 
     # DOMAIN 层：业务实体、领域规则、聚合根
     (["entity", "实体", "aggregate", "聚合", "domain", "领域", "business rule",
       "业务规则", "value object", "值对象", "domain service", "领域服务",
       "objecttypedef", "linktypedef", "本体", "ontology"],
-     ["DOMAIN", "DOMAIN-D2"]),
+     ["DOMAIN"]),
 
     (["connector", "syncjob", "ingestionworker", "数据管道", "pipeline",
       "datacatalog", "column", "列映射", "data_catalog"],
-     ["DOMAIN", "DOMAIN-D6"]),
+     ["DOMAIN"]),
 
     (["tenantquota", "quota", "配额", "cr", "change request", "审批",
       "changerequest", "governance", "治理", "rbac", "role", "permission"],
-     ["DOMAIN", "DOMAIN-D1"]),
+     ["DOMAIN", "CC_governance"]),
 
     # APP 层：用例编排、CQRS Handler、工作流、Saga
     (["worker", "jobexecutionscope", "cqrs", "handler", "command", "query",
       "saga", "outbox", "workflow", "orchestration", "用例", "用例编排"],
-     ["APP", "APP-D5"]),
+     ["APP"]),
 
     (["docker", "k8s", "kubectl", "deployment", "image", "deploy",
       "helm", "cicd", "devops", "ops"],
-     ["ADAPTER", "ADAPTER-D3"]),
+     ["Ops"]),
 
     # PLATFORM 层：认证、授权、配置、可观测性
     (["tenant_id", "securitycontext", "rls", "多租户", "audit", "auditservice",
       "jwt", "authentication", "authorization", "认证", "鉴权"],
-     ["PLATFORM", "PLATFORM-D1"]),
+     ["PLATFORM"]),
 
     (["test", "测试", "polyfactory", "dirty-equals", "msw", "vitest",
       "pytest", "renderWithProviders"],
-     ["L5", "L5-D10"]),
+     ["CC_testing"]),
 
     (["iceberg", "minio", "s3", "存储", "iceberg commit"],
-     ["L2", "L2-storage"]),
+     ["PLATFORM"]),
 ]
 
 
@@ -114,6 +117,11 @@ class MemorySnippet:
     score:      float
     how_section: str = ""    # HOW 段落（压缩后）
     when_section: str = ""   # WHEN 段落（触发条件）
+
+    @property
+    def node_id(self) -> str:
+        """Backward-compatible alias used by TaskMatcher integrations."""
+        return self.memory_id
 
 
 @dataclass
@@ -177,11 +185,16 @@ class MemoryInjector:
         print(result.to_prompt_prefix())
     """
 
-    def __init__(self, project_root: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        project_root: Optional[Path] = None,
+        repository: Optional[MemoryRepository] = None,
+    ) -> None:
         self._index: Optional[Dict] = None
         self._root = project_root or Path.cwd()
-        self._index_file = self._root / "docs" / "memory" / "_system" / "memory_index.json"
+        self._index_file = self._root / "docs" / "memory" / "MEMORY_INDEX.json"
         self._memory_dir = self._root / "docs" / "memory"
+        self._repository = repository or get_repository(memory_root=self._memory_dir)
 
     def _load_index(self) -> Dict:
         if self._index is None:
@@ -214,9 +227,9 @@ class MemoryInjector:
                 seen.add(n)
                 unique_nodes.append(n)
 
-        # 如果没匹配到，默认返回高频层（L1+L2 全局约束 + L5 接口层）
+        # 如果没匹配到，默认返回跨切面、平台与适配器高频层
         if not unique_nodes:
-            unique_nodes = ["L1", "L2", "L5"]
+            unique_nodes = ["CC", "PLATFORM", "ADAPTER"]
 
         # 可选：尝试用百炼 LLM 增强分类（快速 prompt，不阻塞）
         try:
@@ -320,7 +333,9 @@ class MemoryInjector:
         for node in tree:
             node_id = node.get("node_id", "")
             in_target = any(
-                node_id == n or node_id.startswith(n + "-") or n.startswith(node_id)
+                node_id == n
+                or node_id.startswith(n + ":")
+                or n.startswith(node_id + ":")
                 for n in target_nodes
             )
 
@@ -367,7 +382,9 @@ class MemoryInjector:
         # 防止全局 hot 跨领域记忆（如 AD-002 RLS）压过特定领域记忆
         mem_node = mem.get("node_id", "")
         if mem_node and any(
-            mem_node == n or mem_node.startswith(n + "-") or n.startswith(mem_node)
+            mem_node == n
+            or mem_node.startswith(n + ":")
+            or n.startswith(mem_node + ":")
             for n in target_nodes
         ):
             score += 1.5
@@ -383,16 +400,12 @@ class MemoryInjector:
         if not snippet.file_path:
             snippet.how_section = "(file 路径未配置，请检查 MEMORY_INDEX.json 中的 file 字段)"
             return
-        fpath = self._memory_dir / snippet.file_path
-        if not fpath.exists() or fpath.is_dir():
+        record = self._repository.get(snippet.memory_id)
+        if record is None:
             snippet.how_section = "(文件不存在或路径指向目录，请检查 MEMORY_INDEX.json)"
             return
 
-        content = fpath.read_text(encoding="utf-8", errors="ignore")
-
-        # 跳过 front-matter
-        parts = content.split("---\n", 2)
-        body = parts[2] if len(parts) >= 3 else content
+        body = record.body
 
         if compress:
             # HOW 段落：支持 MEM-L-xxx 的 "HOW" 和 AD-xxx 的 "决策/Rationale/Decision"

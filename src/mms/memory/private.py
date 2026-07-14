@@ -27,6 +27,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from mms.adapters import get_repository
+from mms.ports import MemoryRecord, MemoryRepository
+
 # ── 路径常量 ──────────────────────────────────────────────────────────────────
 _SCRIPT_DIR = Path(__file__).parent
 _MMS_ROOT   = _SCRIPT_DIR.parent.parent  # 项目根
@@ -157,7 +160,13 @@ def list_eps(status: Optional[str] = None) -> List[dict]:
     return result
 
 
-def promote_note(ep_id: str, note_file: str, target_layer: str, new_id: str) -> Path:
+def promote_note(
+    ep_id: str,
+    note_file: str,
+    target_layer: str,
+    new_id: str,
+    repository: Optional[MemoryRepository] = None,
+) -> Path:
     """
     将私有笔记提升为公有 shared 记忆。
     - note_file: 相对于 private/{ep_id}/ 的文件路径，如 notes/20260412_xxx.md
@@ -176,20 +185,42 @@ def promote_note(ep_id: str, note_file: str, target_layer: str, new_id: str) -> 
     if not src_path.exists():
         raise FileNotFoundError(f"源文件不存在: {src_path}")
 
-    dst_dir  = _SHARED_DIR / target_layer
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst_path = dst_dir / f"{new_id}.md"
+    repo = repository or get_repository(memory_root=_SHARED_DIR.parent)
+    if repo.get(new_id) is not None:
+        raise FileExistsError(f"记忆 {new_id} 已存在，请确认 new_id 是否重复")
 
-    if dst_path.exists():
-        raise FileExistsError(f"目标文件已存在: {dst_path}，请确认 new_id 是否重复")
-
-    # 复制文件
-    shutil.copy2(src_path, dst_path)
+    original = src_path.read_text(encoding="utf-8")
+    title = next(
+        (line[2:].strip() for line in original.splitlines() if line.startswith("# ")),
+        new_id,
+    )
+    object_type = "Decision" if note_file.startswith("decisions/") else "Pattern"
+    stored = repo.put(
+        MemoryRecord(
+            id=new_id,
+            title=title,
+            body=original,
+            object_type=object_type,
+            layer=target_layer,
+            tier="warm",
+            provenance={"source_ep": ep_id},
+            metadata={
+                "id": new_id,
+                "object_type": object_type,
+                "layer": target_layer,
+                "tier": "warm",
+                "source_ep": ep_id,
+                "version": 1,
+            },
+        )
+    )
+    if stored.path is None:
+        raise RuntimeError("Repository 未返回记忆文件路径")
+    dst_path = stored.path
 
     # 在原文件头部标记已升级
-    original = src_path.read_text(encoding="utf-8")
     src_path.write_text(
-        f"<!-- ⬆️  已升级: 公有记忆 {new_id} @ shared/{target_layer}/{new_id}.md -->\n\n"
+        f"<!-- ⬆️  已升级: 公有记忆 {new_id} @ {dst_path} -->\n\n"
         + original,
         encoding="utf-8",
     )
@@ -200,7 +231,7 @@ def promote_note(ep_id: str, note_file: str, target_layer: str, new_id: str) -> 
         {
             "source_file": note_file,
             "target_id":   new_id,
-            "target_file": f"shared/{target_layer}/{new_id}.md",
+            "target_file": str(dst_path),
             "promoted_at": datetime.now(timezone.utc).isoformat(),
         }
     )

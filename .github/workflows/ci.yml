@@ -62,6 +62,7 @@ jobs:
           pip install --upgrade pip
           pip install pyyaml>=6.0 structlog>=23.0
           pip install pytest>=8.0 pytest-cov>=5.0 pytest-mock>=3.12 pytest-asyncio>=0.23 pytest-json-report>=1.5
+          pip install -e ".[tree_sitter]"
 
       - name: Run tests (no LLM API needed)
         env:
@@ -86,6 +87,14 @@ jobs:
             --cov-report=xml \
             --cov-report=term-missing \
             --no-cov-on-fail \
+            -q
+
+      - name: Verify Tree-sitter and regex parity
+        run: |
+          python -m pytest \
+            tests/test_parser_dispatch.py \
+            tests/test_tree_sitter_extraction.py \
+            tests/test_fingerprint_stability.py \
             -q
 
       - name: Upload coverage to Codecov

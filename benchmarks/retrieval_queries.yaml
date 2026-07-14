@@ -1,0 +1,99 @@
+- id: adapter_api
+  query: "为 REST API 增加统一响应结构和错误状态码"
+  expected_layers: [ADAPTER]
+  expected_object_types: [Pattern]
+
+- id: adapter_database
+  query: "使用 SQLAlchemy Repository 实现事务边界和数据库访问"
+  expected_layers: [ADAPTER]
+  expected_object_types: [Pattern]
+
+- id: adapter_messaging
+  query: "设计 Kafka 消息序列化和消费端幂等处理"
+  expected_layers: [ADAPTER]
+  expected_object_types: [Pattern]
+
+- id: app_workflow
+  query: "实现订单创建用例的工作流编排和 Saga 补偿"
+  expected_layers: [APP]
+  expected_object_types: [BusinessFlow]
+
+- id: app_cqrs
+  query: "新增 CQRS Command Handler 并编排领域服务"
+  expected_layers: [APP]
+  expected_object_types: [Pattern]
+
+- id: domain_aggregate
+  query: "为订单聚合根增加业务规则和领域不变量"
+  expected_layers: [DOMAIN]
+  expected_object_types: [Pattern]
+
+- id: domain_decision
+  query: "记录领域模型边界和聚合划分的架构决策"
+  expected_layers: [DOMAIN]
+  expected_object_types: [Decision]
+
+- id: domain_antipattern
+  query: "识别贫血领域模型和跨聚合直接写数据库的反模式"
+  expected_layers: [DOMAIN]
+  expected_object_types: [AntiPattern]
+
+- id: platform_auth
+  query: "实现 JWT 身份认证、RBAC 授权和租户隔离"
+  expected_layers: [PLATFORM]
+  expected_object_types: [Pattern]
+
+- id: platform_observability
+  query: "增加结构化日志、trace 和审计事件"
+  expected_layers: [PLATFORM]
+  expected_object_types: [Pattern]
+
+- id: cc_error_handling
+  query: "统一异常处理、错误码和跨模块公共约束"
+  expected_layers: [CC]
+  expected_object_types: [Pattern]
+
+- id: cc_arch_decision
+  query: "记录跨模块依赖方向和分层架构决策"
+  expected_layers: [CC]
+  expected_object_types: [Decision]
+
+- id: testing_unit
+  query: "为服务层补充 pytest 单元测试和测试夹具"
+  expected_layers: [CC_testing]
+  expected_object_types: [Pattern]
+
+- id: testing_integration
+  query: "为 Spring Boot Repository 增加集成测试和 Testcontainers"
+  expected_layers: [CC_testing]
+  expected_object_types: [Pattern]
+
+- id: governance_schema
+  query: "校验本体 Schema 设计原则并阻止不兼容变更"
+  expected_layers: [CC_governance]
+  expected_object_types: [Pattern]
+
+- id: governance_antipattern
+  query: "检测 God Object 和跨项目专用层级等架构反模式"
+  expected_layers: [CC_governance]
+  expected_object_types: [AntiPattern]
+
+- id: biz_order
+  query: "描述订单从创建、支付到发货的完整业务流程"
+  expected_layers: [BIZ]
+  expected_object_types: [BusinessFlow]
+
+- id: biz_rule
+  query: "整理客户配额审批和订单取消的业务规则"
+  expected_layers: [BIZ]
+  expected_object_types: [Decision]
+
+- id: ops_deploy
+  query: "使用 Docker 和 Kubernetes 部署服务并配置健康检查"
+  expected_layers: [Ops]
+  expected_object_types: [Pattern]
+
+- id: ops_rollback
+  query: "制定生产发布失败后的回滚流程和运维决策"
+  expected_layers: [Ops]
+  expected_object_types: [BusinessFlow, Decision]
