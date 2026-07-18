@@ -1,6 +1,6 @@
 # MMS Ontology 模块 (src/mms/ontology)
 
-> **最后更新**：2026-05-06 | Ontology Engine v3.1（Schema v5.0）
+> **最后更新**：2026-07-19 | Ontology Engine v3.1 | Schema v5.0
 
 ## 1. 模块定位
 
@@ -16,6 +16,8 @@
 ---
 
 ## 2. 资产目录结构（assets/ontology_schema/）
+
+> **唯一运行时来源**：`OntologyRegistry` 只加载 `assets/ontology_schema/`。`docs/memory/ontology/` 是历史镜像，不应作为运行时 Schema 或新文档引用源；新增/修改定义必须以 `assets/ontology_schema/` 为准。
 
 ```text
 assets/ontology_schema/

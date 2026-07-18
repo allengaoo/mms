@@ -1,6 +1,6 @@
 # DAG 层 (Directed Acyclic Graph)
 
-> **最后更新**：2026-05-04（测试覆盖完成：168 tests / 168 passed，DAG 层全模块 TDD 套件建立）
+> **最后更新**：2026-07-19 | DAG 原子化策略保留 | 运行时统一 `qwen3-32b`
 
 ## 1. 架构定位
 
@@ -35,7 +35,7 @@ DAG 层是木兰 (Mulan) 任务工程层 (Layer 1) 的核心数据结构与任�
 | `depends_on`       | `List[str]`  | 前置 Unit ID 列表（DAG 边）                     |
 | `order`            | `int`        | 执行批次（同 order 可并行）                        |
 | `status`           | `str`        | `pending / in_progress / done / skipped` |
-| `model_hint`       | `str`        | 建议执行模型（`8b / 16b / capable`）             |
+| `model_hint`       | `str`        | 原子化预算档位（兼容 `8b / 16b / capable` 历史值；不等同实际 Provider） |
 | `atomicity_score`  | `float`      | 原子化评分（0.0–1.0）                           |
 | `aiu_steps`        | `List[dict]` | AIUStep 的序列化列表（执行提示层，非调度状态）              |
 | `aiu_feedback_log` | `List[dict]` | Feedback 回退记录（历史溯源用）                     |
@@ -401,7 +401,7 @@ python3 atomicity_check.py --unit U3 --ep EP-117 --model 16b
 | 历史调整  | `history_factor = min(1.0 + (1.0 - success_rate) * 0.1, 1.1)`，**上限 +10%**（已修复毒性正反馈） |
 
 
-> **v2.0 修复**：原公式 `1.0 + (1-rate) * 0.5` 会在低成功率时分配过多 Token，导致 LLM 上下文过长、注意力分散，进而成功率进一步下降（毒性正反馈）。新公式将增幅上限从 +50% 收窄至 +10%，低成功率情况改由 `suggest()` 切换 capable 模型解决。
+> **v2.0 修复**：原公式 `1.0 + (1-rate) * 0.5` 会在低成功率时分配过多 Token，导致上下文过长、注意力分散，进而成功率进一步下降。新公式将增幅上限从 +50% 收窄至 +10%，低成功率时由 `suggest()` 提升到 `capable` 预算档位。当前该档位仍由 Provider 工厂路由至 `qwen3-32b`。
 
 **主要类与函数**：
 

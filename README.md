@@ -10,9 +10,11 @@
 - **知识复用**：将历次 EP 执行产生的架构决策、模式与反模式沉淀为可检索的记忆图谱，新任务执行时精准注入，减少重复错误
 - **框架感知**：Bootstrap v2 通过 YAML 驱动的六路信号融合 + Tree-sitter/AST，自动理解项目的分层架构（无需人工标注）
 - **存储解耦**：记忆读写统一走 `MemoryRepository` 端口（当前默认 `MarkdownRepository`），索引与写入闭环，避免双索引/静默脱节
-- **双轨执行**：Track A（UnitRunner 串行流水线）适合小模型；Track B（Autonomous ReAct 循环）适合有 Tool-Calling 能力的大模型，共享同一套工具层
+- **双轨执行**：Track A（UnitRunner）提供确定性串行流水线；Track B（Autonomous ReAct）面向支持 Tool-Calling 的模型；两者共享同一套工具与安全门控
+- **原始记忆层**：`superpowers_sdlc` 将设计门禁、TDD、纵深校验、根因调试与 SDD 作为 `always_inject` 方法本体叠加到技术栈记忆
+- **统一模型**：意图、DAG、生成、评审与蒸馏默认均使用百炼 `qwen3-32b`；Claude Pending 降级路径已停用
 
-> **现代化状态（2026-07）**：Phase 1–3 已完成——端口解耦、Schema v5 单索引、Tree-sitter 主路径均已落地并通过回归。Memoria 稳定版 PoC 因自定义 metadata 无法原生往返被判定 No-Go，暂不切换持久层；详见 [`docs/plans/modernization/`](docs/plans/modernization/)。
+> **当前状态（2026-07-19）**：Phase 1–3 已完成——端口解耦、Schema v5 单索引、Tree-sitter 主路径均已落地；v3.1 Seed Installer 与 Superpowers 原始记忆已接入 Bootstrap、postcheck 与 dream。Memoria 稳定版 PoC 因自定义 metadata 无法原生往返被判定 No-Go，暂不切换持久层；详见 [`docs/plans/modernization/`](docs/plans/modernization/)。
 
 [CI](https://github.com/allengaoo/mms/actions/workflows/ci.yml)
 [Python 3.11+](https://www.python.org)
@@ -35,7 +37,7 @@
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  第三层：代码生成层（Code Generation）                                          ║
 ║  记忆上下文注入 → LLM 生成 Diff → 双角色评审                                   ║
-║  providers/（bailian/claude/gemini/ollama）+ execution/unit_context           ║
+║  providers/（百炼 qwen3-32b 主/备路由）+ execution/unit_context                ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  第四层：安全验证层（Safety & Validation）                                      ║
 ║  AST 契约检测 + 架构约束 + DB 迁移门控 + 脱敏 + MDR 诊断                       ║
@@ -49,6 +51,16 @@
 ║  agent_tools/（Tool 抽象层）+ utils/ + resilience/ + trace/                  ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
+
+---
+
+## 分层文档
+
+- [Layer 1：任务工程层](src/mms/layer1_readme.md) — Workflow / DAG / Execution 双轨编排
+- [Layer 2：知识本体层](layer2_readme.md) — Ports / Repository / Ontology / Bootstrap / Memory Graph
+- [Layer 3：代码生成层](layer3_readme.md) — qwen3-32b 路由、上下文组装与代码生成协议
+- [Layer 4：安全验证层](layer4_readme.md) — precheck / postcheck / arch_check / Sandbox / 流程门禁
+- [Layer 5：自学习层](layer5_readme.md) — distill / dream / seed absorber / v3.1 原始记忆
 
 ---
 
@@ -319,8 +331,11 @@ mulan bootstrap [--root PATH] [--min-confidence 0.5] [--max-per-layer 10]
 │    调用 seed_absorber.absorb(file) → CC/_absorb_draft/（待 promote） │
 │    无 API Key 时静默跳过（不阻断主流程）                               │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Step 2   种子包注入（seed_packs/{stack}/）                           │
-│    → docs/memory/seed_packs/{stack}/memories/AC-*.md               │
+│  Step 2   种子包注入（v2 legacy + v3.1）                             │
+│    v2: src/mms/bootstrap/seed_packs/*/docs → 目标项目                │
+│    v3.1: meta.always_inject ∪ detected_stacks                       │
+│      → Repository.import_raw → shared/{layer}/ + MEMORY_INDEX       │
+│    superpowers_sdlc 永久注入 11 条 AD/PAT/SKL 原始记忆               │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Step 3   AST 骨架化（ast_skeleton.py → parsers factory）            │
 │    Python: 标准库 ast                                               │
@@ -705,7 +720,7 @@ mulan ep run EP-001 --auto-confirm      # 全自动 Track A Pipeline
 # docs/memory/_system/config.yaml
 agent:
   execution_mode: "autonomous"      # 或 "auto"
-  autonomous_models: ["claude-opus-4"]
+  autonomous_models: ["qwen3-32b"]
   max_autonomous_turns: 10
   autonomous_token_budget: 80000
 
@@ -827,6 +842,7 @@ pytest tests/ --cov=src/mms --cov-report=html
 | 端口契约 | `test_memory_ports.py` / `test_ports_contract.py` / `test_no_bypass_writes.py` | front-matter 往返、Repository 契约、禁止绕过写入 |
 | 索引 / GC | `test_index_v5.py` / `test_gc_loop.py` / `test_graph_cache.py` | v5 索引钩子、LFU 闭环、跨实例缓存失效 |
 | Tree-sitter | `test_tree_sitter_extraction.py` / `test_parser_dispatch.py` / `test_fingerprint_stability.py` | 三语言提取、分发降级、双模式 fingerprint 一致 |
+| v3.1 原始记忆 | `test_v31_seed_installer.py` | `always_inject` 发现、写入 shared、索引更新、流程门禁加载 |
 
 既有 Layer 2 / Bootstrap / Diagnostics / Autonomous Runner 测试集仍为回归基线。
 

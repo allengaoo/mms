@@ -1,5 +1,7 @@
 # 任务工程层 (Task Engineering Layer)
 
+> **最后更新**：2026-07-19 | `qwen3-32b` 统一路由 | Superpowers postcheck 门禁
+
 ## 1. 架构定位
 
 任务工程层位于木兰 (Mulan) AIOS 架构的 **Layer 1**。它是整个 AI 编码工具链的大脑和中枢神经，负责将自然语言描述的、模糊的业务需求，转化为机器可执行的、确定性的原子操作序列，并最终驱动底层大模型完成代码变更。
@@ -24,11 +26,11 @@
 > **架构约束（重要）**：Track A 和 Track B **共享同一套安全门控**。Phase 0（环境准备）、Phase 1（precheck）、Phase 3（postcheck）由 `run()` 顶层统一管控，任何执行轨道都不得绕过。**轨道分叉只发生在 Phase 2（Unit 执行环）内部**，不影响前后的安全门控。
 
 - **Track A: UnitRunner 串行流水线 (Pipeline Mode)**
-  - **适用场景**：能力较弱但速度快、成本低的小模型（如 `qwen3-coder-plus`）。
+  - **适用场景**：需要确定性 DAG、逐 Unit 验证和 3-Strike 回退的任务。当前默认模型为 `qwen3-32b`。
   - **机制**：高度确定性的流水线。`task_decomposer` 将 EP 拆解为严格的 DAG，`unit_runner` 按照拓扑排序逐个执行 AIU。每个 AIU 执行前组装极度压缩的上下文，执行后进行严格的独立验证（3-Strike 回退机制）。
   - **特点**：低智商模型的高可靠性保障。
 - **Track B: Autonomous ReAct 循环 (Autonomous Mode)**
-  - **适用场景**：具备强大推理和 Tool-Calling 能力的顶级大模型（如 `claude-opus-4`, `qwen3-32b`）。
+  - **适用场景**：使用支持 Tool-Calling 的 `qwen3-32b` 自主探索和调用工具的任务。
   - **机制**：大模型自治。系统仅提供顶层 EP 描述和一组标准化工具（`ToolRegistry`），大模型在沙盒中自主决定调用哪些工具（如查本体、看 AST、跑测试），直到任务完成 (`tool_finish`)。Track B 通过 `_run_autonomous_units()` 接管 Phase 2，pre/post-check 仍由外层 `run()` 统一触发。
   - **特点**：高智商模型的高自由度探索，受限于 `max_turns` 和 `token_budget` 安全边界。
 
@@ -92,6 +94,8 @@
 > **语义签名比对 (2026-05)**：`run_arch_check_post` 引入了 `_get_semantic_signature` 函数。在对比 baseline 和当前的架构违规时，会自动剔除行号信息（如 `[Line 10]`），仅比较违规的语义内容。这彻底解决了因代码修改导致无关行号漂移而产生的误报问题。
 >
 > **容错**：`run_arch_check_post()` 若抛出 Python 级别异常（如工具崩溃、OOM），`run_postcheck` 会捕获并将 arch_check 状态标记为 ERROR（返回码 2），保证整体报告仍能生成，不会向上传播崩溃。
+>
+> **流程门禁与学习闭环（2026-07）**：PASS/WARN 后，`postcheck` 从 `superpowers_sdlc/constraints.yaml` 加载并打印 `SP-GATE-*`、`SP-TEST-*`、`SP-SEC-*` 规则，随后提示运行 distill/dream。流程类规则不会伪装成静态扫描失败。
 
 ## 5. 状态机流转图 (统一安全门控视角)
 
@@ -108,8 +112,8 @@ stateDiagram-v2
     end note
 
     ROUTER: Phase 2 Capability Router（仅影响 Unit 执行轨道）
-    ROUTER --> TRACK_A: model=qwen3-coder-plus
-    ROUTER --> TRACK_B: model=qwen3-32b / claude
+    ROUTER --> TRACK_A: model=qwen3-32b / pipeline
+    ROUTER --> TRACK_B: model=qwen3-32b / autonomous
 
     state TRACK_A {
         [*] --> EXECUTE_UNIT: 按 DAG 拓扑排序
@@ -130,13 +134,13 @@ stateDiagram-v2
     TRACK_A --> PHASE3: 执行完毕
     TRACK_B --> PHASE3: 执行完毕
 
-    PHASE3: Phase 3 postcheck（测试 + 架构检查 + 迁移门控）
+    PHASE3: Phase 3 postcheck（测试 + 架构 + 迁移 + SP 流程门禁）
     PHASE3 --> [*]: 0 (PASS) / 1 (WARN) / 2 (FAIL)
 ```
 
 
 
-## 6. 测试覆盖率基线 (2026-05-03，最后更新)
+## 6. 测试与回归基线
 
 当前任务工程层整体测试覆盖率已提升至 **65%+**（包含多语言 E2E 测试、各模块独立集成测试、状态机回归测试，以及降级容错测试）。
 

@@ -1,6 +1,6 @@
 # 执行层 (Execution Layer)
 
-> 最后更新：2026-05-04 | 状态：**生产就绪**（2 个关键 Bug 已修复，125 测试全通过）
+> 最后更新：2026-07-19 | 状态：**生产就绪** | 运行时统一 `qwen3-32b`
 
 ---
 
@@ -39,7 +39,7 @@
 
 ### Track A：串行流水线（`unit_runner.py`）
 
-面向小模型（Qwen 8B/16B 等）的确定性执行轨道，严格按 DAG 拓扑顺序执行。
+面向需要确定性编排的任务，严格按 DAG 拓扑顺序执行。当前 `code_generation` 与 `code_generation_simple` 均由 Provider 工厂路由至 `qwen3-32b`。
 
 **核心类：`UnitRunner`**
 
@@ -74,7 +74,9 @@ UnitRunner.run(ep_id, unit_id, model, dry_run, confirm, save_output, project_roo
 
 ### Track B：自治循环（`autonomous_runner.py`）
 
-面向顶级大模型（Qwen 32B / qwen3-coder-plus 等）的高自由度执行轨道，实现 ReAct（Reason + Act）自治循环。
+面向支持 Tool-Calling 的 `qwen3-32b`，实现 ReAct（Reason + Act）自治循环。
+
+> **Provider 策略（2026-07）**：Track A/B 均通过 `providers.factory` 获取模型；默认降级链为 `bailian_plus → bailian_coder`，两者默认均是 `qwen3-32b`。Claude Pending Provider 已从运行时注册和 fallback chain 中移除。
 
 **核心函数：`run_autonomous()`**
 

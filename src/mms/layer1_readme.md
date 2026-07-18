@@ -1,5 +1,7 @@
 # 任务工程层 (Task Engineering Layer - Layer 1)
 
+> **最后更新**：2026-07-19 | 全阶段 `qwen3-32b` | Superpowers 流程门禁已接入
+
 ## 1. 架构定位
 
 任务工程层位于木兰 (Mulan) AIOS 架构的 **Layer 1**。它是整个 AI 编码工具链的大脑和中枢神经，负责将自然语言描述的、模糊的业务需求，转化为机器可执行的、确定性的原子操作序列，并最终驱动底层大模型完成代码变更。
@@ -46,8 +48,8 @@ DAG 模块定义了任务的微观结构。它负责：
 
 Execution 模块负责将 DAG 节点转化为实际的代码变更。它实现了双轨执行引擎：
 
-- **Track A (`unit_runner.py`)**: 面向小模型的串行流水线。严格按照 DAG 顺序执行，包含上下文组装、代码生成、Diff 应用和 **3-Strike 失败重试**机制。已支持基于 `project_root` 的动态路径。
-- **Track B (`autonomous_runner.py`)**: 面向顶级大模型的自治循环。基于 ReAct 模式，允许大模型自主调用工具完成任务，受限于最大轮次（Max Turns）安全边界。
+- **Track A (`unit_runner.py`)**：确定性的串行流水线。严格按照 DAG 顺序执行，包含上下文组装、代码生成、Diff 应用和 **3-Strike 失败重试**机制。当前 `code_generation` 与 `code_generation_simple` 均路由到 `qwen3-32b`。
+- **Track B (`autonomous_runner.py`)**：基于 ReAct 的自治循环，由支持 Tool-Calling 的 `qwen3-32b` 自主调用工具，受最大轮次、Token 预算和超时三重边界约束。
 - **沙箱与应用 (`sandbox.py`, `file_applier.py`)**: 提供基于内存快照的轻量级 GitSandbox。在修改文件前建立快照，一旦验证失败立即回滚。`file_applier.py` 最新集成了 **pyflakes 强化语法预验证**，在写入磁盘前进行深度的静态分析（如 NameError, ImportError 检测），将错误拦截在更早的阶段。
 
 ---
@@ -59,7 +61,7 @@ Workflow, DAG, Execution 三者之间有着严格的调用规则和数据流转�
 ### 3.1 调用规则与边界
 
 1. **Workflow 是唯一的主控节点**：用户通过 CLI (`mulan ep run`) 触发 Workflow。Workflow 负责调用 DAG 进行解析，调用 Execution 进行执行。DAG 和 Execution 之间**互不直接调用**。
-2. **统一安全门控**：无论 Execution 层走哪条轨道（Track A 的流水线或 Track B 的自治），都必须在 Workflow 的 `precheck`（基线快照）之后、`postcheck`（全局验证）之前执行。
+2. **统一安全门控**：无论 Execution 层走哪条轨道（Track A 的流水线或 Track B 的自治），都必须在 Workflow 的 `precheck`（基线快照）之后、`postcheck`（全局验证）之前执行。`postcheck` 还会加载 `superpowers_sdlc/constraints.yaml`，输出完成前验证、纵深校验、真实行为测试等流程门禁。
 3. **状态机驱动**：Workflow 通过读取和更新 DAG 层的 `DagState` 来决定下一步动作，实现断点续跑和幂等跳过。
 
 ### 3.2 跨模块全链路流转图
@@ -110,19 +112,28 @@ sequenceDiagram
 
     rect rgb(240, 255, 240)
         note right of WF: Phase 3: 后置质量门
-        WF->>WF: 10. 执行 postcheck (全局架构检查/测试，含语义签名比对)
+        WF->>WF: 10. 执行 postcheck (测试/架构/迁移 + SP 流程门禁)
         WF-->>User: 返回最终报告 (PASS / WARN / FAIL)
     end
 ```
 
 
 
-## 4. 测试与覆盖率
+## 4. 当前模型与降级策略
 
-Layer 1 拥有极高的测试标准，整体覆盖率达到 **65%+**。测试用例分布在 `tests/integration/` 目录下，涵盖了：
+- 意图合成、任务分解、DAG 编排、代码生成、评审和蒸馏均默认使用 `qwen3-32b`
+- Provider 降级链为 `bailian_plus → bailian_coder`，两者默认模型均为 `qwen3-32b`
+- Claude Pending Provider 已从运行时注册表和降级链移除；源码仅保留以便未来显式恢复
+- `text-embedding-v3` 仅用于向量检索，不属于对话/代码生成模型
+
+## 5. 测试与验证
+
+Layer 1 的回归测试分布在 `tests/`、`tests/integration/`、`tests/execution/` 与 `tests/dag/`，涵盖：
 
 - 多语言（Java, Python, Go）的 E2E 流程验证。
 - 状态机断点续跑、幂等跳过（Idempotency）的回归测试。
 - 各种极端情况下的容错降级测试（如 Markdown 格式畸形、工具崩溃、依赖缺失）。
 - **全局路径解耦后的全面回归测试**，确保在隔离的 `tmp_path` 环境中各项功能正常运行。
+
+CI 对 feature 分支执行 Python 3.9/3.11 测试、Tree-sitter parity、Benchmark Integrity、Architecture Check 与 Ruff 检查。完成状态必须有真实命令输出支撑（`PAT-SP-004`）。
 

@@ -1,6 +1,6 @@
 # MMS Memory 模块 (src/mms/memory)
 
-> **最后更新**：2026-05-06 | Memory Engine v3.1（兼容 Schema v5.0）
+> **最后更新**：2026-07-19 | Schema v5 单索引 | MemoryRepository 写入闭环
 
 ## 1. 模块定位
 
@@ -11,7 +11,7 @@
 - 基于 EP 执行日志的知识自动萃取与沉淀（dream）
 - 图谱健康度监控与腐化记忆检测（entropy_scan / freshness_checker）
 
-**设计约束**：Memory Engine 不依赖任何外部数据库，所有数据持久化为纯文本 Markdown，通过 front-matter v4.0 标准格式与 Bootstrap Engine 解耦通信。
+**设计约束**：Memory Engine 面向 `MemoryRepository` 端口编程，不直接绑定数据库或 Markdown。当前默认 `MarkdownRepository` 将 Schema v5 front-matter 持久化为纯文本，并通过写后钩子维护唯一运行时索引 `docs/memory/MEMORY_INDEX.json`。
 
 ---
 
@@ -193,7 +193,7 @@ promote_draft() → docs/memory/shared/{layer}/MEM-L-*.md
 
 - `run_dream(ep_id, since, force_llm)`: 主入口，协调全流程。
 - `save_draft(ep_id, draft)`: 保存知识草稿到私有工作区。
-- `promote_draft(draft_path)`: 将已审核的草稿提升为正式记忆。
+- `promote_draft(draft_path)`: 将已审核的草稿通过 `MemoryRepository.put()` 提升为正式记忆；命中 `SKL-SP-003 / SP-LEARN-001` 的空洞建议模式时先给出人工确认警告。
 - `_auto_link(content, fm)`: 自动识别正文中引用的记忆 ID 并建立图边。
 
 ---
@@ -221,7 +221,7 @@ promote_draft() → docs/memory/shared/{layer}/MEM-L-*.md
 
 从 `assets/ontology_schema/links/*.yaml` 加载 8 种边类型定义。
 
-**8 种 LinkType**：`related_to`、`impacts`、`derived_from`、`cites`、`implements`、`depends_on`、`about`、`contradicts`
+**9 种 LinkType**：`related_to`、`impacts`、`derived_from`、`cites`、`implements`、`depends_on`、`about`、`contradicts`、`contains`
 
 ---
 
@@ -235,14 +235,18 @@ sequenceDiagram
     participant Injector as memory.injector
     participant IC as intent_classifier
     participant Resolver as memory.graph_resolver
-    participant FS as 文件系统 (Markdown)
+    participant Repo as MemoryRepository
+    participant FS as Markdown + MEMORY_INDEX
 
     EP->>Injector: inject(task="新增订单支付接口")
     Injector->>IC: classify(task) → (layer=APP, op=create)
     IC-->>Injector: IntentResult(layer, op, confidence=0.85)
 
     Injector->>Resolver: hybrid_search("订单 支付 接口")
-    Resolver->>FS: _load_all()（若未缓存）
+    Resolver->>Repo: load_all()（若未缓存）
+    Repo->>FS: 读取 shared/**/*.md
+    FS-->>Repo: MemoryRecord 列表
+    Repo-->>Resolver: 规范化记录
     Resolver->>Resolver: find_by_concept() → 概念反向索引
     Resolver->>Resolver: typed_explore(concept_lookup) → 图扩展
     Resolver-->>Injector: 候选 MemoryNode 列表

@@ -1,6 +1,6 @@
 # MMS Bootstrap 模块 (src/mms/bootstrap)
 
-> **最后更新**：2026-05-06 | Bootstrap v2.1（Schema v5.0）
+> **最后更新**：2026-07-19 | Bootstrap v2 + v3.1 Seed Installer | Schema v5.0
 
 ## 1. 模块定位
 
@@ -27,6 +27,7 @@ src/mms/bootstrap/
 ├── schema_evolution.py     ★ Schema 演进反馈回路（BootstrapRunStats + jsonl报告）
 ├── code_graph_builder.py   代码依赖图构建（depends_on / implements 边）
 ├── memory_seed_generator.py 初始记忆文件生成（MEM-BOOT-*.md，v5.0 通用层 ID）
+├── v31_seed_installer.py   ★ always_inject 发现、Repository 安装、流程门禁加载
 └── seed_packs/             ★ 框架先验知识库（YAML 驱动）
     ├── __init__.py         SeedPackManager（懒加载 / 格式转换）
     └── {pack_name}/        各框架种子包
@@ -260,8 +261,9 @@ graph TD
     end
 
     subgraph Step2 ["Step 2 种子包注入"]
-        F --> G[匹配 seed_packs/{stack}/match_conditions.yaml]
-        G --> H[注入预制 Markdown 记忆到 docs/memory/shared/CC/]
+        F --> G[v2 install_packs<br/>匹配 legacy framework pack]
+        G --> G2[v3.1 install_v31_packs<br/>detected_stacks ∪ always_inject]
+        G2 --> H[Repository.import_raw<br/>→ shared/{layer}/ + MEMORY_INDEX]
     end
 
     subgraph Step3 ["Step 3 AST 骨架化（build_ast_index）"]
@@ -288,7 +290,7 @@ graph TD
         N --> R[生成 MEM-BOOT-NNN.md<br/>layer=v5.0 通用层 ID]
         Q -- YES --> R
         Q -- NO --> S[跳过，记录到 report.classes_skipped]
-        R --> GC[Structural GC<br/>_run_structural_gc<br/>→ 软归档孤立节点]
+        R --> GC[Structural GC<br/>经 MemoryRepository.delete archive=true<br/>→ 软归档孤立节点并更新索引]
     end
 
     subgraph Step7 ["Step 7 ★ Schema 演进反馈（schema_evolution）"]

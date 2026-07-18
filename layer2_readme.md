@@ -1,6 +1,6 @@
 # Layer 2: 知识本体层 (Knowledge Ontology Layer)
 
-> **最后更新**：2026-05-06 | Schema v5.0 | commit `146a19f`
+> **最后更新**：2026-07-19 | Schema v5.0 单索引 | Memory Ports + v3.1 Seed Installer
 
 ---
 
@@ -10,15 +10,16 @@ Layer 2 是 MMS 系统的"大脑皮层"，负责将散落的代码、文档和�
 
 **核心理念**：本体不是数据仓库，而是"高密度语义索引"——与其追求字段完整性，不如追求信息密度和检索效率，为小模型（<50B）在端侧闭域任务中提供精准上下文。
 
-Layer 2 自身由四个子系统构成：
+Layer 2 自身由五个子系统构成：
 
 
 | 子系统                  | 目录                     | 职责                            |
 | -------------------- | ---------------------- | ----------------------------- |
-| **Memory Engine**    | `src/mms/memory/`      | 图谱操作 / 上下文注入 / 知识萃取 / 腐化检测    |
-| **Ontology Engine**  | `src/mms/ontology/`    | Schema 解析 / 运行时校验 / 注册表       |
-| **Bootstrap Engine** | `src/mms/bootstrap/`   | 冷启动 / AST 推断 / 种子包注入 / 初始记忆生成 |
-| **Diagnostics**      | `src/mms/diagnostics/` | 图谱可视化诊断（HTML 自包含页面）           |
+| **Memory Ports**     | `src/mms/ports/` + `adapters/` | 存储中立契约 / Markdown 实现 / 索引写后钩子 |
+| **Memory Engine**    | `src/mms/memory/`      | 图谱操作 / 上下文注入 / 知识萃取 / 腐化检测 |
+| **Ontology Engine**  | `src/mms/ontology/`    | Schema 解析 / 运行时校验 / 注册表 |
+| **Bootstrap Engine** | `src/mms/bootstrap/`   | 冷启动 / AST 推断 / v2+v3.1 种子包注入 / 初始记忆生成 |
+| **Diagnostics**      | `src/mms/diagnostics/` | 图谱可视化诊断（HTML 自包含页面） |
 
 
 ---
@@ -29,7 +30,8 @@ Layer 2 自身由四个子系统构成：
 graph TD
     subgraph L2["Layer 2 — 知识本体层"]
         subgraph ENG["引擎层 (src/mms/)"]
-            B[Bootstrap Engine<br/>ontology_populator.py<br/>signal_fusion.py<br/>memory_seed_generator.py<br/>schema_evolution.py]
+            P[Ports + Adapters<br/>MemoryRepository<br/>MarkdownRepository<br/>FrontMatterProjection]
+            B[Bootstrap Engine<br/>ontology_populator.py<br/>v31_seed_installer.py<br/>signal_fusion.py]
             M[Memory Engine<br/>injector.py<br/>graph_resolver.py<br/>intent_classifier.py<br/>dream.py]
             O[Ontology Engine<br/>registry.py]
             D[Diagnostics<br/>memory_viz.py<br/>html_renderer.py]
@@ -41,11 +43,12 @@ graph TD
         end
 
         subgraph SDAT["种子数据 (seed_packs/)"]
-            SP["Seed Packs<br/>base / spring_boot / fastapi_sqlmodel<br/>python_django / go_gin / palantir_arch"]
+            SP["Seed Packs v2 + v3.1<br/>framework packs<br/>superpowers_sdlc(always_inject)"]
         end
 
         subgraph INST["实例数据层 (docs/memory/)"]
             MD[(Memory Nodes<br/>shared/**/*.md)]
+            IDX[(MEMORY_INDEX.json<br/>Schema v5 唯一运行时索引)]
             SYS[(System Files<br/>_system/routing/<br/>ast_index.json)]
         end
     end
@@ -54,8 +57,8 @@ graph TD
     L1["Layer 1<br/>MemoryInjector.inject(task)"] --> M
 
     B -->|"Step 1: dep_sniffer.sniff()"| SYS
-    B -->|"Step 2: install_packs()"| SP
-    SP -->|先验知识注入| B
+    B -->|"Step 2: v2 install_packs<br/>+ v3.1 install_v31_packs"| SP
+    SP -->|"Repository.import_raw → shared + index"| P
     B -->|"Step 3: build_ast_index()"| B
     B -->|"Step 4: build_code_graph()"| SYS
     B -->|"Step 5: infer_all(weights) + EvalDAG"| WP
@@ -64,7 +67,9 @@ graph TD
     B -->|"Step 7: schema_evolution_report"| SYS
 
     M -->|"fn_classify_intent → intent_map.yaml"| SYS
-    M <-->|"YAML front-matter 读写"| MD
+    M <-->|"Repository API"| P
+    P <-->|"YAML front-matter"| MD
+    P -->|"增量 add/remove/update"| IDX
     M -->|"Schema 校验 / LinkType 查询"| O
     O -->|"懒加载 YAML"| OS
 
@@ -74,6 +79,14 @@ graph TD
     OS -->|"约束"| O
     OS -->|"Override Pass 规则"| B
 ```
+
+### 2.1 存储端口与唯一索引
+
+- `MemoryRepository` 是正式读写边界；业务模块不得直接改写 `shared/`
+- `MarkdownRepository` 是当前唯一后端，负责原子写入、归档、版本递增、进程缓存和索引钩子
+- `FrontMatterProjection` 保证未知 front-matter 字段往返不丢失
+- `docs/memory/MEMORY_INDEX.json` 是唯一运行时索引；旧 `_system/memory_index.json` 已废弃
+- Memoria v0.4.0 + MatrixOne 3.0.17 PoC 因自定义 metadata 无法原生往返判定 **No-Go**，Phase 4/5 暂停
 
 
 
@@ -415,7 +428,7 @@ flowchart TD
     S15["Step 1.5: 项目文档蒸馏 (可选)<br/>seed_absorber.absorb()<br/>→ _absorb_draft/*.md"]
     S15 --> S2
 
-    S2["Step 2: 种子包注入<br/>install_packs(detected_stacks)<br/>→ docs/memory/shared/CC/AD-SEED-*.md"]
+    S2["Step 2: v2 + v3.1 种子包注入<br/>always_inject ∪ detected_stacks<br/>→ shared/{layer}/ + MEMORY_INDEX"]
     S2 --> S3
 
     S3["Step 3: AST 骨架化<br/>Python ast；Java/Go/TS Tree-sitter<br/>依赖缺失自动 Regex fallback"]
@@ -547,7 +560,9 @@ Ontology Schema    Bootstrap Engine
 
 | 协议                    | 载体                              | 方向                 | 说明                   |
 | --------------------- | ------------------------------- | ------------------ | -------------------- |
-| **YAML Front-matter** | `docs/memory/shared/*.md`       | Bootstrap → Memory | 写入/读取的核心数据格式，v5.0 规范 |
+| **MemoryRepository**  | `ports/repository.py`           | 所有正式写入方 → Adapter | 存储中立的唯一正式变更边界 |
+| **YAML Front-matter** | `docs/memory/shared/*.md`       | Adapter ↔ Memory | Markdown 后端的数据格式，v5.0 规范 |
+| **Schema v5 Index**   | `docs/memory/MEMORY_INDEX.json` | Adapter → Injector | 唯一运行时索引，写后增量更新 |
 | **YAML Schema**       | `assets/ontology_schema/*.yaml` | 资产 → 引擎            | 声明式"世界观"，引擎懒加载解析     |
 | **Python API**        | `MemoryInjector.inject(task)`   | Layer 1 → Layer 2  | 唯一跨层调用接口，内部黑盒        |
 | **权重参数注入**            | `infer_layer(weights=dict)`     | 配置 → 推断            | 纯函数无全局状态，显式依赖注入      |
@@ -562,6 +577,9 @@ Ontology Schema    Bootstrap Engine
 
 ```text
 src/mms/
+├── ports/                  # MemoryRecord / Repository / Projection / VersionStore / CodeParser
+├── adapters/
+│   └── markdown_repo.py    # 当前默认持久层；正式写入与索引闭环
 ├── memory/                 # 引擎：图谱操作与上下文注入（16 个模块）
 │   ├── injector.py         # 主入口：MemoryInjector.inject()
 │   ├── graph_resolver.py   # 图遍历（MemoryNode 加载与 _normalize_layer）
@@ -575,6 +593,7 @@ src/mms/
 │   └── registry.py         # ObjectTypeRegistry / FunctionRegistry / ActionRegistry
 ├── bootstrap/              # 引擎：冷启动与架构推断
 │   ├── ontology_populator.py # action_bootstrap 完整实现（Step 1~6 + GC + Schema演进）
+│   ├── v31_seed_installer.py # ★ always_inject 发现、shared 安装、流程门禁加载
 │   ├── signal_fusion.py    # infer_layer / infer_all（六路信号 + Evaluation DAG）
 │   ├── memory_seed_generator.py # _render_memory_md + _compute_fingerprint
 │   ├── code_graph_builder.py # fn_build_code_graph
@@ -613,12 +632,15 @@ assets/
     └── bootstrap_config_template.yaml   # 用户项目配置模板
 
 docs/memory/                # 实例数据（当前项目）
+├── MEMORY_INDEX.json       # ★ Schema v5 唯一运行时索引
 ├── shared/                 # 记忆节点（按层目录，v5.0 通用层 ID）
 │   ├── ADAPTER/            # layer=ADAPTER 的节点
 │   ├── APP/                # layer=APP 的节点
 │   ├── DOMAIN/             # layer=DOMAIN 的节点
 │   ├── PLATFORM/           # layer=PLATFORM 的节点
 │   └── CC/                 # layer=CC 的节点
+├── seed_packs/
+│   └── superpowers_sdlc/   # ★ 11 条 Agentic SDLC 原始记忆；always_inject=true
 ├── private/                # EP 私有草稿
 └── _system/                # 系统运行时文件
     ├── routing/            # layers.yaml / intent_map.yaml / operations.yaml
@@ -626,7 +648,7 @@ docs/memory/                # 实例数据（当前项目）
     ├── schema_evolution_report.md      # ★ Schema 演进可读摘要
     └── code_graph.json     # 代码依赖图快照
 
-seed_packs/                 # 框架种子包（YAML 驱动）
+seed_packs/                 # v2 legacy 框架种子包（YAML 驱动）
 ├── base/                   # 通用约束（always_inject=true）
 ├── spring_boot/            # 13 条 ast_overrides
 ├── fastapi_sqlmodel/       # 9 条 ast_overrides
