@@ -343,9 +343,19 @@ def _match_stacks(
         if optional_hits >= 1 or dir_hits >= 2:
             matched.append(stack_id)
 
-    # 始终包含 base
+    # 始终包含 base（v2 legacy pack）
     if "base" not in matched:
         matched.insert(0, "base")
+
+    # v3.1 always_inject packs（如 superpowers_sdlc）并入检测结果
+    try:
+        from mms.bootstrap.v31_seed_installer import discover_always_inject_packs
+        memory_root = root / "docs" / "memory"
+        for pack in discover_always_inject_packs(memory_root if memory_root.is_dir() else None):
+            if pack not in matched:
+                matched.append(pack)
+    except Exception:
+        pass
 
     return matched
 

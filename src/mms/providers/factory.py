@@ -8,18 +8,11 @@ LLM Provider 工厂与自动探测
 
 任务 → 模型映射：
 
-  reasoning             → bailian_plus   (qwen3-32b)        [主：意图合成/蒸馏]
-  distillation          → bailian_plus   (qwen3-32b)        [主]
-  context_compression   → bailian_plus   (qwen3-32b)        [主]
-  task_routing          → bailian_plus   (qwen3-32b)        [主]
-  intent_classification → bailian_plus   (qwen3-32b)        [主：意图分类 LLM 兜底]
-  code_review           → bailian_plus   (qwen3-32b)        [主：语义评审]
-  code_generation       → bailian_coder  (qwen3-coder-next) [主：代码生成（capable）]
-  code_generation_simple→ bailian_coder  (qwen3-coder-next) [主：代码生成（fast）]
-  dag_orchestration     → bailian_plus   (qwen3-32b)        [主：DAG 生成]
-  complex_architecture  → bailian_plus   (qwen3-32b)        [主]
+  全部生成任务默认走 bailian_plus（qwen3-32b）。
+  bailian_coder 仅作降级备援，模型名默认也是 qwen3-32b（可由 DASHSCOPE_MODEL_CODING 覆盖）。
 
-降级链：bailian_plus → bailian_coder → claude（人工介入兜底）
+降级链：bailian_plus → bailian_coder
+  （Claude Pending 兜底已停用，见下方注释）
 
 路由覆盖：
   可通过环境变量 MMS_TASK_MODEL_OVERRIDE=task:provider_id,...  覆盖默认映射
@@ -31,9 +24,9 @@ from typing import Dict, List, Optional
 
 from .bailian import BailianEmbedProvider, BailianProvider, _load_env_file
 from .base import AllProvidersUnavailableError, LLMProvider
-from .claude import ClaudeProvider
+# from .claude import ClaudeProvider  # Claude 路径已停用
 
-# 任务 → Provider ID 默认映射
+# 任务 → Provider ID 默认映射（全部统一到 bailian_plus / qwen3-32b）
 # 可通过 MMS_TASK_MODEL_OVERRIDE 环境变量在运行时覆盖（格式：task:provider,...）
 _TASK_MODEL_MAP_DEFAULT: Dict[str, str] = {
     "reasoning":               "bailian_plus",
@@ -42,17 +35,17 @@ _TASK_MODEL_MAP_DEFAULT: Dict[str, str] = {
     "task_routing":            "bailian_plus",
     "intent_classification":   "bailian_plus",
     "code_review":             "bailian_plus",
-    "code_generation":         "bailian_coder",
-    "code_generation_simple":  "bailian_coder",
+    "code_generation":         "bailian_plus",
+    "code_generation_simple":  "bailian_plus",
     "dag_orchestration":       "bailian_plus",
     "complex_architecture":    "bailian_plus",
 }
 
-# 降级链：百炼双模型互备，Claude 作为人工介入最终兜底
+# 降级链：仅百炼；Claude 人工兜底已注释停用
 _FALLBACK_CHAIN: List[str] = [
     "bailian_plus",
     "bailian_coder",
-    "claude",
+    # "claude",
 ]
 
 
@@ -112,13 +105,14 @@ def build_providers() -> Dict[str, LLMProvider]:
             base_url=bailian_base,
         ),
         "bailian_coder": BailianProvider(
-            model=_get_env("DASHSCOPE_MODEL_CODING", "qwen3-coder-next"),
+            # 默认与推理模型相同；需要换模型时再通过 DASHSCOPE_MODEL_CODING 覆盖
+            model=_get_env("DASHSCOPE_MODEL_CODING", "qwen3-32b"),
             api_key=dashscope_key or None,
             base_url=bailian_base,
         ),
 
-        # Claude Pending（最终兜底，永不失败，人工介入）
-        "claude": ClaudeProvider(),
+        # Claude Pending 路径已停用（不再注册，避免 always-available 假兜底）
+        # "claude": ClaudeProvider(),
     }
 
 
@@ -170,11 +164,10 @@ def auto_detect(task: str = "distillation") -> LLMProvider:
     按任务类型自动选择可用 Provider。
 
     优先使用任务对应的首选模型（百炼），失败时按 fallback_chain 降级。
-    最终兜底为 ClaudeProvider（Pending Prompt 模式，人工介入）。
+    Claude Pending 兜底已停用；百炼均不可用时直接抛错。
 
     Raises:
-        AllProvidersUnavailableError: 所有 Provider 均不可用（理论上不会发生，
-            因为 ClaudeProvider.is_available() 始终返回 True）
+        AllProvidersUnavailableError: 百炼 Provider 均不可用
     """
     _ensure_initialized()
     preferred = _TASK_MODEL_MAP.get(task, "bailian_plus")

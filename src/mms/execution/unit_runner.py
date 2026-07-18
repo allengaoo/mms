@@ -383,8 +383,8 @@ def _call_llm(prompt: str, model_hint: str = "capable") -> tuple:
     返回 (response_text, actual_model_name)。
 
     model_hint 路由规则：
-      "fast" / "8b" / "16b" → code_generation_simple → bailian_coder (qwen3-coder-next)
-      "capable" 及其他      → code_generation        → bailian_coder (qwen3-coder-next)
+      "fast" / "8b" / "16b" → code_generation_simple → bailian_plus (qwen3-32b)
+      "capable" 及其他      → code_generation        → bailian_plus (qwen3-32b)
     """
     sys.path.insert(0, str(_HERE))
     try:

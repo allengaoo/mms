@@ -62,6 +62,41 @@
                 "mms"
               ],
               "file": "shared/PLATFORM/PAT-BOOT-002.md"
+            },
+            {
+              "id": "PAT-SP-002",
+              "title": "PAT-SP-002: Defense-in-Depth 校验",
+              "object_type": "Pattern",
+              "layer": "PLATFORM",
+              "node_id": "PLATFORM",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "defense-in-depth",
+                "validation",
+                "security",
+                "backend",
+                "api"
+              ],
+              "file": "shared/PLATFORM/PAT-SP-002.md"
+            },
+            {
+              "id": "PAT-SP-003",
+              "title": "PAT-SP-003: Root-Cause-First 调试",
+              "object_type": "Pattern",
+              "layer": "PLATFORM",
+              "node_id": "PLATFORM",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "debugging",
+                "root-cause",
+                "tracing",
+                "backend"
+              ],
+              "file": "shared/PLATFORM/PAT-SP-003.md"
             }
           ]
         }
@@ -111,6 +146,41 @@
                 "seed"
               ],
               "file": "shared/CC/AD-SEED-002.md"
+            },
+            {
+              "id": "AD-SP-001",
+              "title": "AD-SP-001: 先设计后实现（Hard Gate）",
+              "object_type": "Decision",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "brainstorming",
+                "design-gate",
+                "frontend",
+                "backend",
+                "sdlc"
+              ],
+              "file": "shared/CC/AD-SP-001.md"
+            },
+            {
+              "id": "AD-SP-002",
+              "title": "AD-SP-002: Spec → Plan → Implement → Review",
+              "object_type": "Decision",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "writing-plans",
+                "task-decomposition",
+                "tdd",
+                "sdlc"
+              ],
+              "file": "shared/CC/AD-SP-002.md"
             }
           ]
         },
@@ -132,6 +202,40 @@
                 "test"
               ],
               "file": "shared/CC/MEM-L-XXX.md"
+            },
+            {
+              "id": "SKL-SP-001",
+              "title": "SKL-SP-001: 子代理驱动开发（SDD）",
+              "object_type": "Pattern",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "sdd",
+                "subagent",
+                "unit-loop",
+                "backend"
+              ],
+              "file": "shared/CC/SKL-SP-001.md"
+            },
+            {
+              "id": "SKL-SP-003",
+              "title": "SKL-SP-003: 可吸收技能写作规范（自学习层）",
+              "object_type": "Pattern",
+              "layer": "CC",
+              "node_id": "CC",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "writing-skills",
+                "dream",
+                "seed-absorber",
+                "self-learning"
+              ],
+              "file": "shared/CC/SKL-SP-003.md"
             }
           ]
         }
@@ -141,13 +245,122 @@
       "node_id": "CC_testing",
       "layer": "CC_testing",
       "trigger_keywords": [],
-      "nodes": []
+      "nodes": [
+        {
+          "node_id": "CC_testing:AntiPattern",
+          "object_type": "AntiPattern",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "PAT-SP-005",
+              "title": "PAT-SP-005: 禁止测 Mock / 禁止生产类塞测试方法",
+              "object_type": "AntiPattern",
+              "layer": "CC_testing",
+              "node_id": "CC_testing",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "testing-anti-pattern",
+                "mock",
+                "frontend",
+                "backend"
+              ],
+              "file": "shared/CC_testing/PAT-SP-005.md"
+            }
+          ]
+        },
+        {
+          "node_id": "CC_testing:Pattern",
+          "object_type": "Pattern",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "PAT-SP-001",
+              "title": "PAT-SP-001: TDD Red-Green-Refactor",
+              "object_type": "Pattern",
+              "layer": "CC_testing",
+              "node_id": "CC_testing",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "tdd",
+                "red-green-refactor",
+                "backend",
+                "frontend",
+                "testing"
+              ],
+              "file": "shared/CC_testing/PAT-SP-001.md"
+            },
+            {
+              "id": "PAT-SP-006",
+              "title": "PAT-SP-006: 条件等待替代 sleep",
+              "object_type": "Pattern",
+              "layer": "CC_testing",
+              "node_id": "CC_testing",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "async",
+                "flaky-tests",
+                "frontend",
+                "backend",
+                "waiting"
+              ],
+              "file": "shared/CC_testing/PAT-SP-006.md"
+            }
+          ]
+        }
+      ]
     },
     {
       "node_id": "CC_governance",
       "layer": "CC_governance",
       "trigger_keywords": [],
-      "nodes": []
+      "nodes": [
+        {
+          "node_id": "CC_governance:Pattern",
+          "object_type": "Pattern",
+          "trigger_keywords": [],
+          "memories": [
+            {
+              "id": "PAT-SP-004",
+              "title": "PAT-SP-004: 完成前验证（Verification Before Completion）",
+              "object_type": "Pattern",
+              "layer": "CC_governance",
+              "node_id": "CC_governance",
+              "tier": "hot",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "verification",
+                "postcheck",
+                "completion-gate",
+                "ci"
+              ],
+              "file": "shared/CC_governance/PAT-SP-004.md"
+            },
+            {
+              "id": "SKL-SP-002",
+              "title": "SKL-SP-002: 对照计划的代码评审",
+              "object_type": "Pattern",
+              "layer": "CC_governance",
+              "node_id": "CC_governance",
+              "tier": "warm",
+              "access_count": 0,
+              "tags": [
+                "superpowers",
+                "code-review",
+                "plan-alignment",
+                "quality-gate"
+              ],
+              "file": "shared/CC_governance/SKL-SP-002.md"
+            }
+          ]
+        }
+      ]
     },
     {
       "node_id": "BIZ",

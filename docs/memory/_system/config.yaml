@@ -165,16 +165,16 @@ distillation:
 # ── LLM Provider 配置 ─────────────────────────────────────────────────────────
 llm:
   # 自动探测顺序：按 fallback_chain 依次尝试，第一个可用的生效
-  provider: auto                   # auto | bailian_plus | bailian_coder | claude
+  provider: auto                   # auto | bailian_plus | bailian_coder
 
   fallback_chain:
-    - bailian_plus                 # 百炼 qwen3-32b — 意图识别 / 代码评审 / DAG 编排 / 蒸馏
-    - bailian_coder                # 百炼 qwen3-coder-next — 代码生成
-    - claude                       # Claude Sonnet（Pending 模式，需人工处理）
+    - bailian_plus                 # 百炼 qwen3-32b — 全阶段默认
+    - bailian_coder                # 备援（默认同样指向 qwen3-32b，可由 CODING 环境变量覆盖）
+    # - claude                     # Claude Pending 路径已停用
 
-  claude:
-    model: "claude-sonnet-4-6"     # 标签仅用于审计，实际为 Pending 模式（人工粘贴提示词）
-    pending_prompt_dir: "_system/pending_claude_prompts"  # 待人工处理的提示词存放目录
+  # claude:
+  #   model: "claude-sonnet-4-6"   # Pending 模式（人工粘贴提示词）— 已停用
+  #   pending_prompt_dir: "_system/pending_claude_prompts"
 
 
 # ── 多模型路由器（任务 → 模型映射） ─────────────────────────────────────────
@@ -202,9 +202,13 @@ model_router:
       max_input_tokens: 50000
       desc: "将 EP 分解为原子 Unit DAG，由 qwen3-32b 规划"
     code_generation_simple:
-      model: bailian_coder         # 单文件/简单代码生成，qwen3-coder-next 效率更高
+      model: bailian_plus          # 与全阶段统一：qwen3-32b
       max_input_tokens: 4000
       desc: "单文件/简单代码生成（有记忆辅助）"
+    code_generation:
+      model: bailian_plus          # Unit 代码生成：qwen3-32b
+      max_input_tokens: 50000
+      desc: "Unit 代码生成（capable）"
     complex_architecture:
       model: bailian_plus          # 复杂架构变更：qwen3-32b
       max_input_tokens: 50000
@@ -366,7 +370,7 @@ dag:
   enabled: true                    # EP-117 实现完成，mms unit 命令已可用
 
   orchestrator_model: bailian_plus  # DAG 生成使用 qwen3-32b
-  executor_model: bailian_coder     # 原子 Unit 执行使用 qwen3-coder-next（或本地小模型）
+  executor_model: bailian_plus      # 原子 Unit 执行同样使用 qwen3-32b
 
   # ── 原子化阈值（判断 Unit 是否适合小模型执行）─────────────────────────
   atomicity_thresholds:
@@ -575,8 +579,8 @@ compare:
     planning_model: "qwen3-32b"
     # DAG 编排：qwen3-32b
     orchestration_model: "qwen3-32b"
-    # Unit 代码生成（A 路径）：使用 coder 模型
-    generation_model: "qwen3-coder-next"
+    # Unit 代码生成（A 路径）：与全阶段统一为 qwen3-32b
+    generation_model: "qwen3-32b"
     # Unit 代码生成（B 路径）：Cursor Sonnet 4.6（在 Cursor 对话中手动执行）
     sonnet_model: "cursor-sonnet-4.6"
     # 语义评审（自动）：qwen3-32b
@@ -676,8 +680,9 @@ agent:
 
   # Track B 专属：配置在 autonomous_models 中的模型名会触发自治模式
   autonomous_models:
-    - "claude-opus-4"
-    - "gpt-4o"
+    # - "claude-opus-4"            # Claude 路径已停用
+    - "qwen3-32b"
+    # - "gpt-4o"
     # 添加其他大模型名（需确保已在 providers/ 适配）
 
   # Track B 安全边界

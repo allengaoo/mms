@@ -14,7 +14,7 @@ from mms.core.indexer import IncrementalIndexer
 from mms.ports.projection import FrontMatterProjection
 from mms.ports.repository import MemoryQuery, MemoryRecord
 
-_SKIP_DIRS = {"_system", "templates", "archive", "_archived"}
+_SKIP_DIRS = {"_system", "templates", "archive", "_archived", "seed_packs", "private"}
 _SKIP_FILES = {"CONTRIBUTING.md", "README.md"}
 _UNIVERSAL_LAYERS = {
     "ADAPTER",
@@ -64,7 +64,12 @@ class MarkdownRepository:
         self._validate_id(record.id)
         existing = self.get(record.id)
         now = datetime.now(timezone.utc).isoformat()
-        if existing is not None:
+        # Explicit path wins (allows relocating seed templates → shared/)
+        if record.path is not None:
+            target = self._target_path(record)
+            version = max(record.version, (existing.version + 1) if existing else 1)
+            created_at = record.created_at or (existing.created_at if existing else now)
+        elif existing is not None:
             target = existing.path
             version = existing.version + 1
             created_at = record.created_at or existing.created_at
@@ -83,7 +88,34 @@ class MarkdownRepository:
         )
         stored = self._sanitize_record(stored, target)
         self._ensure_index()
+        target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target, self.projection.render(stored))
+        if self._records is not None:
+            self._records[stored.id] = stored
+        self._indexer.add_memory(self._index_meta(stored))
+        self._publish_shared_cache()
+        return stored
+
+    def import_raw(self, content: str, target: Path) -> MemoryRecord:
+        """Write a memory document as-is (preserve front-matter formatting) and index it.
+
+        Used by v3.1 seed install so seed templates keep inline ``tags: [...]``
+        compatible with ``validate.py``'s simple front-matter parser.
+        """
+        target = Path(target)
+        if not target.is_absolute():
+            target = (self.memory_root / target).resolve()
+        try:
+            target.relative_to(self.memory_root)
+        except ValueError as exc:
+            raise ValueError(f"import target outside memory root: {target}") from exc
+
+        record = self.projection.parse(content, path=target)
+        self._validate_id(record.id)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self._ensure_index()
+        atomic_write(target, content)
+        stored = record.copy(path=target)
         if self._records is not None:
             self._records[stored.id] = stored
         self._indexer.add_memory(self._index_meta(stored))
@@ -294,12 +326,21 @@ class MarkdownRepository:
     def _iter_memory_files(self) -> Iterable[Path]:
         if not self.memory_root.exists():
             return []
-        return (
-            path
-            for path in sorted(self.memory_root.rglob("*.md"))
-            if not (_SKIP_DIRS & set(path.parts))
-            and path.name not in _SKIP_FILES
-        )
+        # Match skip dirs against paths *relative to memory_root* only.
+        # Never use absolute path.parts — on macOS /private/var/... would
+        # falsely match the "private" skip entry.
+        results: List[Path] = []
+        for path in sorted(self.memory_root.rglob("*.md")):
+            try:
+                rel_parts = set(path.relative_to(self.memory_root).parts)
+            except ValueError:
+                continue
+            if _SKIP_DIRS & rel_parts:
+                continue
+            if path.name in _SKIP_FILES:
+                continue
+            results.append(path)
+        return results
 
     def _target_path(self, record: MemoryRecord) -> Path:
         if record.path is not None:

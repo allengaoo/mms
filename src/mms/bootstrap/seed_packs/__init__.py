@@ -4,17 +4,12 @@ seed_packs — MMS 种子包注册中心（EP-130）
 设计参考：squads-cli 的 "Everything is a file, packs are directories" 哲学。
 每个种子包是一个独立目录，包含可以直接 shutil.copytree 复制的文件树。
 
-目录结构：
-  seed_packs/
-    base/                    ← 通用基础约束（所有项目必注入）
-    fastapi_sqlmodel/        ← FastAPI + SQLModel 后端栈
-    fastapi_kafka/           ← Kafka 消息队列栈
-    react_zustand/           ← React + Zustand 前端栈
-    palantir_arch/           ← Palantir 风格分层架构约束
+目录结构（v2，legacy）：
+  src/mms/bootstrap/seed_packs/{name}/docs/memory/shared/
 
-每个目录下必须有：
-  match_conditions.yaml    ← 由 dep_sniffer 读取，决定是否激活此包
-  docs/memory/shared/      ← 直接 copytree 到目标项目的记忆文件
+目录结构（v3.1，推荐）：
+  docs/memory/seed_packs/{name}/meta.yaml + memories/*.md + constraints.yaml
+  由 v31_seed_installer.install_v31_packs 写入 shared/ 并更新 MEMORY_INDEX。
 
 EP-130 | 2026-04-18
 """
@@ -23,7 +18,7 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 _HERE = Path(__file__).resolve().parent
 # _HERE = .../src/mms/bootstrap/seed_packs → 上溯 4 级到项目根
@@ -34,6 +29,14 @@ try:
     from mms_config import cfg as _cfg  # type: ignore[import]
 except (ImportError, AttributeError):
     _cfg = None
+
+# Re-export v3.1 installer for bootstrap callers
+from mms.bootstrap.v31_seed_installer import (  # noqa: E402
+    discover_always_inject_packs,
+    install_v31_packs,
+    load_process_gates,
+    resolve_v31_pack_names,
+)
 
 
 def get_pack_dir(pack_name: str) -> Path:
@@ -87,3 +90,14 @@ def install_packs(
             logging.getLogger(__name__).warning("种子包 %s 安装失败: %s", pack_name, e)
 
     return installed
+
+
+__all__ = [
+    "get_pack_dir",
+    "list_packs",
+    "install_packs",
+    "install_v31_packs",
+    "discover_always_inject_packs",
+    "resolve_v31_pack_names",
+    "load_process_gates",
+]

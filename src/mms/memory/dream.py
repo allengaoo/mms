@@ -230,6 +230,7 @@ description: <30-60字语义摘要，帮助 LLM 判断是否相关>
 ✅ 应该保存：发现了新的反模式、做了不显而易见的设计决策、踩了可重复的坑
 ❌ 不应该保存：只是按已有模式实现了常规功能、Bug 修复根因已在记忆库、重复已知约束
 ❌ 不允许：生成空洞的通用建议（如"要写测试"等无具体指导的废话）
+❌ 额外门禁（SKL-SP-003 / SP-LEARN-001）：草稿必须具体、可执行、可验证；拒绝无法映射到场景的空话
 
 如果没有值得保存的新知识，只输出：NO_NEW_KNOWLEDGE
 """
@@ -625,6 +626,17 @@ def promote_draft(
     # 替换 id 和 status 字段
     new_content = re.sub(r"^id:\s*.*$", f"id: {new_id}", content, flags=re.MULTILINE)
     new_content = re.sub(r"^status:\s*draft.*\n?", "", new_content, flags=re.MULTILINE)
+
+    # SP-LEARN-001 / SKL-SP-003：空洞草稿警告（不阻断，需人工确认）
+    _vague = ("要写测试", "注意代码质量", "保持简洁", "遵循最佳实践", "写好文档")
+    if any(v in new_content for v in _vague) and "WHERE" not in new_content:
+        _warn("草稿疑似空洞通用建议（SP-LEARN-001）。确认仍要提升？")
+        try:
+            confirm = input(f"  [{_G}y{_X}]继续 / [{_R}n{_X}]取消: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            return None
+        if confirm != "y":
+            return None
 
     projection = FrontMatterProjection()
     record = projection.parse(new_content)

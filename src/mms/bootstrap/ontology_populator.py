@@ -254,16 +254,32 @@ def bootstrap_project(
     # ── Rule 02: 种子包注入 ────────────────────────────────────────────────────
     if not skip_seeds:
         log("\n▶ Step 2/6 · 注入种子包（v3.1 格式优先）...")
+        installed: List[str] = []
         try:
-            from mms.bootstrap.seed_packs import install_packs  # type: ignore
+            from mms.bootstrap.seed_packs import install_packs, install_v31_packs  # type: ignore
             target_docs = root / "docs"
-            installed = install_packs(
-                pack_names=report.detected_stacks,
-                target_docs=target_docs,
-                dry_run=dry_run,
+            # v2 legacy packs (src/mms/bootstrap/seed_packs/*/docs)
+            installed.extend(
+                install_packs(
+                    pack_names=report.detected_stacks,
+                    target_docs=target_docs,
+                    dry_run=dry_run,
+                )
+                or []
             )
-            report.injected_seed_packs = installed or []
-            log(f"  ✅ 已注入 {len(report.injected_seed_packs)} 个种子包")
+            # v3.1 packs (docs/memory/seed_packs) incl. always_inject e.g. superpowers_sdlc
+            memory_root = root / "docs" / "memory"
+            v31 = install_v31_packs(
+                pack_names=list(report.detected_stacks),
+                memory_root=memory_root,
+                dry_run=dry_run,
+                include_always_inject=True,
+            )
+            for name in v31 or []:
+                if name not in installed:
+                    installed.append(name)
+            report.injected_seed_packs = installed
+            log(f"  ✅ 已注入 {len(report.injected_seed_packs)} 个种子包：{report.injected_seed_packs}")
         except Exception as e:
             report.errors.append(f"种子包注入失败: {e}")
     else:

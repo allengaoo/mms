@@ -144,12 +144,14 @@ src/mms/bootstrap/                      Bootstrap v2（零 LLM）
 ├── ontology_populator.py  action_bootstrap 编排器（CLI 主入口）
 │   Step 1    dep_sniffer 技术栈嗅探
 │   Step 1.5  项目文档扫描（CONTRIBUTING.md/.cursorrules → seed_absorber）
-│   Step 2    种子包注入
+│   Step 2    种子包注入（v2 copytree + v3.1 always_inject → shared/ + MEMORY_INDEX）
+│             ★ docs/memory/seed_packs/superpowers_sdlc（原始记忆层，默认 always_inject）
 │   Step 3    AST 骨架化：Python(ast) / Java·Go·TS(Tree-sitter，缺依赖则 Regex)
 │   Step 4    代码依赖图（depends_on / implements 边）
 │   Step 5    六路信号推断（Evaluation DAG：短路→冲突检测→加权融合）
 │   Step 6    生成 MEM-BOOT-*.md（v5.0 通用层 ID）
 │   Step 7    结构性 GC（经 Repository）+ Schema 演进反馈报告
+├── v31_seed_installer.py  ★ v3.1 种子包安装（always_inject / process gates）
 ├── signal_fusion.py       Evaluation DAG + 六路信号融合（唯一正式实现）
 ├── schema_evolution.py    Schema 演进反馈回路
 ├── code_graph_builder.py  fn_build_code_graph
@@ -193,17 +195,14 @@ src/mms/providers/         LLM Provider 适配器（策略模式）
 │   ├── BailianProvider           complete / complete_messages
 │   ├── complete_with_tools()  ★  Tool-Calling 接口（tools 参数格式）
 │   └── BailianEmbedProvider      text-embedding-v3
-├── claude.py              Anthropic Claude（Fallback）
+├── claude.py              Anthropic Claude（已停用 Pending 兜底，保留源码）
 ├── gemini.py              Google Gemini（备用）
 ├── ollama.py              Ollama 本地模型（备用）
-└── factory.py             任务 → Provider 路由
+└── factory.py             任务 → Provider 路由（降级链仅 bailian_plus → bailian_coder）
 
-LLM 任务路由：
-  code_generation  → qwen3-coder-plus
-  dag_generation   → qwen3-32b
-  code_review      → qwen3-32b
-  intent_classify  → qwen3-32b（Level3 fallback）
-  tool_calling     → 需支持 tools 参数的模型（配置于 autonomous_models）
+LLM 任务路由（当前统一）：
+  code_generation / dag / review / intent / distill → qwen3-32b
+  tool_calling（Track B）→ qwen3-32b（需支持 tools 参数）
 ```
 
 ---
@@ -213,7 +212,7 @@ LLM 任务路由：
 ```
 src/mms/analysis/          代码静态分析
 ├── ast_skeleton.py        多语言 AST 骨架化；Java/Go/TS 经 parsers factory
-├── dep_sniffer.py         技术栈嗅探（pom.xml / go.mod / requirements.txt）
+├── dep_sniffer.py         技术栈嗅探 + v3.1 always_inject 发现
 ├── arch_check.py          架构约束扫描（6 条硬规则）
 ├── arch_resolver.py       层 → 文件路径解析
 ├── ast_diff.py            AST diff（接口契约变更检测）
@@ -225,6 +224,11 @@ src/mms/analysis/          代码静态分析
     ├── tree_sitter_parser.py  Java / Go / TypeScript·TSX
     ├── regex_parser.py    降级实现（与改造前行为一致）
     └── protocol.py
+
+src/mms/workflow/postcheck.py
+  ★ PASS/WARN 后打印 always_inject 流程门禁（SP-GATE-* / SP-SEC-* / SP-TEST-*）
+  来源：docs/memory/seed_packs/superpowers_sdlc/constraints.yaml
+  对齐 Superpowers：verification-before-completion / defense-in-depth / 测真实行为
 
 src/mms/diagnostics/       记忆图谱诊断工具
 ├── memory_viz.py          数据收集器（扫描 docs/memory/ → NodeData/EdgeData/AstMapping）
@@ -260,13 +264,19 @@ src/mms/trace/             EP 级诊断追踪（Oracle 10046 风格）
 
 ```
 src/mms/memory/
-├── dream.py               autoDream（git 历史 + EP 日志 → 知识草稿 → CC/_absorb_draft/）
+├── dream.py               autoDream（git 历史 + EP 日志 → 知识草稿）
+│                          ★ SKL-SP-003 / SP-LEARN-001：拒绝空洞通用建议；promote 前警告
 └── entropy_scan.py        熵扫描（孤儿/过时记忆检测，驱动 mulan gc）
 
 src/mms/analysis/seed_absorber.py   Rule Absorber
   absorb(url_or_file) → SeedPack
   噪声清洗 → 规则提取 → qwen3-32b 蒸馏
-  → docs/memory/seed_packs/{name}/{meta.yaml / constraints.yaml / AC-*.md}
+  → docs/memory/seed_packs/{name}/{meta.yaml / constraints.yaml / memories/*.md}
+
+docs/memory/seed_packs/superpowers_sdlc/   ★ 原始记忆层（obra/superpowers 蒸馏）
+  meta.yaml always_inject: true
+  memories/ AD-SP-* / PAT-SP-* / SKL-SP-*（设计门禁 / TDD / 多层校验 / SDD / 评审）
+  → bootstrap 写入 shared/{CC,PLATFORM,CC_testing,CC_governance}/ + MEMORY_INDEX
 ```
 
 ---
@@ -612,7 +622,8 @@ mms/
 │   ├── MEMORY_INDEX.json          ★ 唯一运行时索引（Schema v5：layer → ObjectType）
 │   ├── shared/                    共享记忆（universal layer 目录）
 │   │   └── CC/ PLATFORM/ …        （Bootstrap / promote 后自动填充）
-│   ├── seed_packs/                种子记忆（多语言 + 横切包）
+│   ├── seed_packs/                种子记忆（多语言 + 横切 + superpowers_sdlc 原始层）
+│   │   └── superpowers_sdlc/      always_inject：AD/PAT/SKL-SP-* → shared/
 │   ├── _system/                   config.yaml / ast_index.json / routing/ …
 │   │   └── memory_index.deprecated.json  （旧索引 tombstone，指向 MEMORY_INDEX.json）
 │   ├── private/                   EP 私有工作区 + 诊断数据
@@ -631,6 +642,7 @@ mms/
     ├── fixtures/                  spring-boot / go-gin / python-fastapi / nestjs
     ├── test_memory_ports.py / test_markdown_repository.py / test_ports_contract.py
     ├── test_index_v5.py / test_gc_loop.py / test_graph_cache.py
+    ├── test_v31_seed_installer.py ★ always_inject / process gates
     ├── test_tree_sitter_extraction.py / test_fingerprint_stability.py
     └── test_*.py
 ```
@@ -657,15 +669,13 @@ mulan --help
 # .env.memory（gitignore，不提交）
 DASHSCOPE_API_KEY=sk-your-key-here
 DASHSCOPE_MODEL_REASONING=qwen3-32b
-DASHSCOPE_MODEL_CODING=qwen3-coder-plus
+DASHSCOPE_MODEL_CODING=qwen3-32b
 ```
 
 
-| 任务                          | 模型                 |
-| --------------------------- | ------------------ |
-| 意图合成 / DAG 生成 / 代码评审 / 知识蒸馏 | `qwen3-32b`        |
-| 代码生成                        | `qwen3-coder-plus` |
-| Tool-Calling（Track B）       | 需支持 tools 参数的模型    |
+| 任务 | 模型 |
+| --- | --- |
+| 意图合成 / DAG / 代码生成 / 评审 / 蒸馏 / Track B | `qwen3-32b` |
 
 
 ### 冷启动新项目（Bootstrap v2，零 LLM）

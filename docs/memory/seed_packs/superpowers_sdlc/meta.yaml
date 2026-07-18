@@ -1,0 +1,25 @@
+id: superpowers_sdlc
+name: "Superpowers SDLC 原始记忆层"
+version: "1.0.0"
+description: |
+  从 github.com/obra/superpowers 蒸馏的工程方法原始记忆（Decision / Pattern / Skill）。
+  定位：小模型冷启动时的方法层本体，叠加在具体技术栈种子包之上。
+  强化目标：MMS Layer4 安全验证门禁、Layer5 自学习吸收质量。
+source_url: "https://github.com/obra/superpowers"
+arch_paradigm: "Agentic SDLC / Subagent-Driven Development"
+language: all
+layer_affinity: [CC, PLATFORM, CC_testing, CC_governance]
+always_inject: true
+
+memories:
+  - { id: AD-SP-001, type: decision, tier: hot }
+  - { id: AD-SP-002, type: decision, tier: hot }
+  - { id: PAT-SP-001, type: pattern, tier: hot }
+  - { id: PAT-SP-002, type: pattern, tier: hot }
+  - { id: PAT-SP-003, type: pattern, tier: hot }
+  - { id: PAT-SP-004, type: pattern, tier: hot }
+  - { id: PAT-SP-005, type: anti-pattern, tier: hot }
+  - { id: PAT-SP-006, type: pattern, tier: warm }
+  - { id: SKL-SP-001, type: skill, tier: warm }
+  - { id: SKL-SP-002, type: skill, tier: warm }
+  - { id: SKL-SP-003, type: skill, tier: warm }

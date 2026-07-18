@@ -1,0 +1,39 @@
+# superpowers_sdlc/constraints.yaml
+# 方法层约束（供 arch_check / postcheck / dream 引用；部分为流程门禁而非 regex）
+
+rules:
+  - id: SP-GATE-001
+    description: "创意/功能改动前必须有已批准设计（对应 AD-SP-001）；禁止直接脚手架实现"
+    severity: ERROR
+    kind: process_gate
+    maps_to: [AD-SP-001, synthesizer, brainstorming]
+
+  - id: SP-GATE-002
+    description: "声称完成前必须有真实验证命令证据（pytest / arch_check / typecheck）"
+    severity: ERROR
+    kind: process_gate
+    maps_to: [PAT-SP-004, postcheck, verification-before-completion]
+
+  - id: SP-GATE-003
+    description: "无根因调查不得提交症状补丁；多组件故障需分层埋点证据"
+    severity: WARN
+    kind: process_gate
+    maps_to: [PAT-SP-003, trace, systematic-debugging]
+
+  - id: SP-TEST-001
+    description: "禁止断言 mock 占位符存在性；测试必须验证真实用户/API 行为"
+    severity: ERROR
+    kind: testing_policy
+    maps_to: [PAT-SP-005, postcheck]
+
+  - id: SP-SEC-001
+    description: "修复由非法数据引起的缺陷时，须在 Entry/Business/Env 至少两层加固校验"
+    severity: ERROR
+    kind: security_policy
+    maps_to: [PAT-SP-002, arch_check, defense-in-depth]
+
+  - id: SP-LEARN-001
+    description: "dream/seed 吸收产出须具体、可执行、可测；拒绝空洞通用建议"
+    severity: WARN
+    kind: learning_policy
+    maps_to: [SKL-SP-003, dream, seed_absorber]

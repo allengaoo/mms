@@ -111,7 +111,7 @@ def info(msg: str) -> None:
 _COMMAND_DOCS: dict = {
     "ep": {
         "title": "EP 工作流向导",
-        "models": "qwen3-32b（意图/评审/DAG） · qwen3-coder-next（代码）",
+        "models": "qwen3-32b（全阶段）",
         "desc": "将完整 EP 生命周期串为 7 步交互式向导，支持断点续跑。",
         "usage": [
             ("mulan ep start EP-122",                  "启动 EP-122 工作流向导（从 Step 1）"),
@@ -130,7 +130,7 @@ _COMMAND_DOCS: dict = {
     },
     "unit": {
         "title": "DAG 任务编排",
-        "models": "qwen3-32b（generate） · qwen3-coder-next（run）",
+        "models": "qwen3-32b（generate / run）",
         "desc": "将 EP 分解为原子 Unit 并执行，支持双模型对比工作流。",
         "usage": [
             ("mulan unit generate --ep EP-122",                         "生成 DAG（qwen3-32b）"),
@@ -321,7 +321,7 @@ def _print_full_help() -> None:
     model_table = [
         ("意图识别",    "mulan synthesize",           "qwen3-32b（百炼）"),
         ("DAG 生成",   "mulan unit generate",         "qwen3-32b（百炼）"),
-        ("代码生成 A", "mulan unit run --save-output", "qwen3-coder-next（百炼）"),
+        ("代码生成 A", "mulan unit run --save-output", "qwen3-32b（百炼）"),
         ("代码生成 B", "mulan unit sonnet-save",       "Cursor Sonnet（手动）"),
         ("语义评审",   "mulan unit compare",           "qwen3-32b（百炼，自动）"),
         ("知识蒸馏",   "mulan distill / dream",        "qwen3-32b（百炼）"),
@@ -425,7 +425,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         info(f"API Key: {key_preview}")
         import os as _os2
         reasoning_model = _os2.environ.get("DASHSCOPE_MODEL_REASONING", "qwen3-32b")
-        coding_model    = _os2.environ.get("DASHSCOPE_MODEL_CODING",    "qwen3-coder-next")
+        coding_model    = _os2.environ.get("DASHSCOPE_MODEL_CODING",    "qwen3-32b")
         embed_model     = _os2.environ.get("DASHSCOPE_MODEL_EMBEDDING",  "text-embedding-v3")
         for model, label in [
             (reasoning_model, "推理 (蒸馏/路由/质量门)"),

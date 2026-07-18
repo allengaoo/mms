@@ -613,7 +613,26 @@ def _print_distill_reminder(ep_norm: str, results: Dict, project_root: Optional[
     print(f"    ❌ Bug 修复，根因已在记忆库中 → 可跳过")
     print(f"\n  {_C}mms distill --ep {ep_norm}{_X}")
 
+    _print_process_gates(root)
     _print_dream_reminder(ep_norm, project_root)
+
+
+def _print_process_gates(root: Path) -> None:
+    """Print Superpowers / always_inject process gates (Layer4+5 reminders)."""
+    try:
+        from mms.bootstrap.v31_seed_installer import load_process_gates
+        memory_root = root / "docs" / "memory"
+        gates = load_process_gates(memory_root if memory_root.is_dir() else None)
+    except Exception:
+        gates = []
+    if not gates:
+        return
+    print(f"\n{_D}━━ 流程门禁（原始记忆层 / always_inject）━━━━━━━━━━━━━━━━{_X}")
+    for g in gates:
+        sev = g.get("severity", "WARN")
+        gid = g.get("id", "?")
+        desc = g.get("description", "")
+        print(f"  [{sev}] {gid}: {desc}")
 
 
 def _print_dream_reminder(ep_norm: str, project_root: Optional[Path] = None) -> None:
