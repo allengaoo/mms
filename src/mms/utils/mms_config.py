@@ -105,11 +105,6 @@ class MmsConfig:
         return int(_get(self._raw, "runner", "timeout", "postcheck_drift_seconds", default=60))
 
     @property
-    def runner_timeout_unit_cmd(self) -> int:
-        # fallback: config.yaml → runner.timeout.unit_cmd_seconds (default=120)
-        return int(_get(self._raw, "runner", "timeout", "unit_cmd_seconds", default=120))
-
-    @property
     def runner_timeout_dream_git(self) -> int:
         # fallback: config.yaml → runner.timeout.dream_git_seconds (default=30)
         return int(_get(self._raw, "runner", "timeout", "dream_git_seconds", default=30))
@@ -189,11 +184,6 @@ class MmsConfig:
     def runner_max_tokens_context_injection(self) -> int:
         # fallback: config.yaml → runner.max_tokens.context_injection (default=100)
         return int(_get(self._raw, "runner", "max_tokens", "context_injection", default=100))
-
-    @property
-    def runner_max_tokens_fix_gen(self) -> int:
-        # fallback: config.yaml → runner.max_tokens.fix_gen (default=2048)
-        return int(_get(self._raw, "runner", "max_tokens", "fix_gen", default=2048))
 
     # ── dag.generation ────────────────────────────────────────────────────
 

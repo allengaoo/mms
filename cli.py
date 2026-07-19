@@ -1452,7 +1452,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_si.add_argument(
         "--format", choices=["v31", "v2"], default="v31", dest="output_format",
-        help="输出格式：v31=docs/memory/seed_packs/（推荐）v2=seed_packs/（旧格式）",
+        help="输出格式：v31=docs/memory/seed_packs/（推荐）v2=src/mms/bootstrap/seed_packs/（旧格式）",
     )
 
     # seed ingest-batch
@@ -1698,7 +1698,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
             )
             if v2_packs:
                 any_found = True
-                print(f"  ── v2 种子包（{len(v2_packs)} 个）：seed_packs/ ──\n")
+                print(f"  ── v2 种子包（{len(v2_packs)} 个）：src/mms/bootstrap/seed_packs/ ──\n")
                 for p in v2_packs:
                     mc = p / "match_conditions.yaml"
                     desc = ""

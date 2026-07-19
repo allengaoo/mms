@@ -17,7 +17,7 @@
 
 ## 2. 资产目录结构（assets/ontology_schema/）
 
-> **唯一运行时来源**：`OntologyRegistry` 只加载 `assets/ontology_schema/`。`docs/memory/ontology/` 是历史镜像，不应作为运行时 Schema 或新文档引用源；新增/修改定义必须以 `assets/ontology_schema/` 为准。
+> **唯一运行时来源**：`OntologyRegistry` 只加载 `assets/ontology_schema/`。历史镜像 `docs/memory/ontology/` 已删除。
 
 ```text
 assets/ontology_schema/

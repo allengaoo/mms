@@ -2,6 +2,11 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("tree_sitter")
+pytest.importorskip("tree_sitter_java")
+pytest.importorskip("tree_sitter_go")
+pytest.importorskip("tree_sitter_typescript")
+
 from mms.analysis.ast_skeleton import build_ast_index
 
 FIXTURES = [

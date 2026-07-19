@@ -330,12 +330,12 @@ def run_all_cases() -> List[CaseResult]:
     code, out, err = run("seed", "ingest", _PYTEST_RAW,
                          "--seed-name", CI_NAME, "--format", "v2", "--dry-run", timeout=30)
     results.append(CaseResult(
-        id="C-04", group="C", name="--format v2 输出路径含 seed_packs/（不含 docs）",
+        id="C-04", group="C", name="--format v2 输出路径含 bootstrap/seed_packs（不含 docs）",
         command=f"mulan seed ingest ... --format v2 --dry-run",
         expected_exit=0, actual_exit=code, stdout=out, stderr=err,
         checks=[
             ("exit code 为 0",              code == 0,                  "0"),
-            ("路径含 seed_packs/",           check_in(out, "seed_packs/"), "v2 路径"),
+            ("路径含 bootstrap/seed_packs",  check_in(out, "bootstrap/seed_packs"), "v2 路径"),
             ("路径不含 docs/memory",         check_not_in(out, "docs/memory/seed_packs"), "非 v3.1 路径"),
         ],
     ))

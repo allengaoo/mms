@@ -89,13 +89,19 @@ jobs:
             --no-cov-on-fail \
             -q
 
-      - name: Verify Tree-sitter and regex parity
+      - name: Verify Tree-sitter parity and fallback
         run: |
           python -m pytest \
             tests/test_parser_dispatch.py \
             tests/test_tree_sitter_extraction.py \
             tests/test_fingerprint_stability.py \
+            tests/test_tree_sitter_fallback.py \
+            tests/test_ast_parsers.py \
             -q
+
+      - name: Memory backend boundary (Memoria No-Go)
+        run: |
+          python -m pytest tests/test_memory_backend_boundary.py -q
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

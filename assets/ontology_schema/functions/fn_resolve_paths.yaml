@@ -24,7 +24,7 @@ description: |
 
 implementation: "scripts/mms/arch_resolver.py :: ArchResolver.resolve_from_intent()"
 
-schema_reference: "docs/memory/ontology/arch_schema/layers.yaml"
+schema_reference: "assets/ontology_schema/arch_schema/layers.yaml"
 
 inputs:
   - name: intent_result

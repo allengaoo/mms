@@ -56,7 +56,7 @@
 
 ## 分层文档
 
-- [Layer 1：任务工程层](src/mms/layer1_readme.md) — Workflow / DAG / Execution 双轨编排
+- [Layer 1：任务工程层](layer1_readme.md) — Workflow / DAG / Execution 双轨编排
 - [Layer 2：知识本体层](layer2_readme.md) — Ports / Repository / Ontology / Bootstrap / Memory Graph
 - [Layer 3：代码生成层](layer3_readme.md) — qwen3-32b 路由、上下文组装与代码生成协议
 - [Layer 4：安全验证层](layer4_readme.md) — precheck / postcheck / arch_check / Sandbox / 流程门禁
@@ -103,13 +103,11 @@ mulan synthesize "任务描述"
 ```
 src/mms/workflow/
 ├── synthesizer.py         意图合成器（synthesize → CursorPrompt）
-├── ep_parser.py           EP Markdown → DagState
+├── ep_parser.py           兼容垫片 → mms.utils.ep_parser
 ├── ep_runner.py           全自动 Pipeline 编排（含 Capability Router）
 │   └── _resolve_execution_track()  读 config.yaml → pipeline | autonomous
-├── ep_wizard.py           交互式向导
 ├── precheck.py            前置基线检查（arch_check + AST 快照 + 记忆注入）
-├── postcheck.py           后置质量门（pytest + arch_check + MigrationGate）
-└── migration_gate.py      DB 迁移脚本门控
+└── postcheck.py           后置质量门（pytest + arch_check + MigrationGate + doc_drift）
 
 src/mms/dag/
 ├── aiu_types.py           AIU 类型体系（43 种 / 9 族）
@@ -127,11 +125,8 @@ src/mms/execution/
 ├── file_applier.py        解析并应用 LLM BEGIN/END-CHANGES 块
 ├── sandbox.py             GitSandbox（隔离 + 自动回滚）
 ├── sandboxed_runner.py    Sandbox 化执行包装器
-├── unit_compare.py        双模型对比 + 语义评审
 ├── internal_reviewer.py   双角色内部评审（feature flag）
-├── autonomous_runner.py   ★ Track B ReAct 循环（max_turns=10，MaxTurnsExceededError）
-├── unit_cmd.py            unit 子命令
-└── fix_gen.py             自动生成修复建议
+└── autonomous_runner.py   ★ Track B ReAct 循环（max_turns=10，MaxTurnsExceededError）
 ```
 
 ---
@@ -189,7 +184,7 @@ assets/ontology_schema/                 YAML 本体定义 [Schema v5.0]
 ├── links/ functions/ actions/ rules/
 └── _config/   universal_layers.yaml / inference_rules.yaml / …
 
-seed_packs/                             框架种子包（YAML + ast_overrides）
+src/mms/bootstrap/seed_packs/           v2 框架种子包（唯一来源；YAML + ast_overrides）
 ├── base/ spring_boot/ fastapi_sqlmodel/ python_django/
 ├── go_gin/ palantir_arch/ react_zustand/
 └── …
@@ -203,14 +198,12 @@ seed_packs/                             框架种子包（YAML + ast_overrides�
 
 ```
 src/mms/providers/         LLM Provider 适配器（策略模式）
-├── bailian.py             阿里云百炼（主力 Provider）
+├── bailian.py             阿里云百炼（唯一运行时 Provider）
 │   ├── BailianProvider           complete / complete_messages
 │   ├── complete_with_tools()  ★  Tool-Calling 接口（tools 参数格式）
 │   └── BailianEmbedProvider      text-embedding-v3
-├── claude.py              Anthropic Claude（已停用 Pending 兜底，保留源码）
-├── gemini.py              Google Gemini（备用）
-├── ollama.py              Ollama 本地模型（备用）
-└── factory.py             任务 → Provider 路由（降级链仅 bailian_plus → bailian_coder）
+├── base.py                LLMProvider 抽象与统一异常
+└── factory.py             任务 → Provider 路由（降级链 bailian_plus → bailian_coder）
 
 LLM 任务路由（当前统一）：
   code_generation / dag / review / intent / distill → qwen3-32b
@@ -228,7 +221,8 @@ src/mms/analysis/          代码静态分析
 ├── arch_check.py          架构约束扫描（6 条硬规则）
 ├── arch_resolver.py       层 → 文件路径解析
 ├── ast_diff.py            AST diff（接口契约变更检测）
-├── doc_drift.py           文档漂移检测
+├── doc_drift.py           文档漂移检测（postcheck Step 4）
+├── migration_gate.py      DB 迁移脚本门控（postcheck 调用）
 ├── ontology_syncer.py     本体 YAML ↔ AST 同步
 ├── seed_absorber.py       Rule Absorber（URL/文件 → YAML 种子包）
 └── parsers/               ★ Tree-sitter 主路径 + RegexFallback
@@ -491,10 +485,10 @@ mulan ep run EP-NNN  （config.yaml: execution_mode=autonomous）
 └────────────────────────────────────────────────────────────────────┘
 
 加载路径：
-  docs/memory/ontology/objects/*.yaml   → ObjectTypeRegistry
-  docs/memory/ontology/functions/*.yaml → FunctionRegistry
-  docs/memory/ontology/actions/*.yaml   → ActionRegistry
-  docs/memory/ontology/links/*.yaml     → LinkTypeRegistry（memory/link_registry.py）
+  assets/ontology_schema/objects/*.yaml   → ObjectTypeRegistry
+  assets/ontology_schema/functions/*.yaml → FunctionRegistry
+  assets/ontology_schema/actions/*.yaml   → ActionRegistry
+  assets/ontology_schema/links/*.yaml     → LinkTypeRegistry（memory/link_registry.py）
 ```
 
 ---
@@ -523,7 +517,7 @@ mulan ep run EP-NNN  （config.yaml: execution_mode=autonomous）
    knowledge_expand     related_to → derived_from 知识图谱扩展
    drift_propagation    cites_reverse → about     新鲜度漂移传播
 
-遍历路径可配置：docs/memory/ontology/_config/traversal_paths.yaml
+遍历路径可配置：assets/ontology_schema/_config/traversal_paths.yaml
 （新增路径不改 graph_resolver.py 代码）
 ```
 
@@ -649,9 +643,8 @@ mms/
 │   ├── migrate_index_v5.py        幂等重建 MEMORY_INDEX.json
 │   ├── migrate_fingerprints.py    Bootstrap fingerprint 迁移
 │   └── benchmark_baseline.py      现代化基线采集
-├── seed_packs/                    框架种子包（YAML + ast_overrides）
 ├── benchmarks/                    Phase 0 固定查询集与基线 JSON
-├── spike/memoria_poc/             Memoria 决策门 PoC（不合主干）
+├── spike/memoria_poc/REPORT.md    Memoria No-Go 决策报告（实验代码已移除）
 ├── benchmark/                     Benchmark v2（L1/L2/L3）
 └── tests/
     ├── fixtures/                  spring-boot / go-gin / python-fastapi / nestjs
@@ -841,7 +834,8 @@ pytest tests/ --cov=src/mms --cov-report=html
 | --- | --- | --- |
 | 端口契约 | `test_memory_ports.py` / `test_ports_contract.py` / `test_no_bypass_writes.py` | front-matter 往返、Repository 契约、禁止绕过写入 |
 | 索引 / GC | `test_index_v5.py` / `test_gc_loop.py` / `test_graph_cache.py` | v5 索引钩子、LFU 闭环、跨实例缓存失效 |
-| Tree-sitter | `test_tree_sitter_extraction.py` / `test_parser_dispatch.py` / `test_fingerprint_stability.py` | 三语言提取、分发降级、双模式 fingerprint 一致 |
+| Tree-sitter | `test_tree_sitter_extraction.py` / `test_parser_dispatch.py` / `test_fingerprint_stability.py` / `test_tree_sitter_fallback.py` | 三语言+tsx 提取、分发、探测失败降级、fingerprint 一致 |
+| 存储边界 | `test_memory_backend_boundary.py` | Memoria No-Go：仅 markdown 后端；拒绝 memoria |
 | v3.1 原始记忆 | `test_v31_seed_installer.py` | `always_inject` 发现、写入 shared、索引更新、流程门禁加载 |
 
 既有 Layer 2 / Bootstrap / Diagnostics / Autonomous Runner 测试集仍为回归基线。

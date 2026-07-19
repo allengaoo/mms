@@ -531,18 +531,16 @@ runner:
     test_seconds: 120           # pytest 超时（秒）
     postcheck_test_seconds: 300 # postcheck 阶段 pytest 超时（允许更长的集成测试）
     postcheck_drift_seconds: 60 # postcheck doc_drift 检查超时（秒）
-    unit_cmd_seconds: 120       # mms unit next/status 等子命令超时（秒）
     dream_git_seconds: 30       # dream 阶段 git log 读取超时（秒）
     synthesizer_index_seconds: 30  # synthesizer 刷新索引子进程超时（秒）
 
   # ── max_tokens 配置（按任务类型）──────────────────────────────────────────
   max_tokens:
     code_generation: 4096       # unit_runner：代码生成 LLM 调用 max_tokens
-    code_review: 4096           # unit_compare：qwen3-32b 语义评审 max_tokens
+    code_review: 4096           # internal_reviewer：语义评审 max_tokens
     distillation: 3000          # dream/synthesizer：蒸馏类任务 max_tokens
     intent_routing: 200         # intent_classifier：意图分类（极短输出）
     context_injection: 100      # injector：节点补充选择（极短输出）
-    fix_gen: 2048               # fix_gen：修复代码生成 max_tokens
 
   # ── LLM 输出协议标记（不建议修改）────────────────────────────────────────
   output_protocol:

@@ -2,7 +2,7 @@
 """
 link_registry.py — MMS Layer 2 LinkType 注册表（YAML 驱动）
 
-将 docs/memory/ontology/links/*.yaml 中定义的 LinkType 加载为内存对象，
+将 assets/ontology_schema/links/*.yaml 中定义的 LinkType 加载为内存对象，
 供 graph_resolver.py 的 typed_explore() 和 hybrid_search() 使用。
 
 设计原则：
@@ -73,7 +73,7 @@ def _parse_yaml_fallback(text: str) -> dict:
 @dataclass
 class LinkTypeDef:
     """
-    LinkType 定义，对应 docs/memory/ontology/links/*.yaml 中的一个条目。
+    LinkType 定义，对应 assets/ontology_schema/links/*.yaml 中的一个条目。
 
     字段含义：
       id            : 唯一标识，如 "link_cites"
@@ -140,7 +140,7 @@ class LinkTypeRegistry:
     YAML 驱动的 LinkType 注册表。
 
     懒加载（首次 get/all/traversal_path 调用时扫描磁盘）。
-    新增 LinkType：在 docs/memory/ontology/links/ 新建 YAML 文件即可，
+    新增 LinkType：在 assets/ontology_schema/links/ 新建 YAML 文件即可，
     无需修改本类代码。
     """
 

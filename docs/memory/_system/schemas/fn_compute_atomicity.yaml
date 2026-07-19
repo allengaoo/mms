@@ -28,7 +28,7 @@ description: |
 
 implementation: "scripts/mms/atomicity_check.py :: compute_atomicity_score()"
 
-schema_reference: "docs/memory/ontology/arch_schema/layers.yaml"
+schema_reference: "assets/ontology_schema/arch_schema/layers.yaml"
 
 inputs:
   - name: files

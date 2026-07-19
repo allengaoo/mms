@@ -8,7 +8,7 @@ MMS 模型使用统计追踪器（Model Usage Tracker）
   ts          — ISO-8601 时间戳（UTC）
   model       — 模型名称，如 qwen3-32b, qwen3-coder-next
   provider    — 适配器类型，如 bailian, claude
-  task_type   — 使用场景，如 mms_inject, mms_distill, fix_gen（自动检测）
+  task_type   — 使用场景，如 mms_inject, mms_distill（自动检测）
   prompt_tok  — 输入 token 数（None = 不支持）
   output_tok  — 输出 token 数（None = 不支持）
   latency_ms  — 调用耗时（毫秒）
@@ -42,7 +42,6 @@ _CALLER_MAP = {
     "distill":        "mms_distill",
     "injector":       "mms_inject",
     "inject":         "mms_inject",
-    "fix_gen":        "fix_gen",
     "arch_check":     "arch_check",
     "verify":         "mms_verify",
     "entropy_scan":   "entropy_scan",
@@ -276,7 +275,7 @@ def print_report(
     print(f"{_B}{'='*70}{_R}")
 
     if not records:
-        print(f"\n  {_DIM}暂无记录。当 mms inject / mms distill / fix_gen 调用模型后，"
+        print(f"\n  {_DIM}暂无记录。当 mms inject / mms distill 调用模型后，"
               f"记录将自动写入。{_R}\n")
         return
 

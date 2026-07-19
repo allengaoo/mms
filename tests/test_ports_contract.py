@@ -13,6 +13,7 @@ from mms.ports import MemoryQuery, MemoryRecord, MemoryRepository
 def repository_factory(
     request,
 ) -> Callable[[Path], MemoryRepository]:
+    # Memoria 已 No-Go；契约矩阵仅保留 markdown。见 test_memory_backend_boundary.py。
     factories = {
         "markdown": lambda root: MarkdownRepository(root / "docs" / "memory"),
     }

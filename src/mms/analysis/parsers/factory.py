@@ -5,10 +5,11 @@ factory.py — AST 解析器工厂
 调用方只调用 get_parser(lang)，无需关心底层实现。
 
 降级策略：
-  1. use_tree_sitter=False (默认) → 直接返回 RegexFallbackParser
-  2. use_tree_sitter=True 但 tree-sitter 未安装 → 打印警告并降级到 RegexFallbackParser
-  3. use_tree_sitter=True 且 lang 不在 tree_sitter_languages 列表中 → RegexFallbackParser
-  4. use_tree_sitter=True 且已安装且 lang 在列表中 → TreeSitterParser
+  1. use_tree_sitter=False → 直接返回 RegexFallbackParser
+  2. use_tree_sitter=None 时读 config（默认 true）；未安装则警告并降级
+  3. use_tree_sitter=True 但 tree-sitter 未安装/探测失败 → RegexFallbackParser
+  4. lang 不在 tree_sitter_languages 列表中 → RegexFallbackParser
+  5. 已安装且 lang 在列表中 → TreeSitterParser
 """
 from __future__ import annotations
 
@@ -38,7 +39,7 @@ def get_parser(lang: str, use_tree_sitter: bool | None = None) -> "ASTParserProt
 
     if lang not in ("java", "go", "typescript", "tsx"):
         raise ValueError(
-            f"get_parser() 仅支持 java/go/typescript（Python 使用 ast 标准库）。"
+            f"get_parser() 仅支持 java/go/typescript/tsx（Python 使用 ast 标准库）。"
             f"收到: {lang!r}"
         )
 

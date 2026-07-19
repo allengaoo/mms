@@ -7,7 +7,7 @@ v2 重点改进：
   1. 噪声清洗 v2：代码块感知，保留 ❌/✅ 示例，不误删 # 标题
   2. LLM 降级分级处理：区分 Pending / 失败 / 不可用，明确提示用户
   3. 输出格式双轨：
-       - v2 格式（旧）：seed_packs/{name}/arch_schema/ + ontology/ + constraints/
+       - v2 格式（旧）：src/mms/bootstrap/seed_packs/{name}/arch_schema/ + ontology/ + constraints/
        - v3.1 格式（新）：docs/memory/seed_packs/{name}/ 含 meta.yaml + constraints.yaml + memories/AC-*.md
   4. 批量吸收：ingest_batch() 支持列表 + GitHub 目录 URL
 

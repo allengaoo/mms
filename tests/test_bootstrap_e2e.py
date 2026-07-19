@@ -26,7 +26,7 @@ class TestBootstrapFlow:
         req.write_text("fastapi>=0.100\nsqlmodel\n")
 
         from mms.analysis.dep_sniffer import DependencySniffer
-        from seed_packs import list_packs, get_pack_dir
+        from mms.bootstrap.seed_packs import list_packs, get_pack_dir
         from mms.analysis.ast_skeleton import AstSkeletonBuilder
 
         # 嗅探
@@ -51,7 +51,7 @@ class TestBootstrapFlow:
 
     def test_seed_packs_have_required_files(self):
         """每个种子包必须有 match_conditions.yaml 和至少一个 docs 文件。"""
-        from seed_packs import list_packs, get_pack_dir
+        from mms.bootstrap.seed_packs import list_packs, get_pack_dir
 
         for pack_name in list_packs():
             pack_dir = get_pack_dir(pack_name)
@@ -103,7 +103,7 @@ class TestBootstrapFlow:
 
     def test_seed_pack_install_copies_files(self, tmp_path):
         """安装种子包后，目标目录应包含种子文件。"""
-        from seed_packs import install_packs
+        from mms.bootstrap.seed_packs import get_pack_dir, install_packs
 
         target_docs = tmp_path / "docs"
         target_docs.mkdir()
@@ -116,7 +116,6 @@ class TestBootstrapFlow:
         assert "base" in installed
 
         # 检查 base 包的文件是否被复制
-        from seed_packs import get_pack_dir
         base_docs = get_pack_dir("base") / "docs"
         if base_docs.exists():
             for md_file in base_docs.rglob("*.md"):

@@ -33,7 +33,7 @@ bailian_plus(qwen3-32b)
   → AllProvidersUnavailableError
 ```
 
-`ClaudeProvider` 源码仍保留，但未导入、未注册，也不在 fallback chain 中。百炼不可用时系统直接报错，不会生成 Pending Prompt。
+运行时仅保留百炼适配器。第三方 Pending/备用 Provider 已删除；百炼不可用时系统直接报错。
 
 ## 3. 模块结构
 
@@ -41,10 +41,7 @@ bailian_plus(qwen3-32b)
 src/mms/providers/
 ├── base.py                 LLMProvider 抽象与统一异常
 ├── factory.py              任务 → Provider 路由；环境变量覆盖；降级链
-├── bailian.py              OpenAI 兼容 chat / messages / tools / embedding
-├── claude.py               已停用的 Pending 实现（仅保留源码）
-├── gemini.py               备用适配器（不在默认工厂）
-└── ollama.py               本地 OpenAI 兼容适配器（不在默认工厂）
+└── bailian.py              OpenAI 兼容 chat / messages / tools / embedding
 
 src/mms/execution/
 ├── unit_context.py         代码摘要 + Layer 契约 + 记忆片段的预算化上下文

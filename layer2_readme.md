@@ -648,8 +648,8 @@ docs/memory/                # 实例数据（当前项目）
     ├── schema_evolution_report.md      # ★ Schema 演进可读摘要
     └── code_graph.json     # 代码依赖图快照
 
-seed_packs/                 # v2 legacy 框架种子包（YAML 驱动）
-├── base/                   # 通用约束（always_inject=true）
+src/mms/bootstrap/seed_packs/  # v2 框架种子包唯一来源（YAML 驱动）
+├── base/                   # 通用约束
 ├── spring_boot/            # 13 条 ast_overrides
 ├── fastapi_sqlmodel/       # 9 条 ast_overrides
 ├── python_django/          # 13 条 ast_overrides

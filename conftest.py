@@ -55,7 +55,7 @@ def tmp_mms_root(tmp_path: Path) -> Path:
       tmp_path/
         docs/memory/_system/
         docs/memory/shared/
-        docs/memory/ontology/
+        assets/ontology_schema/
         docs/execution_plans/
     """
     (tmp_path / "docs" / "memory" / "_system").mkdir(parents=True)

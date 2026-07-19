@@ -34,8 +34,7 @@ flowchart TD
 ```text
 src/mms/workflow/
 ├── precheck.py             前置环境/基线/AST/架构快照
-├── postcheck.py            测试、架构 diff、迁移门控、流程门禁提示
-└── migration_gate.py       数据库 Schema 变更与迁移文件一致性
+└── postcheck.py            测试、架构 diff、迁移门控、doc_drift、流程门禁提示
 
 src/mms/execution/
 ├── sandbox.py              内存快照、精准 git add、失败回滚
@@ -45,7 +44,8 @@ src/mms/execution/
 src/mms/analysis/
 ├── arch_check.py           分层、安全上下文、审计、Envelope、Worker Scope
 ├── ast_diff.py             代码契约变化
-├── doc_drift.py            文档漂移
+├── doc_drift.py            文档漂移（postcheck 调用）
+├── migration_gate.py       数据库 Schema 变更与迁移文件一致性
 └── parsers/                Python ast；Java/Go/TS Tree-sitter + Regex fallback
 
 src/mms/core/

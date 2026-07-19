@@ -3,7 +3,7 @@ src/mms/ontology/registry.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MMS 动态本体注册表（Palantir 风格 Ontology Runtime）
 
-将 docs/memory/ontology/ 下的所有 YAML 定义加载为内存对象，提供：
+将 assets/ontology_schema/ 下的所有 YAML 定义加载为内存对象，提供：
   - ObjectTypeRegistry  : 加载/查询 ObjectType 定义 + 实例校验
   - FunctionRegistry    : 加载 Function 定义 + 路由到 Python 实现
   - ActionRegistry      : 加载 Action 定义 + submission_criteria 校验
@@ -262,7 +262,7 @@ class ValidationResult:
 
 class ObjectTypeRegistry:
     """
-    加载并管理所有 ObjectType 定义（docs/memory/ontology/objects/*.yaml）。
+    加载并管理所有 ObjectType 定义（assets/ontology_schema/objects/*.yaml）。
 
     对应 Palantir 概念：Ontology Manager 中管理的所有 Object Type Schema。
 
@@ -373,7 +373,7 @@ class ObjectTypeRegistry:
 
 class FunctionRegistry:
     """
-    加载并管理所有 Function 定义（docs/memory/ontology/functions/*.yaml）。
+    加载并管理所有 Function 定义（assets/ontology_schema/functions/*.yaml）。
 
     对应 Palantir 概念：Ontology Functions（纯计算，可注册 Python 实现）。
 
@@ -447,7 +447,7 @@ class FunctionRegistry:
 
 class ActionRegistry:
     """
-    加载并管理所有 Action 定义（docs/memory/ontology/actions/*.yaml）。
+    加载并管理所有 Action 定义（assets/ontology_schema/actions/*.yaml）。
 
     对应 Palantir 概念：Action Types（有副作用的事务，修改 Ontology）。
 

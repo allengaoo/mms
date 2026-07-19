@@ -175,14 +175,12 @@ class TestConfigLoadsYaml:
                 distillation: 4000
                 intent_routing: 300
                 context_injection: 150
-                fix_gen: 3000
         """)
         assert cfg.runner_max_tokens_code_generation == 8192
         assert cfg.runner_max_tokens_code_review == 6000
         assert cfg.runner_max_tokens_distillation == 4000
         assert cfg.runner_max_tokens_intent_routing == 300
         assert cfg.runner_max_tokens_context_injection == 150
-        assert cfg.runner_max_tokens_fix_gen == 3000
 
 
 # ── yaml 存在但 key 缺失 → 仍返回默认值 ─────────────────────────────────────

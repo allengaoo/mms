@@ -71,7 +71,7 @@ rules:
     creates_links: [link_about, link_related_to]
     skip_if: "skip_seeds == true"
     description: |
-      将 seed_packs/{stack_name}/ 中的 AC-*.md 写入 docs/memory/shared/，
+      将 src/mms/bootstrap/seed_packs/{stack_name}/docs 中的记忆写入 docs/memory/shared/，
       建立初始的架构约束记忆（始终注入 base 包；按栈注入专属包）。
 
   - rule_id: rule_03_build_ast_index

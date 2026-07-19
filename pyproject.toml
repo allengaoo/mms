@@ -68,9 +68,9 @@ dev = [
     "types-PyYAML",
 ]
 
-# 全量安装
+# 全量安装（含 Tree-sitter；Memoria 已 No-Go，不纳入 extras）
 all = [
-    "mulan[bailian,gemini,benchmark,dev]",
+    "mulan[bailian,tree_sitter,benchmark,dev]",
 ]
 
 [project.scripts]
@@ -102,6 +102,7 @@ markers = [
     "benchmark: Benchmark 评估测试",
     "eval: Layer 1 E2E Eval 测试（可在 CI Mock 模式或本地真实模式下运行）",
     "vcr: HTTP 录制回放测试（pytest-recording / VCR）",
+    "requires_tree_sitter: 需要 pip install 'mulan[tree_sitter]'",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
@@ -114,7 +115,7 @@ source = ["."]
 omit = [
     "tests/*",
     "benchmark/*",
-    "seed_packs/*",
+    "src/mms/bootstrap/seed_packs/*",
     "*/__pycache__/*",
     "*/private.py",
 ]

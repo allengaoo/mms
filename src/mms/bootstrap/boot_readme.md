@@ -33,7 +33,7 @@ src/mms/bootstrap/
     └── {pack_name}/        各框架种子包
 ```
 
-（注：项目根目录的 `seed_packs/` 是面向框架适配的独立资产包，供 Bootstrap 通过 `load_overrides()` 读取。）
+（注：v2 框架种子包唯一来源为 `src/mms/bootstrap/seed_packs/`。外部项目可在自身根目录放置 `seed_packs/` 覆盖；`load_overrides()` 优先读项目本地，否则回退到捆绑包。）
 
 ---
 

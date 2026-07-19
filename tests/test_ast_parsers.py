@@ -4,7 +4,8 @@ test_ast_parsers.py — AST 解析器适配层单元测试
 覆盖：
   1. RegexFallbackParser：Java/Go 基本解析（含现代语法）
   2. factory.get_parser()：配置路由、降级逻辑
-  3. TreeSitterParser（跳过：CI 环境未安装 tree-sitter）
+  3. TreeSitterParser 主路径（CI 安装 mulan[tree_sitter]；见
+     test_tree_sitter_extraction / test_parser_dispatch / test_fingerprint_stability）
   4. Protocol 兼容性检查
 """
 from __future__ import annotations

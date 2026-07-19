@@ -9,7 +9,13 @@ from mms.analysis.ast_skeleton import (
     _parse_typescript,
 )
 from mms.analysis.parsers.regex_parser import RegexFallbackParser
-from mms.analysis.parsers.tree_sitter_parser import TreeSitterParser
+
+pytest.importorskip("tree_sitter")
+pytest.importorskip("tree_sitter_java")
+pytest.importorskip("tree_sitter_go")
+pytest.importorskip("tree_sitter_typescript")
+
+from mms.analysis.parsers.tree_sitter_parser import TreeSitterParser  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -27,7 +33,7 @@ def test_regex_fallback_remains_field_equivalent(language, source, legacy) -> No
     ) == legacy(source, "demo")
 
 
-@pytest.mark.parametrize("language", ["java", "go", "typescript"])
+@pytest.mark.parametrize("language", ["java", "go", "typescript", "tsx"])
 def test_factory_dispatches_tree_sitter_when_forced(language) -> None:
     from mms.analysis.parsers.factory import get_parser
 

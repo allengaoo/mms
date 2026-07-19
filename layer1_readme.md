@@ -20,7 +20,7 @@
 
 ### 2.1 Workflow 模块 (生命周期编排)
 
-**目录**: `src/mms/workflow/` | **详情**: 请参阅 `[workflow_readme.md](./workflow/workflow_readme.md)`
+**目录**: `src/mms/workflow/` | **详情**: 请参阅 `[workflow_readme.md](src/mms/workflow/workflow_readme.md)`
 
 Workflow 模块是 Layer 1 的入口和总控。它负责：
 
@@ -33,7 +33,7 @@ Workflow 模块是 Layer 1 的入口和总控。它负责：
 
 ### 2.2 DAG 模块 (数据结构与拆解)
 
-**目录**: `src/mms/dag/` | **详情**: 请参阅 `[dag_readme.md](./dag/dag_readme.md)`
+**目录**: `src/mms/dag/` | **详情**: 请参阅 `[dag_readme.md](src/mms/dag/dag_readme.md)`
 
 DAG 模块定义了任务的微观结构。它负责：
 
@@ -44,7 +44,7 @@ DAG 模块定义了任务的微观结构。它负责：
 
 ### 2.3 Execution 模块 (动作执行器)
 
-**目录**: `src/mms/execution/` | **详情**: 请参阅 `[execution_readme.md](./execution/execution_readme.md)`
+**目录**: `src/mms/execution/` | **详情**: 请参阅 `[execution_readme.md](src/mms/execution/execution_readme.md)`
 
 Execution 模块负责将 DAG 节点转化为实际的代码变更。它实现了双轨执行引擎：
 

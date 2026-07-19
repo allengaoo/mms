@@ -36,7 +36,7 @@ description: |
 
 implementation: "scripts/mms/intent_classifier.py :: IntentClassifier.classify()"
 
-schema_reference: "docs/memory/ontology/arch_schema/intent_map.yaml"
+schema_reference: "assets/ontology_schema/arch_schema/intent_map.yaml"
 
 inputs:
   - name: task

@@ -1,3 +1,10 @@
+import pytest
+
+pytest.importorskip("tree_sitter")
+pytest.importorskip("tree_sitter_java")
+pytest.importorskip("tree_sitter_go")
+pytest.importorskip("tree_sitter_typescript")
+
 from mms.analysis.parsers.tree_sitter_parser import TreeSitterParser
 
 
