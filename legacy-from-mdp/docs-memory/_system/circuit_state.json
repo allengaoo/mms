@@ -1,0 +1,14 @@
+{
+  "test-model": {
+    "status": "CLOSED",
+    "failure_count": 0,
+    "last_failure_at": null,
+    "last_success_at": null
+  },
+  "deepseek-r1:8b": {
+    "status": "CLOSED",
+    "failure_count": 0,
+    "last_failure_at": null,
+    "last_success_at": 1776567391.350646
+  }
+}

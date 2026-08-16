@@ -1,0 +1,770 @@
+{
+  "version": "2.0",
+  "description": "OntoForge MDP 记忆库根索引 — Layer × Dimension 双轴组织，推理式检索（无向量）",
+  "project": "OntoForge (MDP Enterprise Platform)",
+  "updated_at": "2026-04-17",
+  "source_ep": "EP-111",
+  "retrieval_protocol": "reasoning-based, no vector DB, no fulltext index",
+  "retrieval_guide": "1) 从任务描述中提取 (layer, dimension, keywords) 三元组; 2) 匹配 trigger_keywords 定位子节点; 3) 优先读 hot 记忆 (≤3条); 4) 总上下文预算 ≤6K token",
+  "stats": {
+    "total": 44,
+    "hot": 36,
+    "warm": 5,
+    "cold": 3,
+    "archive": 0,
+    "last_gc": "2026-04-12"
+  },
+  "tree": [
+    {
+      "node_id": "L1",
+      "layer": "platform",
+      "title": "平台横切层 — 安全 / 可观测 / 配置",
+      "summary": "SecurityContext 注入、RLS 隔离、structlog、PYTHONUNBUFFERED 等全局约束。涵盖所有层，任何新 Service/Endpoint 必须检查此节点。",
+      "memory_count": 3,
+      "hot_count": 1,
+      "trigger_keywords": [
+        "tenant_id",
+        "SecurityContext",
+        "ctx",
+        "print",
+        "audit",
+        "log",
+        "PYTHONUNBUFFERED",
+        "structlog",
+        "trace_id"
+      ],
+      "nodes": [
+        {
+          "node_id": "L1-D1",
+          "title": "安全与多租户 (Dimension 1)",
+          "summary": "RLS tenant_id 过滤、SecurityContext 注入、IDOR 防御",
+          "memories": [
+            {
+              "id": "AD-002",
+              "title": "Row-Level Security 基于 tenant_id（架构基线）",
+              "tier": "hot",
+              "access_count": 25,
+              "file": "shared/cross_cutting/decisions/AD-002.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L1-D3",
+          "title": "可观测性 (Dimension 3)",
+          "summary": "Python 日志不可见、双栈流量路由不透明",
+          "memories": [
+            {
+              "id": "MEM-L-009",
+              "title": "kubectl logs 不可见：PYTHONUNBUFFERED 未设置",
+              "tier": "hot",
+              "access_count": 6,
+              "file": "shared/L1_platform/D3_observability/MEM-L-009.md"
+            },
+            {
+              "id": "MEM-L-008",
+              "title": "双栈部署（Compose+K8s）流量路由陷阱",
+              "tier": "hot",
+              "access_count": 9,
+              "file": "shared/L4_application/workers/MEM-L-008.md",
+              "note": "主分类在 L4，此处为软链接"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "L2",
+      "layer": "infrastructure",
+      "title": "基础设施层 — DB / Kafka / Iceberg / Redis",
+      "summary": "事务策略陷阱、Avro 格式规范、Kafka 单节点配置、Iceberg commit、归一化门。最高频被检索的节点，含多个 hot 记忆。",
+      "memory_count": 12,
+      "hot_count": 6,
+      "trigger_keywords": [
+        "session.begin",
+        "kafka",
+        "avro",
+        "fastavro",
+        "alembic",
+        "replication",
+        "iceberg",
+        "@cached",
+        "normalize_record",
+        "schema-registry",
+        "transaction",
+        "k8s",
+        "orbstack",
+        "deploy",
+        "connector",
+        "environment"
+      ],
+      "nodes": [
+        {
+          "node_id": "L2-D9",
+          "title": "数据库与迁移 (Dimension 9)",
+          "summary": "SQLAlchemy 事务策略 A/B、autobegin 后禁止 begin()",
+          "memories": [
+            {
+              "id": "MEM-DB-002",
+              "title": "autobegin 后禁止再调 session.begin()",
+              "tier": "hot",
+              "access_count": 28,
+              "file": "shared/L2_infrastructure/D9_database/MEM-DB-002.md"
+            },
+            {
+              "id": "AD-005",
+              "title": "SQLAlchemy 事务策略二选一（架构决策）",
+              "tier": "hot",
+              "access_count": 19,
+              "file": "shared/cross_cutting/decisions/AD-005.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L2-D6",
+          "title": "大数据与事件驱动 (Dimension 6)",
+          "summary": "Avro 容器格式规范、归一化门、单节点 replication.factor、Schema Registry 兼容性",
+          "memories": [
+            {
+              "id": "MEM-L-002",
+              "title": "Avro 序列化静默失败根因：必须过归一化门",
+              "tier": "hot",
+              "access_count": 15,
+              "file": "shared/L2_infrastructure/D6_messaging/MEM-L-002.md"
+            },
+            {
+              "id": "MEM-L-010",
+              "title": "Kafka 单节点必须设 replication.factor=1",
+              "tier": "hot",
+              "access_count": 8,
+              "file": "shared/L2_infrastructure/D6_messaging/MEM-L-010.md"
+            },
+            {
+              "id": "MEM-L-011",
+              "title": "Avro 生产/消费格式必须一致：container 非 schemaless",
+              "tier": "hot",
+              "access_count": 12,
+              "file": "shared/L2_infrastructure/D6_messaging/MEM-L-011.md"
+            },
+            {
+              "id": "MEM-L-006",
+              "title": "Schema Registry BACKWARD 兼容：新字段必须有 default",
+              "tier": "hot",
+              "access_count": 6,
+              "file": "shared/L2_infrastructure/D6_messaging/MEM-L-006.md"
+            },
+            {
+              "id": "AD-004",
+              "title": "Kafka Avro + Schema Registry（架构决策）",
+              "tier": "hot",
+              "access_count": 8,
+              "file": "shared/cross_cutting/decisions/AD-004.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L2-D4",
+          "title": "弹性与事务 (Dimension 4)",
+          "summary": "Python or 数值陷阱、Duck-typing 第三方类型处理",
+          "memories": [
+            {
+              "id": "MEM-L-001",
+              "title": "Python or 不能用于数值型默认值",
+              "tier": "hot",
+              "access_count": 18,
+              "file": "shared/L2_infrastructure/D4_resilience/MEM-L-001.md"
+            },
+            {
+              "id": "MEM-L-003",
+              "title": "Duck-typing 处理第三方库类型优于显式 import",
+              "tier": "hot",
+              "access_count": 5,
+              "file": "shared/L2_infrastructure/D4_resilience/MEM-L-003.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L2-storage",
+          "title": "存储适配 (Iceberg/MinIO)",
+          "summary": "Iceberg 写入必须显式 commit",
+          "memories": [
+            {
+              "id": "MEM-L-007",
+              "title": "Iceberg 写入需要显式 commit（元数据 vs 数据文件分离）",
+              "tier": "hot",
+              "access_count": 7,
+              "file": "shared/L2_infrastructure/storage/MEM-L-007.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "L3",
+      "layer": "domain",
+      "title": "领域层 — 本体 / 数据管道 / 治理 / 仿真",
+      "summary": "OntoForge 专属业务领域记忆。本体 V3 架构、Action 回写、SyncJob 状态机等。EP-109 新增 8 条领域记忆。",
+      "memory_count": 8,
+      "hot_count": 3,
+      "trigger_keywords": [
+        "ObjectTypeDef",
+        "LinkTypeDef",
+        "ActionDef",
+        "FunctionDef",
+        "scenario_id",
+        "SyncJob",
+        "JobExecutionScope",
+        "overlay",
+        "simulation"
+      ],
+      "note": "本节点待后续 EP 填充专项领域记忆",
+      "nodes": [
+        {
+          "node_id": "L3-ontology",
+          "title": "本体领域",
+          "memories": [
+            {
+              "id": "MEM-L-012",
+              "title": "ObjectTypeDef 必须设置 primary_key + unique_key，否则检索退化为全表扫描",
+              "tier": "hot",
+              "access_count": 5,
+              "file": "shared/L3_domain/ontology/MEM-L-012.md",
+              "tags": [
+                "objecttypedef",
+                "primary_key",
+                "index",
+                "performance"
+              ]
+            },
+            {
+              "id": "MEM-L-013",
+              "title": "Action 回写使用 sys_object_edits overlay 机制，不直接修改原始数据",
+              "tier": "hot",
+              "access_count": 6,
+              "file": "shared/L3_domain/ontology/MEM-L-013.md",
+              "tags": [
+                "action",
+                "writeback",
+                "overlay",
+                "scenario"
+              ]
+            },
+            {
+              "id": "MEM-L-014",
+              "title": "SharedProperty 变更级联影响所有引用方，必须先做影响分析再修改",
+              "tier": "hot",
+              "access_count": 3,
+              "file": "shared/L3_domain/ontology/MEM-L-014.md",
+              "tags": [
+                "shared_property",
+                "impact_analysis",
+                "cascade",
+                "change_request"
+              ]
+            },
+            {
+              "id": "MEM-L-015",
+              "title": "ObjectType版本历史应通过独立API暴露",
+              "tier": "hot",
+              "access_count": 0,
+              "file": "shared/L3_domain/ontology/MEM-L-015.md",
+              "tags": [
+                "api",
+                "object-type",
+                "version-history",
+                "rest",
+                "backend",
+                "read-only"
+              ]
+            }
+          ]
+        },
+        {
+          "node_id": "L3-data_pipeline",
+          "title": "数据管道领域",
+          "memories": [
+            {
+              "id": "MEM-L-015",
+              "title": "Connector 连接测试必须在独立超时内完成，禁止阻塞 API 线程",
+              "tier": "cold",
+              "access_count": 0,
+              "file": "shared/L3_domain/data_pipeline/MEM-L-015.md",
+              "tags": [
+                "connector",
+                "timeout",
+                "async",
+                "blocking"
+              ]
+            },
+            {
+              "id": "MEM-L-016",
+              "title": "IngestionWorker 必须用 JobExecutionScope，禁止散落 try/except 管理 Job 状态",
+              "tier": "hot",
+              "access_count": 0,
+              "file": "shared/L3_domain/data_pipeline/MEM-L-016.md",
+              "tags": [
+                "ingestion-worker",
+                "job-execution-scope",
+                "worker"
+              ]
+            },
+            {
+              "id": "MEM-L-017",
+              "title": "DataCatalog 列映射 auto 模式列名变更会静默断开映射",
+              "tier": "warm",
+              "access_count": 2,
+              "file": "shared/L3_domain/data_pipeline/MEM-L-017.md",
+              "tags": [
+                "data-catalog",
+                "column-mapping",
+                "auto-mode",
+                "schema-drift"
+              ]
+            }
+          ]
+        },
+        {
+          "node_id": "L3-governance",
+          "title": "治理领域",
+          "memories": [
+            {
+              "id": "MEM-L-018",
+              "title": "TenantQuota Redis 计数必须用原子 INCR，禁止 GET+SET（竞态条件）",
+              "tier": "hot",
+              "access_count": 5,
+              "file": "shared/L3_domain/governance/MEM-L-018.md",
+              "tags": [
+                "tenant-quota",
+                "redis",
+                "atomic-incr",
+                "race-condition"
+              ]
+            },
+            {
+              "id": "MEM-L-019",
+              "title": "CR 审批流状态必须持久化到 MySQL，Redis 只用于加速读取",
+              "tier": "warm",
+              "access_count": 2,
+              "file": "shared/L3_domain/governance/MEM-L-019.md",
+              "tags": [
+                "change-request",
+                "approval-flow",
+                "mysql",
+                "redis"
+              ]
+            },
+            {
+              "id": "MEM-L-016",
+              "title": "影响分析API须扩展风险维度与依赖计数",
+              "tier": "cold",
+              "access_count": 0,
+              "file": "shared/L3_domain/governance/MEM-L-016.md",
+              "tags": [
+                "impact-analysis",
+                "risk-level",
+                "scenario",
+                "sync-job",
+                "links",
+                "actions"
+              ]
+            }
+          ]
+        },
+        {
+          "node_id": "L3-simulation",
+          "title": "仿真领域",
+          "memories": []
+        }
+      ]
+    },
+    {
+      "node_id": "L4",
+      "layer": "application",
+      "title": "应用层 — Service / Worker / CQRS",
+      "summary": "架构边界（CQRS/六边形）、Worker 模式、Docker/K8s 部署陷阱",
+      "memory_count": 5,
+      "hot_count": 1,
+      "trigger_keywords": [
+        "control service",
+        "query service",
+        "worker",
+        "dispatch",
+        "CQRS",
+        "docker",
+        "kubectl",
+        "deployment",
+        "image",
+        "compose"
+      ],
+      "nodes": [
+        {
+          "node_id": "L4-D2",
+          "title": "架构边界 (Dimension 2)",
+          "summary": "控制面/数据面分离、Modular Monolith 决策",
+          "memories": [
+            {
+              "id": "AD-003",
+              "title": "控制面/数据面严格分离（架构基线）",
+              "tier": "hot",
+              "access_count": 22,
+              "file": "shared/cross_cutting/decisions/AD-003.md"
+            },
+            {
+              "id": "AD-001",
+              "title": "Modular Monolith 而非微服务（架构基线）",
+              "tier": "hot",
+              "access_count": 10,
+              "file": "shared/cross_cutting/decisions/AD-001.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L4-workers",
+          "title": "Worker 模式与部署运维",
+          "summary": "JobExecutionScope 唯一生命周期管理、Docker build context、kubectl 容器名陷阱、双栈路由",
+          "memories": [
+            {
+              "id": "AD-006",
+              "title": "JobExecutionScope 作为 Worker 唯一状态管理机制",
+              "tier": "hot",
+              "access_count": 13,
+              "file": "shared/cross_cutting/decisions/AD-006.md"
+            },
+            {
+              "id": "MEM-L-004",
+              "title": "Docker 镜像构建上下文陷阱：COPY 路径相对 build context",
+              "tier": "hot",
+              "access_count": 4,
+              "file": "shared/L4_application/workers/MEM-L-004.md"
+            },
+            {
+              "id": "MEM-L-005",
+              "title": "kubectl set-image 必须先查容器名（非 Deployment 名）",
+              "tier": "hot",
+              "access_count": 5,
+              "file": "shared/L4_application/workers/MEM-L-005.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "L5",
+      "layer": "interface",
+      "title": "接口层 — API 规范 / 前端 / 测试",
+      "summary": "信封格式、cursor 分页、DomainException 错误码、React/ProComponents 选型、Zustand Store 拆分、PermissionGate 细粒度权限、Polyfactory/dirty-equals 后端测试、MSW/renderWithProviders 前端测试。EP-110 新增 8 条记忆。",
+      "memory_count": 8,
+      "hot_count": 3,
+      "trigger_keywords": [
+        "endpoint",
+        "ApiResponse",
+        "Envelope",
+        "DomainException",
+        "cursor-based",
+        "pagination",
+        "ProTable",
+        "ProComponents",
+        "Amis",
+        "PermissionGate",
+        "Zustand",
+        "Store",
+        "MSW",
+        "polyfactory",
+        "dirty-equals",
+        "vitest",
+        "pytest",
+        "renderWithProviders"
+      ],
+      "nodes": [
+        {
+          "node_id": "L5-D8",
+          "title": "API 规范 (Dimension 8)",
+          "memories": [
+            {
+              "id": "MEM-L-020",
+              "title": "API 响应必须用 Envelope {code, data, meta}，禁止裸列表",
+              "tier": "hot",
+              "access_count": 8,
+              "file": "shared/L5_interface/D8_api/MEM-L-020.md"
+            },
+            {
+              "id": "MEM-L-021",
+              "title": "大数据量列表 API 必须用 cursor-based 分页，offset 分页在百万级退化",
+              "tier": "hot",
+              "access_count": 3,
+              "file": "shared/L5_interface/D8_api/MEM-L-021.md"
+            },
+            {
+              "id": "MEM-L-022",
+              "title": "DomainException(code='E_MODULE_ID') 必须映射 error_registry.md，禁止裸 raise",
+              "tier": "hot",
+              "access_count": 6,
+              "file": "shared/L5_interface/D8_api/MEM-L-022.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L5-D10",
+          "title": "测试覆盖 (Dimension 10)",
+          "memories": [
+            {
+              "id": "MEM-L-026",
+              "title": "后端测试用 Polyfactory 生成测试数据，dirty-equals 做模糊断言",
+              "tier": "cold",
+              "access_count": 0,
+              "file": "shared/L5_interface/D10_testing/MEM-L-026.md"
+            },
+            {
+              "id": "MEM-L-027",
+              "title": "前端用 MSW 拦截 API 请求，renderWithProviders 注入 Store 和 Router",
+              "tier": "hot",
+              "access_count": 3,
+              "file": "shared/L5_interface/D10_testing/MEM-L-027.md"
+            }
+          ]
+        },
+        {
+          "node_id": "L5-frontend",
+          "title": "前端规范",
+          "memories": [
+            {
+              "id": "MEM-L-023",
+              "title": "管理页面用 React + ProComponents，Amis 只用于 Chat2App 模块",
+              "tier": "hot",
+              "access_count": 7,
+              "file": "shared/L5_interface/frontend/MEM-L-023.md"
+            },
+            {
+              "id": "MEM-L-024",
+              "title": "Zustand Store 必须按业务域划分，禁止 God Store，跨域用 selector",
+              "tier": "hot",
+              "access_count": 3,
+              "file": "shared/L5_interface/frontend/MEM-L-024.md"
+            },
+            {
+              "id": "MEM-L-025",
+              "title": "PermissionGate 细粒度控制按钮/字段权限，禁止只做页面级路由守卫",
+              "tier": "hot",
+              "access_count": 5,
+              "file": "shared/L5_interface/frontend/MEM-L-025.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "CC",
+      "layer": "cross_cutting",
+      "title": "跨层模式与架构决策",
+      "summary": "无法归单一层的设计模式（NullSafeNormalizer、知识索引三层架构）和 8 条 ADR",
+      "memory_count": 8,
+      "hot_count": 8,
+      "trigger_keywords": [
+        "pattern",
+        "decision",
+        "architecture",
+        "trade-off",
+        "normalizer",
+        "knowledge",
+        "manifest",
+        "ADR"
+      ],
+      "nodes": [
+        {
+          "node_id": "CC-decisions",
+          "title": "架构决策记录 (ADR)",
+          "memories": [
+            {
+              "id": "AD-008",
+              "title": "知识索引三层架构 → EP-107 演进为 MEMORY_INDEX",
+              "tier": "hot",
+              "access_count": 14,
+              "file": "shared/cross_cutting/decisions/AD-008.md"
+            },
+            {
+              "id": "AD-007",
+              "title": "NullSafeNormalizer 作为 Kafka 归一化强制门",
+              "tier": "hot",
+              "access_count": 11,
+              "file": "shared/cross_cutting/decisions/AD-007.md"
+            },
+            {
+              "id": "AD-028",
+              "title": "EP蒸馏必须绑定Unit 5显式触发",
+              "tier": "cold",
+              "access_count": 0,
+              "file": "shared/cross_cutting/decisions/AD-028.md",
+              "tags": [
+                "mms",
+                "qwen-plus",
+                "distill",
+                "context-injection",
+                "ep-lifecycle"
+              ]
+            }
+          ]
+        },
+        {
+          "node_id": "CC-patterns",
+          "title": "提炼设计模式",
+          "memories": [],
+          "note": "从 ≥2 条同类记忆提炼，EP-107 后续 EP 持续填充"
+        }
+      ]
+    },
+    {
+      "node_id": "BIZ",
+      "layer": "business",
+      "title": "业务逻辑维度 — 核心流程 / 参与者 / 约束 / 边界",
+      "summary": "捕获端到端业务语义，帮助推理模型理解「为什么要这样做」，在 mms inject 中与技术记忆配合使用。",
+      "memory_count": 3,
+      "hot_count": 2,
+      "trigger_keywords": [
+        "business",
+        "流程",
+        "用户",
+        "场景",
+        "约束",
+        "规则",
+        "对象类型",
+        "同步",
+        "配额",
+        "租户",
+        "架构师",
+        "数据工程师",
+        "CR",
+        "审批",
+        "隔离",
+        "Actor"
+      ],
+      "nodes": [
+        {
+          "node_id": "BIZ-ontology",
+          "title": "本体业务流程",
+          "memories": [
+            {
+              "id": "BIZ-001",
+              "title": "全域对象类型定义的创建与修改流程",
+              "tier": "hot",
+              "access_count": 0,
+              "node_id": "BIZ",
+              "tags": [
+                "object-type",
+                "ontology",
+                "global-registry",
+                "crud",
+                "impact-analysis"
+              ],
+              "file": "shared/BIZ/BIZ-001.md"
+            }
+          ]
+        },
+        {
+          "node_id": "BIZ-pipeline",
+          "title": "数据管道业务流程",
+          "memories": [
+            {
+              "id": "BIZ-002",
+              "title": "数据同步管道的创建与调度执行流程",
+              "tier": "hot",
+              "access_count": 0,
+              "node_id": "BIZ",
+              "tags": [
+                "connector",
+                "sync-job",
+                "ingestion",
+                "data-pipeline",
+                "schedule"
+              ],
+              "file": "shared/BIZ/BIZ-002.md"
+            }
+          ]
+        },
+        {
+          "node_id": "BIZ-governance",
+          "title": "治理与安全业务规则",
+          "memories": [
+            {
+              "id": "BIZ-003",
+              "title": "多租户隔离与配额治理规则",
+              "tier": "warm",
+              "access_count": 0,
+              "node_id": "BIZ",
+              "tags": [
+                "multi-tenant",
+                "quota",
+                "rbac",
+                "security",
+                "isolation"
+              ],
+              "file": "shared/BIZ/BIZ-003.md"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node_id": "ENV",
+      "layer": "environment",
+      "title": "部署环境层 — K8s 集群 / 数据源 / 基础设施快照",
+      "summary": "MDP 运行环境的完整配置快照。包含 OrbStack K8s 集群组件（MySQL/Doris/Kafka/ES/Milvus/MinIO/Redis）的地址、端口、注意事项，以及宿主机测试数据源配置。涉及部署、连接、基础设施调试任务时必须加载。",
+      "memory_count": 2,
+      "hot_count": 1,
+      "trigger_keywords": [
+        "k8s",
+        "orbstack",
+        "kubectl",
+        "deploy",
+        "部署",
+        "port-forward",
+        "mysql连接",
+        "kafka",
+        "doris",
+        "milvus",
+        "minio",
+        "redis",
+        "connector",
+        "数据源",
+        "集群",
+        "镜像",
+        "docker",
+        "运维",
+        "pod"
+      ],
+      "memories": [
+        {
+          "id": "ENV-001",
+          "tier": "hot",
+          "title": "K8s 生产模拟环境部署快照（OrbStack）",
+          "tags": [
+            "k8s",
+            "orbstack",
+            "mysql",
+            "doris",
+            "kafka",
+            "es",
+            "milvus",
+            "minio",
+            "redis"
+          ],
+          "file": "shared/L2_infrastructure/environment/ENV-001.md"
+        },
+        {
+          "id": "ENV-002",
+          "tier": "warm",
+          "title": "宿主机测试数据源配置（MySQL + PostgreSQL）",
+          "tags": [
+            "localhost",
+            "mysql",
+            "postgresql",
+            "connector",
+            "datasource"
+          ],
+          "file": "shared/L2_infrastructure/environment/ENV-002.md"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "description_field": "EP-116: description 字段已添加到 32 个 hot/warm 记忆文件，供 LLM 判断相关性"
+  }
+}

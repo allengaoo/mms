@@ -1,0 +1,135 @@
+{
+  "version": "1.0",
+  "description": "分层注入配置清单 — 不同任务模式下的 mms inject 参数配置",
+  "last_updated": "2026-04-12",
+  "source_ep": "EP-111",
+
+  "modes": {
+    "default": {
+      "description": "通用任务模式（无特定分类时的默认行为）",
+      "top_k": 5,
+      "compress": true,
+      "include_biz": false,
+      "include_codemap": false,
+      "max_tokens_budget": 1500,
+      "node_priorities": ["L1", "L2", "L3", "CC"],
+      "use_case": "一般代码生成、bug 修复、代码审查"
+    },
+
+    "dev": {
+      "description": "开发模式 — 专注于代码实现，注入技术规范记忆",
+      "top_k": 6,
+      "compress": true,
+      "include_biz": false,
+      "include_codemap": true,
+      "max_tokens_budget": 2000,
+      "node_priorities": ["L2", "L3", "L4", "L5", "CC"],
+      "use_case": "新增 API、Service 方法、前端组件，需要了解技术约束"
+    },
+
+    "arch": {
+      "description": "架构模式 — 面向架构师，注入 ADR + BIZ 业务流程记忆",
+      "top_k": 8,
+      "compress": true,
+      "include_biz": true,
+      "include_codemap": false,
+      "max_tokens_budget": 3000,
+      "node_priorities": ["CC", "BIZ", "L1", "L4"],
+      "use_case": "架构设计、方案评审、跨层影响分析"
+    },
+
+    "debug": {
+      "description": "调试模式 — 注入错误处理、可观测性、Resilience 记忆",
+      "top_k": 5,
+      "compress": false,
+      "include_biz": false,
+      "include_codemap": false,
+      "max_tokens_budget": 2500,
+      "node_priorities": ["L1", "L2", "L4", "CC"],
+      "node_boost": {
+        "L1": 1.0,
+        "L2-transaction": 2.0,
+        "L4-worker": 1.5
+      },
+      "use_case": "排查运行时错误、事务异常、Worker 状态异常"
+    },
+
+    "biz": {
+      "description": "业务模式 — 纯业务流程理解，注入 BIZ 记忆 + 相关技术记忆",
+      "top_k": 4,
+      "compress": true,
+      "include_biz": true,
+      "include_codemap": false,
+      "max_tokens_budget": 2500,
+      "node_priorities": ["BIZ", "L3", "L5"],
+      "use_case": "产品需求分析、PRD 审查、业务逻辑实现"
+    },
+
+    "frontend": {
+      "description": "前端模式 — 专注于前端实现，注入 React/Store/权限规范",
+      "top_k": 5,
+      "compress": true,
+      "include_biz": false,
+      "include_codemap": true,
+      "max_tokens_budget": 1800,
+      "node_priorities": ["L5", "L1", "CC"],
+      "use_case": "新增页面、组件、Store，需要了解 React 规范和权限控制"
+    },
+
+    "ops": {
+      "description": "运维/部署模式 — 注入环境配置、基础设施约束、部署规范记忆",
+      "top_k": 6,
+      "compress": true,
+      "include_biz": false,
+      "include_codemap": false,
+      "include_env": true,
+      "max_tokens_budget": 2500,
+      "node_priorities": ["ENV", "L2", "L1", "CC"],
+      "node_boost": {
+        "ENV": 3.0,
+        "L2": 1.5
+      },
+      "use_case": "K8s 部署、镜像构建、端口转发、数据库迁移、连接器配置、基础设施调试"
+    }
+  },
+
+  "task_auto_detect": {
+    "description": "基于任务描述关键词自动选择注入模式",
+    "rules": [
+      {
+        "keywords": ["前端", "页面", "组件", "react", "tsx", "store", "zustand"],
+        "mode": "frontend"
+      },
+      {
+        "keywords": ["调试", "debug", "报错", "error", "异常", "崩溃", "超时"],
+        "mode": "debug"
+      },
+      {
+        "keywords": ["架构", "设计", "方案", "权衡", "决策", "ADR", "影响分析"],
+        "mode": "arch"
+      },
+      {
+        "keywords": ["业务", "流程", "用户", "场景", "需求", "PRD"],
+        "mode": "biz"
+      },
+      {
+        "keywords": ["api", "endpoint", "service", "backend", "后端", "数据库"],
+        "mode": "dev"
+      },
+      {
+        "keywords": ["部署", "deploy", "k8s", "kubectl", "镜像", "docker", "port-forward",
+                     "mysql连接", "kafka", "minio", "milvus", "doris", "redis连接",
+                     "连接器", "connector", "数据源", "集群", "pod", "运维"],
+        "mode": "ops"
+      }
+    ],
+    "default_mode": "default"
+  },
+
+  "token_budget_policy": {
+    "description": "超出预算时的裁剪策略",
+    "priority_order": ["hot", "in_target_node", "keyword_match", "warm", "cold"],
+    "min_snippets": 2,
+    "truncate_strategy": "drop_lowest_scored"
+  }
+}

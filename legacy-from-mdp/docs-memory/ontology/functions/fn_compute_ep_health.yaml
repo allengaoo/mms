@@ -1,0 +1,115 @@
+# FunctionDef: fn_compute_ep_health — EP 执行质量评分函数
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   读取 EP 的 trace.jsonl 事件流，聚合计算出一个综合质量评分，
+#   帮助用户快速判断"这次 EP 执行得好不好"。
+#   类比：代码 coverage 报告，把多维度数据压缩成一个可读的数字和等级。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: fn_compute_ep_health
+label: "EP 执行质量评分"
+type: function
+version: "3.0"
+
+description: |
+  从 DiagnosticEvent 事件流（trace.jsonl）聚合 5 个维度的指标，
+  计算 EP 执行质量综合评分（0.0 ~ 1.0）。
+
+  评分维度：
+  1. LLM 效率（权重 30%）
+     = 1 - (retry_count / total_llm_calls)
+     重试越多，效率越低
+
+  2. 步骤耗时分布（权重 20%）
+     = 1 - (std_dev / mean) 的归一化值
+     耗时越均匀（无长尾），分数越高
+
+  3. 文件精准度（权重 25%）
+     = files_changed / (files_changed + files_rejected)
+     Scope Guard 拒绝率越高，分数越低
+
+  4. 验证通过率（权重 15%）
+     = arch_ok_count / total_validation_count
+
+  5. Token 使用效率（权重 10%）
+     = min(tokens_out / tokens_in, 1.0)
+     输出/输入比越高表示模型没有"空转"
+
+  输出健康等级：
+    A (0.85+) — 优秀：可直接用于 Skill 生成的经验来源
+    B (0.70+) — 良好：质量可接受，distill 有价值
+    C (0.55+) — 一般：存在明显重试或 Scope Guard 问题
+    D (< 0.55) — 待改进：建议复查 Unit 拆分是否合理
+
+implementation: "scripts/mms/trace/reporter.py :: TraceSummary（聚合）"
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    description: "EP 编号（用于定位 trace.jsonl）"
+    example: "EP-128"
+
+  - name: events
+    type: list[DiagnosticEvent]
+    required: false
+    description: "可选：已加载的事件列表（不传则从磁盘读取）"
+
+outputs:
+  - name: score
+    type: float
+    description: "综合健康评分 0.0 ~ 1.0"
+
+  - name: grade
+    type: enum
+    options: ["A", "B", "C", "D"]
+    description: "可读健康等级"
+
+  - name: breakdown
+    type: map[string, float]
+    description: |
+      各维度分数明细：
+      {
+        "llm_efficiency":      0.92,
+        "step_distribution":   0.78,
+        "file_precision":      1.00,
+        "validation_pass":     1.00,
+        "token_efficiency":    0.68
+      }
+
+  - name: top_issues
+    type: list[string]
+    description: "得分较低的维度的改进建议（最多 3 条）"
+
+anti_patterns:
+  - "禁止调用 LLM（纯统计计算，必须 < 50ms）"
+  - "禁止修改 trace.jsonl（只读函数）"
+
+performance:
+  latency: "< 50ms（读取磁盘 + Python 统计计算）"
+
+called_by:
+  - "trace/reporter.py :: generate_text_report()（报告底部显示健康评分）"
+  - "trace/reporter.py :: generate_json_report()（JSON 报告 health 字段）"
+  - "action_trace_show（trace show 命令输出时）"
+
+related_functions:
+  - fn_compute_atomicity
+  - fn_rank_memories
+
+example_output: |
+  EP-128 执行质量报告
+  ─────────────────────────────────────────────
+  综合评分：0.83 / 1.0   等级：B（良好）
+
+  维度明细：
+    LLM 效率       ████████████████████ 0.90  ✅
+    步骤分布       ███████████████      0.72  ⚠
+    文件精准度     ████████████████████ 1.00  ✅
+    验证通过率     ████████████████████ 1.00  ✅
+    Token 效率     █████████████        0.68  ⚠
+
+  改进建议：
+    1. U2 耗时 18.5s，显著高于均值 8.2s，建议进一步拆分
+    2. token_out/in 比偏低（0.68），qwen3-coder 可能在重复输入内容

@@ -1,0 +1,17 @@
+{
+  "ep_id": "EP-124",
+  "current_step": 5,
+  "completed_steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "task_desc": "对于现在的mdp 系统，我模拟了基于k8s 的生产环境，现在可以通过本地的前后端服务来调试程序，而不是每次都需要构建新的镜像，并重启k8s 对应的服务更新前后端。注意：我的元数据库时orbstack 中的k8s 集群中的mysql服并且已经重定向到宿主机的3307端口了，而本宿主机的mysql服务是用来作为一个数据源进行测试的。",
+  "template": "ep-backend-api",
+  "ep_file": "docs/execution_plans/EP-124_Local_Debug_Without_Rebuild.md",
+  "total_units": 6,
+  "completed_units": [],
+  "started_at": "2026-04-18T16:16:35.798598+00:00",
+  "updated_at": "2026-04-19T09:58:46.757479+00:00"
+}

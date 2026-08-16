@@ -1,0 +1,22 @@
+{
+  "ep_id": "EP-126",
+  "timestamp": "2026-04-19T10:13:43.806023+00:00",
+  "scope_files": [
+    "cli.py",
+    "scripts/mms/cli.py",
+    "task_matcher.py",
+    "scripts/mms/task_matcher.py",
+    "synthesizer.py",
+    "scripts/mms/synthesizer.py",
+    "docs/memory/templates/ep-others.md",
+    "scripts/mms/tests/test_synthesizer_structure.py"
+  ],
+  "testing_files": [],
+  "arch_violations_baseline": [],
+  "arch_violations_count": 0,
+  "impact": {
+    "api_endpoints": [],
+    "pages": [],
+    "stores": []
+  }
+}

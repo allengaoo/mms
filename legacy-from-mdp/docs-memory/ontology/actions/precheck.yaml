@@ -1,0 +1,40 @@
+# ActionDef: precheck — EP 前置检查动作
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+id: action_precheck
+label: "前置检查"
+type: action
+version: "3.0"
+
+description: |
+  在修改代码之前，建立基线快照：
+  - 扫描 EP 声明的 Scope 文件，确认它们存在且可访问
+  - 运行架构约束检查（arch_check.py），记录当前违规数量
+  - 扫描 EP 声明的测试文件，记录当前测试通过率
+  - 分析影响范围（哪些模块会被波及）
+  - 如发现 BLOCKER 级问题，停止并提示用户
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    example: "EP-116"
+
+outputs:
+  - name: baseline_report
+    type: text
+    description: "基线报告，包含：Scope 文件列表、当前架构违规数、测试通过率"
+
+  - name: blocker_list
+    type: list[string]
+    description: "BLOCKER 级问题列表（非空时应停止执行 EP）"
+
+side_effects:
+  - "在 docs/memory/_system/checkpoints/ 保存 precheck-{ep_id}.json 基线文件"
+
+cli_usage: |
+  python3 scripts/mms/cli.py precheck --ep EP-116
+
+related_actions:
+  - action_postcheck
+  - action_synthesize

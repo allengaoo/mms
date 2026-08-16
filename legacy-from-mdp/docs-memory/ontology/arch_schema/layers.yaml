@@ -1,0 +1,497 @@
+# MDP 项目架构层定义 — MMS-OG v3.0
+#
+# 用途：
+#   将项目的代码结构显式化为"层（Layer）"对象，是意图分类和路径解析的核心依据。
+#   取代 injector.py 中硬编码的 _KEYWORD_LAYER_MAP 和 synthesizer.py 中的路径示例字符串。
+#
+# 维护规则：
+#   - 新增模块或重构目录后，在对应层的 path_prefixes 中更新路径
+#   - entry_files 是该层"最常被读取"的入口文件，LLM 分类时会优先提示这些文件
+#   - keywords 用于意图分类：用户描述中出现这些词，触发该层
+#   - 修改后运行：python3 scripts/mms/cli.py validate --schema
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+version: "3.0"
+created_at: "2026-04-16"
+source_ep: "EP-116"
+
+layers:
+
+  # ─────────────────────────────────────────────────────────
+  # L5：界面层（前端 + API）
+  # ─────────────────────────────────────────────────────────
+
+  L5_frontend:
+    label: "前端界面层"
+    description: "React 18 页面、主布局、侧栏导航、Zustand Store、Axios 服务封装、通用组件"
+    path_prefixes:
+      - "frontend/src/layouts/"          # 主布局组件（MainLayout、SidebarLayout 等）
+      - "frontend/src/config/"           # 配置文件（navigation.ts、routes 配置）
+      - "frontend/src/pages/"            # 业务页面组件（按模块分目录）
+      - "frontend/src/stores/"           # Zustand 状态管理 Store
+      - "frontend/src/services/"         # Axios 封装的 API 调用函数
+      - "frontend/src/components/"       # 通用 UI 组件
+      - "frontend/src/utils/"            # 工具函数（request.ts、formatters 等）
+      - "frontend/src/routes/"           # 路由定义与权限守卫
+    entry_files:
+      - "frontend/src/layouts/MainLayout.tsx"      # 主布局（顶栏 + 侧栏渲染核心）
+      - "frontend/src/config/navigation.ts"        # 顶栏 Tab + 侧栏菜单配置（最常修改）
+      - "frontend/src/routes/index.tsx"             # 路由总表
+      - "frontend/src/utils/request.ts"             # Axios 拦截器（401/403 处理）
+    keywords:
+      # 中文关键词
+      - "导航"
+      - "菜单"
+      - "侧栏"
+      - "顶栏"
+      - "页面"
+      - "组件"
+      - "前端"
+      - "工作台"
+      - "仪表盘"
+      - "导航栏"
+      - "精简"
+      - "隐藏菜单"
+      - "只保留"
+      # 英文关键词
+      - "navigation"
+      - "sidebar"
+      - "header"
+      - "layout"
+      - "navbar"
+      - "menu"
+      - "react"
+      - "store"
+      - "zustand"
+      - "component"
+      - "dashboard"
+      - "page"
+      - "route"
+      - "ProTable"
+      - "ProForm"
+    hot_memories:
+      - "MEM-L-023"   # React vs Amis 渲染技术选型
+      - "MEM-L-025"   # RBAC PermissionGate 前端权限控制
+      - "AD-004"      # Management 页面必须用 React 组件，禁用 Amis JSON
+
+  L5_api:
+    label: "API 接口层"
+    description: "FastAPI Router、Request/Response Schema、API 版本控制"
+    path_prefixes:
+      - "backend/app/api/v1/endpoints/"    # FastAPI 路由处理器
+      - "backend/app/api/schemas/"         # Pydantic v2 请求/响应模型
+      - "backend/app/api/v1/"              # API 版本路由注册
+    entry_files:
+      - "backend/app/api/v1/endpoints/auth.py"      # 认证接口（登录/刷新）
+      - "backend/app/api/v1/endpoints/ontology.py"  # 本体接口
+      - "backend/app/core/response.py"               # API 信封格式定义
+      - "backend/app/core/exceptions.py"             # 异常与错误码
+    keywords:
+      - "API"
+      - "接口"
+      - "路由"
+      - "endpoint"
+      - "REST"
+      - "response"
+      - "request"
+      - "schema"
+      - "信封"
+      - "状态码"
+      - "参数校验"
+    hot_memories:
+      - "MEM-L-020"   # API 必须用 Envelope {code, data, meta}
+      - "MEM-L-022"   # DomainException 错误码规范
+      - "AD-002"      # RLS：所有 API 必须含 tenant_id 过滤
+
+  L5_testing:
+    label: "测试层"
+    description: "Pytest 单元测试、集成测试、Vitest 前端测试、MSW Mock Service Worker"
+    path_prefixes:
+      - "backend/tests/unit/"
+      - "backend/tests/integration/"
+      - "frontend/src/**/__tests__/"
+      - "frontend/src/test/"
+    entry_files:
+      - "backend/tests/unit/services/test_auth_service.py"
+      - "backend/tests/unit/api/test_health_endpoint.py"
+    keywords:
+      - "test"
+      - "测试"
+      - "单元测试"
+      - "集成测试"
+      - "pytest"
+      - "vitest"
+      - "mock"
+      - "MSW"
+      - "polyfactory"
+      - "dirty-equals"
+      - "renderWithProviders"
+    hot_memories: []
+
+  # ─────────────────────────────────────────────────────────
+  # L4：应用服务层（Service + Worker）
+  # ─────────────────────────────────────────────────────────
+
+  L4_service:
+    label: "应用服务层"
+    description: "Control Plane Service（MySQL 读写）、Query Service（ES/Milvus 查询）"
+    path_prefixes:
+      - "backend/app/services/control/"    # 控制面 Service（写操作→MySQL）
+      - "backend/app/services/query/"      # 查询面 Service（读→ES/Milvus）
+      - "backend/app/services/dispatch/"   # 事件分发（Control→Data Plane）
+    entry_files:
+      - "backend/app/services/control/auth_service.py"
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/app/services/control/datalink_service.py"
+    keywords:
+      - "service"
+      - "业务逻辑"
+      - "服务层"
+      - "create"
+      - "update"
+      - "delete"
+      - "查询"
+      - "control"
+      - "CQRS"
+      - "command"
+    hot_memories:
+      - "AD-002"      # RLS：Service 必须 WHERE tenant_id
+      - "AD-003"      # 控制面禁止直写向量库
+      - "AD-005"      # 事务策略 A/B 二选一
+
+  L4_worker:
+    label: "Worker 层"
+    description: "APScheduler、IngestionWorker、IndexingWorker、JobExecutionScope 生命周期管理"
+    path_prefixes:
+      - "backend/app/workers/"
+    entry_files:
+      - "backend/app/workers/base.py"        # JobExecutionScope（必须使用）
+      - "backend/app/workers/scheduler_engine.py"
+    keywords:
+      - "worker"
+      - "调度"
+      - "scheduler"
+      - "任务"
+      - "JobExecutionScope"
+      - "ingestion"
+      - "cron"
+      - "后台任务"
+    hot_memories:
+      - "AD-006"      # JobExecutionScope 作为 Worker 唯一生命周期管理机制
+      - "MEM-L-016"   # 数据管道 Worker 使用约束
+
+  # ─────────────────────────────────────────────────────────
+  # L3：领域层（本体 + 数据管道 + 治理）
+  # ─────────────────────────────────────────────────────────
+
+  L3_ontology:
+    label: "本体领域层"
+    description: "ObjectTypeDef、LinkTypeDef、ActionDef、FunctionDef、OntologyScenario"
+    path_prefixes:
+      - "backend/app/models/ontology.py"
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/app/api/v1/endpoints/ontology.py"
+    entry_files:
+      - "backend/app/models/ontology.py"
+      - "backend/app/services/control/ontology_service.py"
+      - "backend/app/api/v1/endpoints/ontology.py"
+    keywords:
+      - "本体"
+      - "对象类型"
+      - "链接类型"
+      - "ontology"
+      - "ObjectTypeDef"
+      - "LinkTypeDef"
+      - "ActionDef"
+      - "FunctionDef"
+      - "场景"
+      - "回写"
+      - "overlay"
+      - "SharedProperty"
+      - "影响分析"
+    hot_memories:
+      - "MEM-L-012"   # ObjectTypeDef 主键与索引
+      - "MEM-L-013"   # Action 回写机制（scenario vs live）
+      - "BIZ-001"     # 对象类型 CRUD 业务流程
+
+  L3_data_pipeline:
+    label: "数据管道领域层"
+    description: "Connector、SyncJob、IngestionWorker、DataCatalog、列映射"
+    path_prefixes:
+      - "backend/app/services/control/datalink_service.py"
+      - "backend/app/infrastructure/connector/"
+      - "backend/app/workers/"
+    entry_files:
+      - "backend/app/services/control/datalink_service.py"
+      - "backend/app/api/v1/endpoints/datalink.py"
+      - "backend/app/workers/base.py"
+    keywords:
+      - "connector"
+      - "syncjob"
+      - "同步任务"
+      - "数据管道"
+      - "pipeline"
+      - "ingestion"
+      - "DataCatalog"
+      - "列映射"
+      - "watermark"
+      - "CDC"
+      - "增量"
+      - "全量"
+    hot_memories:
+      - "MEM-L-016"   # Worker 使用 JobExecutionScope
+      - "AD-007"      # NullSafeNormalizer 作为 Kafka 发送前强制门
+      - "BIZ-002"     # 数据同步管道业务流程
+
+  L3_governance:
+    label: "治理领域层"
+    description: "TenantQuota 配额管理、ChangeRequest 变更审批、ACL 权限"
+    path_prefixes:
+      - "backend/app/services/control/"
+      - "docs/specs/governance/"
+    entry_files: []
+    keywords:
+      - "governance"
+      - "治理"
+      - "quota"
+      - "配额"
+      - "change request"
+      - "CR"
+      - "审批"
+      - "ACL"
+    hot_memories:
+      - "MEM-L-018"   # Quota Redis 原子操作
+
+  # ─────────────────────────────────────────────────────────
+  # L2：基础设施层（DB / Kafka / Redis / Storage）
+  # ─────────────────────────────────────────────────────────
+
+  L2_database:
+    label: "数据库基础设施层"
+    description: "MySQL 8.0 AsyncSession、SQLModel ORM、Alembic 迁移"
+    path_prefixes:
+      - "backend/app/infrastructure/db/"
+      - "backend/alembic/"
+      - "backend/app/core/db.py"
+    entry_files:
+      - "backend/app/core/db.py"
+      - "backend/alembic/env.py"
+    keywords:
+      - "mysql"
+      - "session"
+      - "transaction"
+      - "事务"
+      - "alembic"
+      - "migration"
+      - "SQLModel"
+      - "ORM"
+      - "autobegin"
+      - "asyncsession"
+    hot_memories:
+      - "MEM-DB-002"  # SQLAlchemy autobegin 陷阱
+      - "AD-005"      # 事务策略 A/B
+
+  L2_messaging:
+    label: "消息队列基础设施层"
+    description: "Kafka aiokafka Producer/Consumer、Avro Schema Registry、NullSafeNormalizer"
+    path_prefixes:
+      - "backend/app/infrastructure/kafka/"
+      - "backend/app/infrastructure/messaging/"
+    entry_files: []
+    keywords:
+      - "kafka"
+      - "avro"
+      - "schema registry"
+      - "序列化"
+      - "message"
+      - "topic"
+      - "producer"
+      - "consumer"
+      - "normalize"
+    hot_memories:
+      - "MEM-L-002"   # Avro 序列化静默失败根因
+      - "MEM-L-010"   # Kafka K8s 单节点配置
+      - "MEM-L-011"   # Kafka Avro 格式规范
+      - "AD-007"      # NullSafeNormalizer 门控
+
+  L2_cache:
+    label: "缓存基础设施层"
+    description: "Redis async、@cached 装饰器、RedisLeaderElection"
+    path_prefixes:
+      - "backend/app/infrastructure/cache/"
+      - "backend/app/infrastructure/consensus/"
+    entry_files:
+      - "backend/app/infrastructure/cache/redis_decorator.py"
+    keywords:
+      - "redis"
+      - "cache"
+      - "缓存"
+      - "leader election"
+      - "leader"
+      - "@cached"
+    hot_memories: []
+
+  L2_storage:
+    label: "对象存储基础设施层"
+    description: "MinIO S3、Iceberg、流式 IO（yield，禁止 read()）"
+    path_prefixes:
+      - "backend/app/infrastructure/storage/"
+    entry_files: []
+    keywords:
+      - "minio"
+      - "s3"
+      - "存储"
+      - "iceberg"
+      - "object storage"
+      - "流式"
+    hot_memories: []
+
+  # ─────────────────────────────────────────────────────────
+  # L1：平台安全层（RBAC / SecurityContext / AuditService）
+  # ─────────────────────────────────────────────────────────
+
+  L1_security:
+    label: "平台安全层"
+    description: "RBAC 权限注册表、SecurityContext、AuditService、JWT 认证"
+    path_prefixes:
+      - "backend/app/core/rbac.py"
+      - "backend/app/core/security.py"
+      - "backend/app/core/auth.py"
+    entry_files:
+      - "backend/app/core/rbac.py"
+      - "backend/app/core/security.py"
+      - "backend/app/core/auth.py"
+    keywords:
+      - "tenant_id"
+      - "SecurityContext"
+      - "RLS"
+      - "多租户"
+      - "audit"
+      - "AuditService"
+      - "RBAC"
+      - "权限"
+      - "认证"
+      - "JWT"
+      - "401"
+      - "403"
+      - "登录"
+    hot_memories:
+      - "AD-002"      # RLS 基线
+      - "AD-003"      # 控制面/数据面分离
+
+  # ─────────────────────────────────────────────────────────
+  # CC：横切关注点（架构决策 + 文档）
+  # ─────────────────────────────────────────────────────────
+
+  CC_architecture:
+    label: "横切架构层"
+    description: "架构决策记录（ADR）、全链路追踪文档、前端页面地图"
+    path_prefixes:
+      - "docs/architecture/"
+      - ".cursor/rules/"
+    entry_files:
+      - "docs/architecture/e2e_traceability.md"
+      - "docs/architecture/frontend_page_map.md"
+    keywords:
+      - "architecture"
+      - "decision"
+      - "架构"
+      - "ADR"
+      - "traceability"
+      - "追踪"
+      - "文档同步"
+    hot_memories:
+      - "AD-001"      # Modular Monolith 架构基线
+      - "AD-008"      # 知识索引三层架构
+
+  # ─────────────────────────────────────────────────────────
+  # L0_mms：MMS 工具层（EP-128 新增）
+  # 覆盖 scripts/mms/ 下所有 AI 工程工具：合成器、追踪器、DAG 编排、
+  # 知识蒸馏、autoDream 等。不属于任何业务层，是平台的"元工具层"。
+  # ─────────────────────────────────────────────────────────
+
+  L0_mms:
+    label: "MMS 工具层"
+    description: |
+      MMS（Memory Management System）AI 工程记忆工具集。
+      涵盖 EP 工作流编排（ep_wizard）、意图合成（synthesizer）、
+      DAG 生成与执行（dag_model / unit_runner / unit_compare）、
+      诊断追踪（trace/）、知识蒸馏（dream / distill）和系统配置（mms_config）。
+    path_prefixes:
+      - "scripts/mms/"
+    entry_files:
+      - "scripts/mms/cli.py"             # MMS 统一 CLI 入口
+      - "scripts/mms/ep_wizard.py"       # EP 7 步工作流向导
+      - "scripts/mms/synthesizer.py"     # 意图合成（mms synthesize）
+      - "scripts/mms/unit_runner.py"     # DAG Unit 自动执行
+      - "scripts/mms/unit_compare.py"    # 双模型对比（Qwen vs Sonnet）
+      - "scripts/mms/trace/tracer.py"    # 诊断追踪主类
+      - "scripts/mms/trace/reporter.py"  # 诊断报告生成
+      - "scripts/mms/dream.py"           # autoDream 知识萃取
+      - "scripts/mms/mms_config.py"      # 配置统一加载
+    keywords:
+      - "mms"
+      - "synthesize"
+      - "意图合成"
+      - "trace"
+      - "诊断"
+      - "诊断数据"
+      - "追踪"
+      - "步骤耗时"
+      - "最慢"
+      - "token"
+      - "消耗"
+      - "报告"
+      - "dag"
+      - "unit"
+      - "ep"
+      - "执行计划"
+      - "distill"
+      - "蒸馏"
+      - "dream"
+      - "草稿"
+      - "记忆"
+      - "知识"
+      - "waterfall"
+      - "瀑布图"
+      - "retry"
+      - "重试"
+      - "llm 调用"
+      - "compare"
+      - "对比"
+      - "qwen"
+      - "sonnet"
+      - "gemini"
+    hot_memories:
+      - "AD-008"    # 知识索引三层架构
+
+  # ─────────────────────────────────────────────────────────
+  # Ops：运维部署层
+  # ─────────────────────────────────────────────────────────
+
+  Ops:
+    label: "运维部署层"
+    description: "OrbStack K8s、Docker Compose、镜像构建、Alembic 数据库迁移"
+    path_prefixes:
+      - "deploy/"
+      - "backend/alembic/"
+    entry_files:
+      - "deploy/docker-compose.app.yml"
+    keywords:
+      - "k8s"
+      - "kubectl"
+      - "docker"
+      - "deploy"
+      - "部署"
+      - "镜像"
+      - "image"
+      - "运维"
+      - "alembic"
+      - "migration"
+      - "数据库迁移"
+      - "端口转发"
+      - "OrbStack"
+    hot_memories:
+      - "ENV-001"     # K8s 生产模拟环境快照
+      - "MEM-DB-002"  # 数据库迁移前的事务约束确认

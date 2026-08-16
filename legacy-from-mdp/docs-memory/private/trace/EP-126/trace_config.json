@@ -1,0 +1,12 @@
+{
+  "ep_id": "EP-126",
+  "enabled": true,
+  "level": 4,
+  "level_name": "LLM",
+  "trace_id": "MMS-TRACE-EP126-20260419-ceb8d5",
+  "started_at": "2026-04-19T14:12:23Z",
+  "stopped_at": null,
+  "event_count": 0,
+  "max_events": 5000,
+  "preview_chars": 200
+}

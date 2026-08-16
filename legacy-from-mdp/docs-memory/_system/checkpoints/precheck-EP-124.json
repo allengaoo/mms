@@ -1,0 +1,17 @@
+{
+  "ep_id": "EP-124",
+  "timestamp": "2026-04-19T09:58:36.760079+00:00",
+  "scope_files": [
+    "backend/.env.local",
+    "frontend/.env.local",
+    "scripts/dev-local.sh"
+  ],
+  "testing_files": [],
+  "arch_violations_baseline": [],
+  "arch_violations_count": 0,
+  "impact": {
+    "api_endpoints": [],
+    "pages": [],
+    "stores": []
+  }
+}

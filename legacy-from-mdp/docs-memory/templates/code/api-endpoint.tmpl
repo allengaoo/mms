@@ -1,0 +1,83 @@
+---
+name: api-endpoint
+label: FastAPI Endpoint 模板（含 Schema + 权限守卫）
+layer: L5_interface
+description: 生成符合 MDP API 规范的 FastAPI Endpoint（信封格式、Response Model、Permission Guard）
+required_vars:
+  - resource: 资源名（snake_case，如 object_type）
+  - resource_label: 资源中文标签（如 对象类型）
+  - http_method: HTTP 方法（get | post | put | delete | patch）
+  - permission: 权限 key（如 ont:object:view）
+optional_vars:
+  - entity: 实体名（PascalCase，默认从 resource 推导）
+  - url_path: URL 路径（默认 /resource-name/）
+---
+# === 架构约束注释（来自 layer_contracts.md，开发时参考） ===
+# {{arch_constraints}}
+# ========================================================
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+
+from app.api.deps import get_security_context
+from app.core.rbac import require_permission
+from app.core.security import SecurityContext
+# TODO: 引入 Service 层
+# from app.services.control.{{resource}}_service import {{resource}}_service
+
+router = APIRouter(
+    prefix="/{{resource}}",
+    tags=["{{resource_label}}"],
+)
+
+
+# ── Schema 定义 ────────────────────────────────────────────────────────────────
+
+class {{resource}}Response(BaseModel):
+    """{{resource_label}} 响应 Schema"""
+    id: str
+    tenant_id: str
+    # TODO: 添加业务字段
+
+    model_config = {"from_attributes": True}
+
+
+class {{resource}}CreateRequest(BaseModel):
+    """{{resource_label}} 创建请求 Schema"""
+    name: str
+    # TODO: 添加必填字段
+
+
+# ── Endpoint ───────────────────────────────────────────────────────────────────
+
+@router.{{http_method}}(
+    "/",
+    summary="{{resource_label}} - {{http_method | upper}}",
+)
+async def {{http_method}}_{{resource}}(
+    ctx: SecurityContext = Depends(get_security_context),
+    _: None = Depends(require_permission("{{permission}}")),
+    # TODO: 根据场景添加 Query 参数
+    # page: int = Query(1, ge=1),
+    # page_size: int = Query(20, ge=1, le=100),
+):
+    """
+    {{resource_label}} {{http_method | upper}} 接口。
+
+    权限要求：{{permission}}
+    """
+    # TODO: 调用 Service 层
+    # result = await {{resource}}_service.list_{{resource}}(ctx)
+
+    # AC-4: 必须返回信封格式，禁止裸列表
+    return {
+        "code": 200,
+        "data": [],       # TODO: 替换为实际数据
+        "meta": {
+            "total": 0,
+            "page": 1,
+            "page_size": 20,
+        },
+    }

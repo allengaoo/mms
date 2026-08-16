@@ -1,0 +1,93 @@
+{
+  "ep_id": "EP-126",
+  "generated_at": "2026-04-19T10:14:44.604098+00:00",
+  "orchestrator_model": "gemini-2.5-pro",
+  "overall_status": "pending",
+  "units": [
+    {
+      "id": "U1",
+      "title": "在 task_matcher.py 中注册新模板标签",
+      "layer": "L4_application",
+      "files": [
+        "scripts/mms/task_matcher.py"
+      ],
+      "depends_on": [],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U2",
+      "title": "在 synthesizer.py 中注册新模板描述",
+      "layer": "L4_application",
+      "files": [
+        "scripts/mms/synthesizer.py"
+      ],
+      "depends_on": [],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U3",
+      "title": "在 cli.py 中添加新模板选项和说明",
+      "layer": "L5_interface",
+      "files": [
+        "scripts/mms/cli.py"
+      ],
+      "depends_on": [
+        "U1",
+        "U2"
+      ],
+      "order": 3,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U4",
+      "title": "新增测试验证新模板在各模块均已注册",
+      "layer": "testing",
+      "files": [
+        "scripts/mms/tests/test_synthesizer_structure.py"
+      ],
+      "depends_on": [
+        "U3"
+      ],
+      "order": 4,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U5",
+      "title": "新建 ep-others.md 作为兜底 EP 模板",
+      "layer": "docs",
+      "files": [
+        "docs/memory/templates/ep-others.md"
+      ],
+      "depends_on": [],
+      "order": 5,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    }
+  ]
+}

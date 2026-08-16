@@ -1,0 +1,121 @@
+{
+  "ep_id": "EP-117",
+  "generated_at": "2026-04-17T11:00:28.535700+00:00",
+  "orchestrator_model": "qwen3-32b",
+  "overall_status": "pending",
+  "units": [
+    {
+      "id": "U1",
+      "title": "DAG 数据结构定义",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/dag_model.py"
+      ],
+      "depends_on": [],
+      "order": 1,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U2",
+      "title": "EP Markdown 解析器",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/ep_parser.py"
+      ],
+      "depends_on": [],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U3",
+      "title": "原子性验证器",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/atomicity_check.py"
+      ],
+      "depends_on": [],
+      "order": 3,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U4",
+      "title": "Unit 上下文压缩器",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/unit_context.py"
+      ],
+      "depends_on": [],
+      "order": 4,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U5",
+      "title": "DAG 生成命令（LLM）",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/unit_generate.py"
+      ],
+      "depends_on": [],
+      "order": 5,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U6",
+      "title": "DAG 状态管理命令",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/unit_cmd.py"
+      ],
+      "depends_on": [],
+      "order": 6,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U7",
+      "title": "CLI 集成 + config.yaml 启用 DAG",
+      "layer": "unknown",
+      "files": [
+        "scripts/mms/cli.py",
+        "docs/memory/_system/config.yaml"
+      ],
+      "depends_on": [],
+      "order": 7,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    }
+  ]
+}

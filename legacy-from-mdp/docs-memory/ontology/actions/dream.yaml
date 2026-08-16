@@ -1,0 +1,114 @@
+# ActionDef: dream — 自动知识萃取动作（AutoDream）
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   "Dream" 是 MMS 的自动学习闭环动作。
+#   类比人类"在睡眠中整理白天的记忆"：
+#   EP 完成后，系统自动扫描 DiagnosticEvent 流（trace.jsonl），
+#   找到有价值的模式、陷阱和决策，生成草稿记忆文件，
+#   等待人工审核后提升为正式记忆。
+#
+#   与 distill 的区别：
+#     distill = 人工驱动（读 EP 文档），精确但慢
+#     dream   = 自动驱动（读 trace 流），快但需要审核
+#
+# 版本：v1.0 | 创建于：2026-04-18 | EP-118 → EP-129
+
+id: action_dream
+label: "自动知识萃取（AutoDream）"
+type: action
+version: "1.0"
+source_ep: "EP-118"
+
+description: |
+  读取 EP 执行过程中的 DiagnosticEvent 流（trace.jsonl）和 AIU Feedback 历史，
+  自动识别有价值的执行模式、失败模式和设计决策，生成"草稿记忆文件"。
+
+  生成的草稿需要人工审核（mms dream --review / --promote）后
+  才会写入 docs/memory/shared/ 正式记忆库。
+
+  AutoDream 分析维度：
+    - 高频失败 AIU 类型（error_pattern + aiu_type 聚合）
+    - 模型代价超支（actual_tokens / token_budget > 阈值）
+    - 成功路径模式（哪些 AIU 序列总是一起出现且成功）
+    - Layer 传播代价（哪些跨层修改总是引起级联失败）
+    - Intent 误判（confidence 低但最终成功的查询）
+
+inputs:
+  - name: ep_id
+    type: string
+    required: false
+    description: "目标 EP 编号（留空则分析最近 10 个 EP 的 trace）"
+    example: "EP-129"
+
+  - name: list
+    type: boolean
+    required: false
+    default: false
+    description: "列出所有待审核的草稿记忆文件，不执行分析"
+
+  - name: promote
+    type: boolean
+    required: false
+    default: false
+    description: "审核并提升草稿记忆为正式记忆（交互式确认）"
+
+  - name: dry_run
+    type: boolean
+    required: false
+    default: false
+    description: "预览模式：只打印分析报告，不生成草稿文件"
+
+outputs:
+  - name: draft_files
+    type: list[string]
+    description: "生成的草稿记忆文件路径列表（待审核状态）"
+    example:
+      - "docs/memory/shared/cross_cutting/patterns/DRAFT-MEM-E-130.md"
+
+  - name: analysis_report
+    type: string
+    description: "控制台输出的 AutoDream 分析报告摘要"
+
+side_effects:
+  - "在 docs/memory/shared/ 对应层创建 DRAFT-*.md 草稿文件（待审核，不被 fn_rank_memories 索引）"
+  - "读取 docs/memory/_system/trace.jsonl 和 feedback_stats.jsonl（只读）"
+  - "调用 LLM（qwen-plus）分析模式，消耗少量 API Token"
+  - "promote 模式：将 DRAFT-*.md 重命名为正式文件，更新 MEMORY_INDEX.json"
+
+cli_usage: |
+  # 分析 EP-129 的 trace，生成草稿记忆
+  python3 scripts/mms/cli.py dream --ep EP-129
+
+  # 列出所有待审核草稿
+  python3 scripts/mms/cli.py dream --list
+
+  # 交互式审核并提升草稿
+  python3 scripts/mms/cli.py dream --promote
+
+  # 预览模式（不生成文件）
+  python3 scripts/mms/cli.py dream --ep EP-129 --dry-run
+
+trigger_condition: "postcheck PASS 后，或 mms distill 完成后自动触发"
+
+calls_functions:
+  - fn_compute_ep_health
+  - fn_rank_memories
+
+related_actions:
+  - action_distill
+  - action_postcheck
+
+implementation_file: "scripts/mms/dream_engine.py（待实现，EP-130 规划）"
+
+# ── fn_classify_intent 路由规则（当用户问 dream 相关问题时使用）────────────────
+
+intent_keywords:
+  - "dream"
+  - "自动萃取"
+  - "草稿记忆"
+  - "autoDream"
+  - "自动学习"
+  - "促进记忆"
+  - "promote 记忆"
+  - "trace 分析"
+  - "执行模式"

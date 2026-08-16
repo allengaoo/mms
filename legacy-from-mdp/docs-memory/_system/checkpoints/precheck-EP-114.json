@@ -1,0 +1,25 @@
+{
+  "ep_id": "EP-114",
+  "timestamp": "2026-04-15T03:33:12.131634+00:00",
+  "scope_files": [
+    "scripts/mms/synthesizer.py",
+    "scripts/mms/precheck.py",
+    "scripts/mms/postcheck.py",
+    "scripts/mms/cli.py",
+    "docs/memory/templates/ep-backend-api.md",
+    "docs/memory/templates/ep-frontend.md",
+    "docs/memory/templates/ep-ontology.md",
+    "docs/memory/templates/ep-data-pipeline.md",
+    "docs/memory/templates/ep-debug.md",
+    "AGENTS.md",
+    "docs/context/SESSION_HANDOFF.md"
+  ],
+  "testing_files": [],
+  "arch_violations_baseline": [],
+  "arch_violations_count": 0,
+  "impact": {
+    "api_endpoints": [],
+    "pages": [],
+    "stores": []
+  }
+}

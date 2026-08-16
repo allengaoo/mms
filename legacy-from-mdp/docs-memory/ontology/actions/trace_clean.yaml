@@ -1,0 +1,44 @@
+# ActionDef: trace_clean — 清理 EP 诊断数据
+# ──────────────────────────────────────────────────────────────
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: action_trace_clean
+label: "清理诊断数据"
+type: action
+version: "3.0"
+
+description: |
+  删除指定 EP 的全部诊断追踪数据目录（trace.jsonl + trace_config.json + report/）。
+  通常在 EP 完成、知识已蒸馏后执行，释放磁盘空间。
+
+  注意：此操作不可逆。若需保留报告，请先执行 mms trace show --format html。
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    example: "EP-128"
+
+  - name: yes
+    type: boolean
+    required: false
+    default: false
+    description: "跳过二次确认（用于脚本自动化）"
+
+outputs: []
+
+side_effects:
+  - "删除 docs/memory/private/trace/<EP-NNN>/ 整个目录"
+  - "不可逆操作"
+
+cli_usage: |
+  # 交互确认后删除
+  python3 scripts/mms/cli.py trace clean EP-128
+
+  # 跳过确认（用于 CI/脚本）
+  python3 scripts/mms/cli.py trace clean EP-128 --yes
+
+related_actions:
+  - action_trace_enable
+  - action_trace_show
+  - action_distill

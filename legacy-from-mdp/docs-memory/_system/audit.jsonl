@@ -1,0 +1,13 @@
+{"ts":"2026-04-12T07:16:12Z","trace_id":"MMS-20260412-5a1150","op":"test","result":"ok","ep":"EP-108","elapsed_ms":42}
+{"ts":"2026-04-12T07:17:18Z","trace_id":"MMS-20260412-518903","op":"gc","result":"ok","elapsed_ms":7,"total":20,"archived":0,"downgraded":0,"upgraded":9,"unchanged":11,"errors":0}
+{"ts":"2026-04-12T07:18:33Z","trace_id":"MMS-20260412-92dcfd","op":"distill","result":"ok","ep":"EP-108","elapsed_ms":69506,"new_memories":[],"token_estimate":8}
+{"ts":"2026-04-12T07:27:23Z","trace_id":"MMS-20260412-c969e9","op":"gc","result":"ok","elapsed_ms":8,"total":28,"archived":0,"downgraded":0,"upgraded":10,"unchanged":18,"errors":0}
+{"ts":"2026-04-12T14:20:26Z","trace_id":"MMS-20260412-82eb86","op":"route","result":"ok","task":"distillation","model":"deepseek-r1:8b"}
+{"ts":"2026-04-14T07:48:47Z","trace_id":"MMS-20260414-3d9752","op":"distill","result":"ok","ep":"EP-113","elapsed_ms":20813,"new_memories":[],"token_estimate":250}
+{"ts":"2026-04-14T07:49:56Z","trace_id":"MMS-20260414-d4eb73","op":"gc","result":"ok","elapsed_ms":24,"total":39,"archived":0,"downgraded":3,"upgraded":14,"unchanged":22,"errors":0}
+{"ts":"2026-04-14T07:49:56Z","trace_id":"MMS-20260414-dabf26","op":"distill","result":"ok","ep":"EP-113","elapsed_ms":15558,"new_memories":["MEM-L-015","MEM-L-016","AD-028"],"token_estimate":250}
+{"ts":"2026-04-14T12:13:53Z","trace_id":"MMS-20260414-7f5559","op":"distill","result":"ok","ep":"EP-113","elapsed_ms":17161,"new_memories":[],"token_estimate":291}
+{"ts":"2026-04-17T01:29:01Z","trace_id":"MMS-20260417-e5988a","op":"gc","result":"ok","elapsed_ms":18,"total":40,"archived":0,"downgraded":1,"upgraded":0,"unchanged":39,"errors":0}
+{"ts":"2026-04-17T01:29:01Z","trace_id":"MMS-20260417-ae20de","op":"distill","result":"ok","ep":"ep-116","elapsed_ms":5088,"new_memories":["MEM-E-116"],"token_estimate":8}
+{"ts":"2026-04-19T10:56:50Z","trace_id":"MMS-20260419-b173f9","op":"gc","result":"ok","elapsed_ms":51,"total":44,"archived":0,"downgraded":4,"upgraded":0,"unchanged":40,"errors":0}
+{"ts":"2026-04-19T10:56:50Z","trace_id":"MMS-20260419-b66b45","op":"distill","result":"ok","ep":"EP-126","elapsed_ms":19700,"new_memories":["MEM-L-026","MEM-D-027","MEM-E-028","MEM-P-029"],"token_estimate":941}

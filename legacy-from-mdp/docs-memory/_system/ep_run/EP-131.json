@@ -1,0 +1,14 @@
+{
+  "ep_id": "EP-131",
+  "phase": "failed",
+  "resume_unit": "U1",
+  "failure_unit": "U1",
+  "failure_error": "DAG 状态文件不存在：/Users/gaobin/code/mdp-enterprise-version-build-with-cursor/docs/memory/_system/dag/EP-131.json\n请先运行：mms unit generate --ep EP-131",
+  "started_at": "2026-04-23T09:06:35.323653+00:00",
+  "updated_at": "2026-04-23T09:06:35.424321+00:00",
+  "completed_units": [],
+  "total_units": 6,
+  "precheck_done": true,
+  "postcheck_done": false,
+  "dry_run": true
+}

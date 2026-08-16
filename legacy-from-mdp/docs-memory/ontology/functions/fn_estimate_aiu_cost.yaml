@@ -1,0 +1,100 @@
+# FunctionDef: fn_estimate_aiu_cost — AIU 代价估算函数
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   类比数据库查询优化器的 Cost-Based Optimizer（CBO）中的代价估算模块。
+#   给定一个 AIUStep，估算它需要多少 token（上下文预算）以及
+#   应该由哪个规格的模型来执行，确保"刚好够用"而非"浪费"。
+#
+# 版本：v1.0 | 创建于：2026-04-18 | EP-129
+
+id: fn_estimate_aiu_cost
+label: "AIU 代价估算"
+type: function
+version: "1.0"
+source_ep: "EP-129"
+
+description: |
+  为 AIUStep 计算执行代价，决定：
+    - token_budget：分配多少上下文 token（精确到文件粒度）
+    - model_hint：推荐用哪个规格的模型执行（8b/16b/capable/fast）
+    - context_files_ranked：按复杂度排序的候选上下文文件列表
+
+  代价模型（4 个维度，类比 CBO 中的 Cardinality Estimation）：
+    1. AIU 基础代价（AIU_BASE_COST，按 AIU 类型固定值）
+    2. 文件复杂度代价（analyze_file：行数 + 函数数 + import 深度）
+    3. 层间传播代价（LAYER_PROPAGATION_COST，修改 L3 会传播至 L4/L5）
+    4. 历史成功率（feedback_stats.jsonl，历史失败多 → 提高预算）
+
+  token_budget 公式：
+    base = AIU_BASE_COST[aiu_type]
+    file_complexity = Σ(analyze_file(f) for f in target_files[:3])
+    propagation = LAYER_PROPAGATION_COST.get(layer, 0)
+    history_multiplier = 1 / max(0.1, historical_success_rate)
+    raw = (base + file_complexity + propagation) * history_multiplier
+    budget = clamp(raw, TOKEN_MIN=1500, TOKEN_MAX=16000)
+
+  model_hint 规则（MODEL_THRESHOLDS）：
+    budget > 8000   → "capable"（复杂跨层修改）
+    budget > 4000   → "fast"（中等复杂度）
+    otherwise       → "8b"（简单单文件修改）
+
+implementation:
+  - "scripts/mms/aiu_cost_estimator.py :: AIUCostEstimator"
+  - "scripts/mms/aiu_cost_estimator.py :: AIUCostEstimator.estimate_step()"
+  - "scripts/mms/aiu_cost_estimator.py :: AIUCostEstimator.estimate_plan()"
+
+inputs:
+  - name: aiu_step
+    type: AIUStep
+    required: true
+    description: "需要估算代价的 AIUStep（包含 aiu_type、layer、target_files）"
+
+  - name: workspace_root
+    type: string
+    required: false
+    description: "项目根目录（用于解析相对文件路径）"
+
+  - name: feedback_stats_path
+    type: string
+    required: false
+    description: "历史统计文件路径（默认 docs/memory/_system/feedback_stats.jsonl）"
+
+outputs:
+  - name: token_budget
+    type: integer
+    description: "计算得到的 token 预算（1500~16000）"
+
+  - name: model_hint
+    type: string
+    enum: ["8b", "16b", "capable", "fast"]
+    description: "推荐执行模型规格"
+
+  - name: context_files_ranked
+    type: list[string]
+    description: "按复杂度从高到低排序的候选上下文文件路径"
+
+  - name: cost_breakdown
+    type: object
+    description: "代价分解明细（用于调试和透明性）"
+    fields:
+      base_cost: "AIU 类型基础代价"
+      file_cost: "文件复杂度代价"
+      propagation_cost: "层间传播代价"
+      history_multiplier: "历史成功率乘数"
+
+anti_patterns:
+  - "不要忽略 feedback_stats.jsonl 历史数据（历史失败次数多的 AIU 类型应自动提高预算）"
+  - "不要对不存在的文件估算复杂度（应返回 _UNKNOWN_FILE_TOKEN 作为默认值）"
+  - "不要在 token_budget 超出 TOKEN_MAX 时报错，应静默 clamp 到上限"
+
+related_functions:
+  - fn_decompose_task
+  - fn_classify_intent
+
+related_data:
+  - path: "docs/memory/_system/feedback_stats.jsonl"
+    description: "AIU 历史执行统计数据（成功率、实际 token 消耗）"
+
+related_objects:
+  - AIUStep
+  - DagUnit

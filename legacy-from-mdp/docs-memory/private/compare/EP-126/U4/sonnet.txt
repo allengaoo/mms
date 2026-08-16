@@ -1,0 +1,21 @@
+# sonnet 输出 — EP-126 U4
+# 生成时间：2026-04-19T10:51:46.306878+00:00
+
+新建文件
+
+docs/memory/templates/ep-others.md — 通用兜底模板，包含：
+7 类适用场景说明（重构/安全/性能/测试/文档/MMS 自身优化）
+5 条关键约束（变更范围最小化、不引入新业务依赖等）
+完整的 ## Scope 表格范例（含架构层标注建议）
+完整的 ## Testing Plan 节范例
+修改文件
+
+scripts/mms/synthesizer.py — 在 _TEMPLATE_CODEMAP_SECTIONS 和 _TEMPLATE_E2E_KEYWORDS 中补充 ep-others 注册（全量检索，无限定关键词）
+
+scripts/mms/tests/test_synthesizer_structure.py — 新增 TestEpOthersTemplate 测试类（6 个测试），与 TestEpDevopsTemplate 结构对称，验证：
+
+ep-others 在 SUPPORTED_TEMPLATES 中注册
+ep-others.md 文件存在于磁盘
+模板包含 ## Scope 和 ## Testing Plan 节
+ep-others 在 _TEMPLATE_CODEMAP_SECTIONS 和 _TEMPLATE_E2E_KEYWORDS 中注册
+测试结果：22 passed / 0 failed / 0 error，EP-126 全部 4 个 Unit 均已完成。

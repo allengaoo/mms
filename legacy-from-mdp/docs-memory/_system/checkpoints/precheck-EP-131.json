@@ -1,0 +1,31 @@
+{
+  "ep_id": "EP-131",
+  "timestamp": "2026-04-23T09:06:35.417549+00:00",
+  "scope_files": [
+    "ep_runner.py",
+    "scripts/mms/ep_runner.py",
+    "unit_runner.py",
+    "scripts/mms/unit_runner.py",
+    "intent_classifier.py",
+    "scripts/mms/intent_classifier.py",
+    "cli.py",
+    "ep_wizard.py",
+    "scripts/mms/cli.py",
+    "scripts/mms/ep_wizard.py",
+    "benchmark/data/queries_v3.yaml",
+    "benchmark/config/metrics.yaml",
+    "benchmark/src/metrics/aiu_quality.py",
+    "test_ep_runner.py",
+    "test_intent_plan_summary.py",
+    "scripts/mms/tests/test_ep_runner.py",
+    "scripts/mms/tests/test_intent_plan_summary.py"
+  ],
+  "testing_files": [],
+  "arch_violations_baseline": [],
+  "arch_violations_count": 0,
+  "impact": {
+    "api_endpoints": [],
+    "pages": [],
+    "stores": []
+  }
+}

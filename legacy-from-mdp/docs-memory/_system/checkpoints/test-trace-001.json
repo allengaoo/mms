@@ -1,0 +1,12 @@
+{
+  "ep_id": "EP-TEST",
+  "processed_sections": [
+    "s1"
+  ],
+  "pending_sections": [
+    "s2"
+  ],
+  "trace_id": "test-trace-001",
+  "updated_at": "2026-04-12T14:19:52Z",
+  "started_at": "2026-04-12T14:19:52Z"
+}

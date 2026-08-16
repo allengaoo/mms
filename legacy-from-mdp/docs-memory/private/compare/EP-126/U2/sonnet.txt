@@ -1,0 +1,13 @@
+# sonnet 输出 — EP-126 U2
+# 生成时间：2026-04-19T10:30:17.962607+00:00
+
+    "ep-devops":         "运维 / 部署 / 本地调试环境 / K8s 配置",
+    "ep-others":         "跨层重构 / 安全加固 / 性能优化 / 测试补全 / 文档整理 / MMS 系统自身优化",
+}
+测试正确地检测出 ep-others.md 模板文件缺失——这是 U4 的工作，当前 U2 的核心变更（SUPPORTED_TEMPLATES 注册）已完成。U4 创建模板文件后测试将恢复全绿。
+
+U2 完成。变更摘要：
+
+在 scripts/mms/synthesizer.py 的 SUPPORTED_TEMPLATES 中新增 ep-others 条目：
+
+"ep-others": "跨层重构 / 安全加固 / 性能优化 / 测试补全 / 文档整理 / MMS 系统自身优化"

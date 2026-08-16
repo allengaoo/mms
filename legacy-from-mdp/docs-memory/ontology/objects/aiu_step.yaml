@@ -1,0 +1,219 @@
+# ObjectTypeDef: AIUStep — 原子意图单元步骤
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   AIUStep 是 MMS 代码生成的最小可执行单元，类比数据库查询优化器中的"算子"。
+#   每个 AIUStep 只做一件事（如：新增一个 API Endpoint，或新增一个数据库字段），
+#   可独立验证，上下文 ≤ 4000 tokens，8B 模型可直接执行。
+#
+# 核心设计哲学：
+#   AIUStep = "一种软件工程操作" × "一个目标位置"
+#   即：WHAT（做什么，AIUType）× WHERE（在哪里做，target_files）
+#
+# 版本：v1.0 | 创建于：2026-04-18 | EP-129
+
+id: AIUStep
+label: "原子意图单元步骤"
+type: object
+version: "1.0"
+source_ep: "EP-129"
+
+description: |
+  MMS 代码生成的最小可执行语义单元。
+  由 TaskDecomposer（task_decomposer.py）从 DagUnit 任务描述中提取，
+  由 UnitRunner 按 exec_order 顺序驱动 LLM 逐一执行。
+
+  6 大族 28 种 AIU 类型（见 aiu_types.py AIUType 枚举）：
+    族 A：结构定义类（Schema Operators）      — A1-A6（SCHEMA_*, CONTRACT_*）
+    族 B：逻辑流控制类（Control Flow）         — B1-B5（LOGIC_*）
+    族 C：数据读写类（Data Access）            — C1-C5（QUERY_*, MUTATION_*）
+    族 D：接口与路由类（Interface）             — D1-D5（ROUTE_*, FRONTEND_*）
+    族 E：事件与基础设施类（Infrastructure）    — E1-E4（EVENT_*, CACHE_*, CONFIG_*）
+    族 F：质量保障类（Validation）             — F1-F3（TEST_*, DOC_SYNC）
+
+  与 DagUnit 的关系：
+    DagUnit 是"文件级"执行单元（涉及 1~2 个文件）。
+    AIUStep 是 DagUnit 内部的"语义级"子步骤（一个操作类型）。
+    DagUnit.aiu_steps = List[AIUStep.to_dict()]
+
+  实现文件：scripts/mms/aiu_types.py :: AIUStep
+
+# ── AIU 类型枚举（fn_classify_intent 路由依据）────────────────────────────────
+
+aiu_types:
+  A_schema:
+    - SCHEMA_ADD_FIELD:         "SQLModel 新增字段 + migration"
+    - SCHEMA_MODIFY_FIELD:      "字段类型/索引变更"
+    - SCHEMA_ADD_RELATION:      "新增 ORM relationship"
+    - CONTRACT_ADD_REQUEST:     "新增 Pydantic Request Schema"
+    - CONTRACT_ADD_RESPONSE:    "新增 Pydantic Response Schema"
+    - CONTRACT_MODIFY_RESPONSE: "修改 Response Schema 字段"
+  B_control_flow:
+    - LOGIC_ADD_CONDITION:      "新增业务条件判断（if/elif）"
+    - LOGIC_ADD_BRANCH:         "新增策略分支（状态机迁移）"
+    - LOGIC_ADD_LOOP:           "新增批处理逻辑（for 循环）"
+    - LOGIC_EXTRACT_METHOD:     "抽取方法（重构）"
+    - LOGIC_ADD_GUARD:          "新增前置校验（raise DomainException）"
+  C_data_access:
+    - QUERY_ADD_SELECT:         "新增 Repository.find 查询方法"
+    - QUERY_ADD_FILTER:         "新增查询过滤条件"
+    - MUTATION_ADD_INSERT:      "新增 Repository.create 方法"
+    - MUTATION_ADD_UPDATE:      "新增 Repository.update 方法"
+    - MUTATION_ADD_DELETE:      "新增软删除逻辑"
+  D_interface:
+    - ROUTE_ADD_ENDPOINT:       "新增 FastAPI 路由"
+    - ROUTE_ADD_PERMISSION:     "新增 @require_permission 守卫"
+    - FRONTEND_ADD_PAGE:        "新增 React 页面组件"
+    - FRONTEND_ADD_STORE:       "新增 Zustand Store"
+    - FRONTEND_BIND_API:        "前端绑定后端 API（service.ts）"
+  E_infrastructure:
+    - EVENT_ADD_PRODUCER:       "新增 Kafka 事件发布"
+    - EVENT_ADD_CONSUMER:       "新增 Kafka Consumer"
+    - CACHE_ADD_READ:           "新增 @cached 读缓存"
+    - CONFIG_MODIFY:            "修改 SystemConfig / Feature Flag"
+  F_validation:
+    - TEST_ADD_UNIT:            "新增 pytest 单元测试"
+    - TEST_ADD_INTEGRATION:     "新增集成测试"
+    - DOC_SYNC:                 "更新 e2e_traceability / page_map"
+
+# ── 属性定义 ─────────────────────────────────────────────────────────────────
+
+properties:
+
+  aiu_id:
+    type: string
+    required: true
+    description: "唯一步骤 ID，格式 {unit_id}-{aiu_type_short}，如 U3-A1"
+    example: "U3-A1"
+
+  aiu_type:
+    type: string
+    required: true
+    description: "AIUType 枚举值，如 SCHEMA_ADD_FIELD"
+    example: "ROUTE_ADD_ENDPOINT"
+
+  description:
+    type: string
+    required: true
+    description: "一句话描述本 AIUStep 要做什么，具体到文件级别"
+    example: "在 backend/app/api/v1/endpoints/ontology.py 中新增 POST /export 路由"
+
+  layer:
+    type: string
+    required: true
+    description: "本步骤主要影响的架构层（从 AIU_LAYER_MAP 推导）"
+    example: "L5_interface"
+
+  target_files:
+    type: list[string]
+    required: true
+    description: "本步骤涉及的目标文件路径列表（1~2 个文件）"
+    example:
+      - "backend/app/api/v1/endpoints/ontology.py"
+
+  depends_on:
+    type: list[string]
+    required: false
+    default: []
+    description: "前置 AIUStep ID 列表（同 DagUnit 内的依赖）"
+    example: ["U3-A1"]
+
+  exec_order:
+    type: integer
+    required: true
+    description: "执行批次编号，从 AIU_EXEC_ORDER 推导。同 order 的步骤可并行"
+    example: 4
+
+  token_budget:
+    type: integer
+    required: false
+    description: "分配给本步骤的 token 预算（由 fn_estimate_aiu_cost 计算）"
+    example: 4000
+
+  model_hint:
+    type: string
+    required: false
+    default: "capable"
+    enum: ["8b", "16b", "capable", "fast"]
+    description: "推荐执行本步骤的模型规格（由 fn_estimate_aiu_cost 计算）"
+
+  status:
+    type: string
+    required: true
+    default: "pending"
+    enum: ["pending", "running", "done", "failed"]
+
+  retry_count:
+    type: integer
+    required: false
+    default: 0
+    description: "本步骤的重试次数（3-Strike 计数）"
+
+  feedback_level:
+    type: integer
+    required: false
+    default: 0
+    description: "AIU Feedback 级别：0=未触发, 1=扩预算, 2=插前置, 3=拆分"
+
+  error_pattern:
+    type: string
+    required: false
+    description: "失败时的 AIUErrorPattern 分类（如 IMPORT_ERROR、LOGIC_CONFLICT）"
+
+  actual_tokens:
+    type: integer
+    required: false
+    description: "实际消耗的 token 数（执行完成后回填，用于校准代价模型）"
+
+  completed_at:
+    type: datetime
+    required: false
+    description: "步骤完成时间（ISO 8601）"
+
+# ── AIU Feedback 三级回退机制 ─────────────────────────────────────────────────
+
+feedback_mechanism:
+  description: |
+    类比数据库查询优化器的 Query Feedback：
+    当实际执行代价超出预期（3-Strike 全部失败），触发回退机制。
+
+  levels:
+    - level: 1
+      trigger: "3次重试均失败 AND 无历史 feedback"
+      action: "扩大 token_budget（× AIU_FEEDBACK_BUDGET_MULTIPLIER），重试一次"
+      analogy: "数据库：发现 Cardinality 低估 → 重分配内存"
+
+    - level: 2
+      trigger: "Level 1 失败 OR error_pattern=MISSING_FIELD/IMPORT_ERROR"
+      action: "建议在当前 AIUStep 前插入前置 AIUStep（如先补充依赖定义）"
+      analogy: "数据库：发现缺少索引 → 插入 CREATE INDEX 算子"
+
+    - level: 3
+      trigger: "Level 2 失败 OR error_pattern=LOGIC_CONFLICT/RUNTIME_ERROR"
+      action: "建议将当前 AIUStep 拆分为 2~3 个更细粒度的 AIUStep"
+      analogy: "数据库：发现 Join 代价过高 → 改写为 HashJoin + 分区"
+
+# ── 约束规则 ─────────────────────────────────────────────────────────────────
+
+constraints:
+  - "target_files 不能为空"
+  - "feedback_level ≤ 3（超过视为 DagUnit 设计不合理，应人工拆分）"
+  - "status=done 时 actual_tokens 应被回填（用于校准代价模型）"
+  - "token_budget 必须在 [1500, 16000] 范围内（由 _TOKEN_MIN/_TOKEN_MAX 控制）"
+
+# ── 关联对象 ─────────────────────────────────────────────────────────────────
+
+related_objects:
+  - id: "DagUnit"
+    relation: "contained_by"
+    description: "AIUStep 是 DagUnit.aiu_steps 的子元素"
+  - id: "DiagnosticEvent"
+    relation: "generates"
+    description: "每个 AIUStep 执行时生成 DiagnosticEvent（op=aiu_step_exec）"
+
+related_functions:
+  - fn_decompose_task
+  - fn_estimate_aiu_cost
+
+related_data:
+  - path: "docs/memory/_system/feedback_stats.jsonl"
+    description: "AIU 执行历史统计数据（成功率、实际 token 消耗）"

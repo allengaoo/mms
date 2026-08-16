@@ -1,0 +1,19 @@
+{
+  "ep_id": "EP-126",
+  "current_step": 8,
+  "completed_steps": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "task_desc": "",
+  "template": "",
+  "ep_file": "docs/execution_plans/EP-126_MMS_Template_Coverage_Others.md",
+  "total_units": 5,
+  "completed_units": [],
+  "started_at": "2026-04-19T10:13:24.830966+00:00",
+  "updated_at": "2026-04-19T10:56:50.856901+00:00"
+}

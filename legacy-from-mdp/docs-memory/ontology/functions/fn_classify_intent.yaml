@@ -1,0 +1,90 @@
+# FunctionDef: fn_classify_intent — 意图分类函数
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   把用户的自然语言描述，映射到"这是前端问题还是后端问题、是新增还是修复"。
+#   优先用本地规则（快速、零成本），规则不够时才调用 LLM。
+#   EP-129 扩展：新增第 3 阶段，低置信度时触发 AIU 分解（fn_decompose_task）。
+#
+# 版本：v3.1 | 更新于：2026-04-18 | EP-116 → EP-129
+
+id: fn_classify_intent
+label: "意图分类"
+type: function
+version: "3.1"
+
+description: |
+  将自然语言任务描述映射为结构化意图 {layer, operation, confidence}。
+
+  三阶段实现（EP-129 新增第 3 阶段）：
+
+  阶段1（本地规则，< 10ms）：
+    - 加载 intent_map.yaml 中的规则列表
+    - 对每条规则计算关键词命中比例 × 优先级权重
+    - confidence ≥ 0.8 时直接返回，跳过 LLM 调用（节省 API 成本）
+
+  阶段2（LLM 兜底，1-3s）：
+    - 仅在本地置信度 < 0.8 时调用
+    - Prompt 中明确禁止 LLM 输出文件路径
+    - 只输出 {layer, operation} 两个字段
+    - 将 LLM 结果与本地提示合并
+
+  阶段3（AIU 分解触发，EP-129 新增）：
+    - 条件：最终 confidence < 0.6 OR 任务描述含并列连词 OR 长度 > 100 字符
+    - 调用 fn_decompose_task 将任务分解为 AIUStep 序列
+    - AIUStep 序列写入 DagUnit.aiu_steps，供 UnitRunner 按序执行
+    - 此阶段仅在 synthesize / unit_run 上下文中触发，不影响 precheck/postcheck
+
+implementation: "scripts/mms/intent_classifier.py :: IntentClassifier.classify()"
+
+schema_reference: "docs/memory/ontology/arch_schema/intent_map.yaml"
+
+inputs:
+  - name: task
+    type: string
+    description: "用户任务描述（自然语言）"
+
+  - name: use_llm_fallback
+    type: boolean
+    default: true
+    description: "是否允许 LLM 兜底（测试时可设为 false）"
+
+inputs:
+  - name: task
+    type: string
+    description: "用户任务描述（自然语言）"
+
+  - name: use_llm_fallback
+    type: boolean
+    default: true
+    description: "是否允许 LLM 兜底（测试时可设为 false）"
+
+  - name: enable_aiu_decompose
+    type: boolean
+    default: false
+    description: "是否允许触发 AIU 分解（阶段 3）。仅在 unit_run 上下文中置为 true"
+
+outputs:
+  - name: result
+    type: IntentResult
+    fields:
+      layer: "命中的架构层 ID（如 L5_frontend）"
+      operation: "操作类型（如 modify_config）"
+      confidence: "置信度 0.0-1.0"
+      entry_files_hint: "规则提示的入口文件（未经磁盘验证，仅作参考）"
+      skip_llm_round1: "若 True，synthesize 跳过第1轮 LLM 节省 Token"
+      aiu_plan: "若触发阶段 3，返回 AIUPlan（否则为 None）"
+
+anti_patterns:
+  - "禁止在此函数中返回文件路径（路径解析由 fn_resolve_paths 负责）"
+  - "禁止在此函数中读取磁盘文件（纯内存计算）"
+  - "禁止在 precheck/postcheck 上下文中触发 AIU 分解（enable_aiu_decompose 必须为 false）"
+
+performance:
+  local_match_latency: "< 10ms"
+  llm_fallback_latency: "1-3s（依赖网络）"
+  aiu_decompose_latency_rbo: "< 10ms（RBO 路径）"
+  aiu_decompose_latency_llm: "2-5s（LLM 兜底路径）"
+
+calls_functions:
+  # EP-129 新增
+  - fn_decompose_task: "当 enable_aiu_decompose=true 且 confidence < 0.6 时调用"

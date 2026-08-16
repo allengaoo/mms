@@ -1,0 +1,255 @@
+# MDP 操作类型定义 — MMS-OG v3.0
+#
+# 用途：
+#   定义用户可以对代码库执行的"操作类型（OperationType）"。
+#   与 layers.yaml 配合，实现"意图 = 操作类型 × 影响层"的精确定位。
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+version: "3.0"
+created_at: "2026-04-16"
+
+operations:
+
+  create:
+    label: "新增"
+    description: "从零创建新功能、新模块、新文件"
+    keywords:
+      - "新增"
+      - "创建"
+      - "添加"
+      - "实现"
+      - "开发"
+      - "构建"
+      - "add"
+      - "create"
+      - "implement"
+      - "build"
+      - "new"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+      - "docs/architecture/frontend_page_map.md"
+    test_required: true
+    doc_sync_required: true
+
+  modify_config:
+    label: "修改配置"
+    description: "修改已有配置文件、调整参数、精简或扩展已有功能的选项"
+    keywords:
+      - "修改"
+      - "调整"
+      - "精简"
+      - "只保留"
+      - "隐藏"
+      - "配置"
+      - "改"
+      - "更新"
+      - "modify"
+      - "update"
+      - "change"
+      - "configure"
+      - "simplify"
+      - "hide"
+    additional_files: []
+    test_required: true
+    doc_sync_required: false
+
+  modify_logic:
+    label: "修改业务逻辑"
+    description: "修改已有 Service、Worker、API Handler 中的业务逻辑"
+    keywords:
+      - "修改逻辑"
+      - "调整业务"
+      - "优化"
+      - "重构"
+      - "改进"
+      - "refactor"
+      - "optimize"
+      - "improve"
+      - "enhance"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+    test_required: true
+    doc_sync_required: true
+
+  debug:
+    label: "调试修复"
+    description: "诊断和修复 Bug、运行时错误、性能问题"
+    keywords:
+      - "修复"
+      - "报错"
+      - "失败"
+      - "异常"
+      - "错误"
+      - "崩溃"
+      - "不工作"
+      - "排查"
+      - "诊断"
+      - "bug"
+      - "fix"
+      - "error"
+      - "fail"
+      - "crash"
+      - "debug"
+      - "diagnose"
+      - "401"
+      - "403"
+      - "404"
+      - "500"
+      - "502"
+    additional_files: []
+    test_required: true
+    doc_sync_required: false
+
+  delete:
+    label: "删除/下线"
+    description: "移除功能、下线接口、软删除数据"
+    keywords:
+      - "删除"
+      - "移除"
+      - "下线"
+      - "废弃"
+      - "软删除"
+      - "remove"
+      - "delete"
+      - "deprecate"
+      - "disable"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+      - "docs/architecture/frontend_page_map.md"
+    test_required: false
+    doc_sync_required: true
+
+  deploy:
+    label: "部署运维"
+    description: "构建镜像、K8s 滚动更新、数据库迁移、配置变更"
+    keywords:
+      - "部署"
+      - "发布"
+      - "迁移"
+      - "镜像"
+      - "重启"
+      - "升级"
+      - "deploy"
+      - "release"
+      - "migrate"
+      - "image"
+      - "restart"
+      - "rollout"
+    additional_files: []
+    test_required: false
+    doc_sync_required: false
+
+  test:
+    label: "补充测试"
+    description: "单独为已有功能补充单元测试或集成测试"
+    keywords:
+      - "补测试"
+      - "写测试"
+      - "补充测试"
+      - "write test"
+      - "add test"
+      - "unit test"
+      - "integration test"
+    additional_files: []
+    test_required: true
+    doc_sync_required: false
+
+  review:
+    label: "评审/影响分析"
+    description: "评估一个变更的影响范围，不直接修改代码"
+    keywords:
+      - "影响分析"
+      - "评审"
+      - "分析影响"
+      - "review"
+      - "impact analysis"
+    additional_files:
+      - "docs/architecture/e2e_traceability.md"
+    test_required: false
+    doc_sync_required: false
+
+  # ── EP-128 新增：MMS 工具操作类型 ────────────────────────────────────────
+
+  view_trace:
+    label: "查看诊断追踪"
+    description: |
+      查看 EP 的诊断追踪数据：步骤耗时瀑布图、LLM 调用明细、token 消耗、
+      重试次数、文件变更统计等。对应 mms trace show / summary 命令。
+    keywords:
+      - "诊断"
+      - "诊断数据"
+      - "步骤耗时"
+      - "最慢"
+      - "token 消耗"
+      - "llm 调用"
+      - "瀑布图"
+      - "waterfall"
+      - "trace show"
+      - "trace summary"
+      - "查看报告"
+      - "追踪报告"
+      - "重试次数"
+      - "ep 健康"
+    additional_files:
+      - "scripts/mms/trace/reporter.py"
+      - "scripts/mms/trace/tracer.py"
+    test_required: false
+    doc_sync_required: false
+
+  mms_synthesize:
+    label: "MMS 意图合成"
+    description: |
+      使用 mms synthesize 将自然语言任务描述转换为结构化 EP 起手提示词。
+      触发三级检索漏斗：本地意图分类 → 路径解析 → 记忆注入 → LLM 生成。
+    keywords:
+      - "synthesize"
+      - "意图合成"
+      - "生成 ep"
+      - "起手提示"
+      - "mms synthesize"
+    additional_files:
+      - "scripts/mms/synthesizer.py"
+      - "scripts/mms/intent_classifier.py"
+    test_required: false
+    doc_sync_required: false
+
+  mms_dag:
+    label: "MMS DAG 编排"
+    description: |
+      使用 mms unit generate 将 EP 拆解为有向无环图（DAG）执行计划，
+      并通过 mms unit run / run-next 自动执行各 Unit。
+    keywords:
+      - "dag"
+      - "unit generate"
+      - "unit run"
+      - "执行计划"
+      - "dag 生成"
+      - "unit 执行"
+      - "mms unit"
+    additional_files:
+      - "scripts/mms/dag_model.py"
+      - "scripts/mms/unit_runner.py"
+      - "scripts/mms/unit_generate.py"
+    test_required: false
+    doc_sync_required: false
+
+  mms_distill:
+    label: "MMS 知识蒸馏"
+    description: |
+      使用 mms distill / mms dream 从 EP 完成后的 commit、Surprises 节
+      和 Decision Log 节中自动提取知识候选，生成记忆草稿或正式记忆。
+    keywords:
+      - "distill"
+      - "蒸馏"
+      - "dream"
+      - "知识草稿"
+      - "记忆草稿"
+      - "mms distill"
+      - "mms dream"
+      - "promote"
+      - "提升记忆"
+    additional_files:
+      - "scripts/mms/dream.py"
+    test_required: false
+    doc_sync_required: false

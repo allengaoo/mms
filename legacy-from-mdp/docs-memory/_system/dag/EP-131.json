@@ -1,0 +1,127 @@
+{
+  "ep_id": "EP-131",
+  "generated_at": "2026-04-23T09:08:24.038177+00:00",
+  "orchestrator_model": "gemini-2.5-pro",
+  "overall_status": "pending",
+  "units": [
+    {
+      "id": "U1",
+      "title": "新增 ：EpRunPipeline（Phase 0-4）+ EpRunState 断点续跑",
+      "layer": "unknown",
+      "files": [
+        "ep_runner.py",
+        "scripts/mms/ep_runner.py"
+      ],
+      "depends_on": [],
+      "order": 1,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U2",
+      "title": "新增 AIU 间输出传递（AiuOutputCarry）+",
+      "layer": "unknown",
+      "files": [
+        "unit_runner.py",
+        "scripts/mms/unit_runner.py"
+      ],
+      "depends_on": [],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U3",
+      "title": "新增磁盘路径验证修正 + IntentPlanSummary 计划摘要",
+      "layer": "unknown",
+      "files": [
+        "intent_classifier.py",
+        "scripts/mms/intent_classifier.py"
+      ],
+      "depends_on": [],
+      "order": 3,
+      "status": "pending",
+      "model_hint": "8b",
+      "atomicity_score": 1.0,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U4",
+      "title": "注册  命令； 去掉强制人工确认节点",
+      "layer": "unknown",
+      "files": [
+        "cli.py",
+        "ep_wizard.py",
+        "scripts/mms/cli.py",
+        "scripts/mms/ep_wizard.py"
+      ],
+      "depends_on": [],
+      "order": 4,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U5",
+      "title": "Benchmark v3：新增 I/J 类查询数据 + AIU 分解质量指标",
+      "layer": "unknown",
+      "files": [
+        "benchmark/data/queries_v3.yaml",
+        "benchmark/config/metrics.yaml",
+        "benchmark/src/metrics/aiu_quality.py"
+      ],
+      "depends_on": [],
+      "order": 5,
+      "status": "pending",
+      "model_hint": "capable",
+      "atomicity_score": 0.4,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    },
+    {
+      "id": "U6",
+      "title": "集成测试： +",
+      "layer": "unknown",
+      "files": [
+        "test_ep_runner.py",
+        "test_intent_plan_summary.py",
+        "scripts/mms/tests/test_ep_runner.py",
+        "scripts/mms/tests/test_intent_plan_summary.py"
+      ],
+      "depends_on": [],
+      "order": 6,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": [],
+      "aiu_steps": [],
+      "aiu_feedback_log": []
+    }
+  ]
+}

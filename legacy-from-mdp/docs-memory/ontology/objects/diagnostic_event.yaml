@@ -1,0 +1,311 @@
+# ObjectTypeDef: DiagnosticEvent — MMS 诊断追踪事件对象
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   每当 MMS 执行一个关键操作（调用 LLM、写入文件、提交 git），
+#   系统就生成一条 DiagnosticEvent 记录，追加到 trace.jsonl 中。
+#   类比数据库的 binlog 或 Oracle 的 trace 事件行。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: DiagnosticEvent
+label: "诊断追踪事件"
+type: object
+version: "3.0"
+source_ep: "EP-127"
+
+description: |
+  MMS 工作流的最小可观测单元。每个 DiagnosticEvent 描述一次
+  具体操作的完整执行记录：操作类型、耗时、结果、关联的 EP/Unit、
+  以及操作级别相关的扩展字段。
+
+  存储格式：JSONL（每行一个 JSON 对象），append-only。
+  实现文件：scripts/mms/trace/event.py :: TraceEvent
+
+primary_key: "trace_id + ts_start"
+unique_key: "ep_id + op + ts_start"
+
+# ── 属性定义 ─────────────────────────────────────────────────────────────────
+
+properties:
+
+  # ── 基础属性（Level 1+，所有事件必含）──────────────────────────────────────
+
+  op:
+    type: enum
+    required: true
+    description: "操作类型，决定扩展字段集合"
+    values:
+      # EP 生命周期
+      - ep_start          # EP 追踪开始
+      - ep_end            # EP 追踪结束
+
+      # 步骤事件
+      - step_start        # 向导步骤开始（precheck / dag_generate / unit_run 等）
+      - step_end          # 向导步骤结束（含耗时）
+
+      # LLM 调用（Level 4+）
+      - llm_call          # 正常 LLM API 调用
+      - llm_retry         # 3-Strike 重试
+
+      # 验证
+      - arch_check        # 架构约束扫描
+      - pytest_run        # pytest 执行
+      - validation        # 综合验证结果
+
+      # 文件操作（Level 8+）
+      - file_ops          # 批次文件变更摘要
+      - scope_guard       # Scope Guard 拒绝事件
+
+      # Git
+      - git_commit        # git 提交
+
+      # Sonnet 工作流
+      - sonnet_save       # Sonnet 输出保存
+      - compare           # 双模型对比（Qwen vs Sonnet）
+      - apply             # 版本应用
+
+      # 知识管理
+      - distill           # 知识蒸馏
+      - dream             # autoDream 草稿生成
+
+      # DAG
+      - dag_generate      # DAG 执行计划生成
+
+      # AIU 子步骤（EP-129 新增）
+      - aiu_decompose     # TaskDecomposer 分解任务为 AIUPlan
+      - aiu_step_exec     # 单个 AIUStep 执行（开始/结束）
+      - aiu_cost_estimate # fn_estimate_aiu_cost 估算 token 预算
+      - aiu_feedback      # AIU Feedback 回退分析触发（Level 1/2/3）
+
+  ep_id:
+    type: string
+    required: true
+    description: "关联的 EP 编号（大写，如 EP-128）"
+    example: "EP-128"
+
+  trace_id:
+    type: string
+    required: true
+    description: "本次 EP 追踪会话的唯一 ID"
+    example: "MMS-TRACE-20260418-A1B2C3D4"
+
+  ts_start:
+    type: datetime
+    required: true
+    description: "事件开始时间（ISO 8601 UTC）"
+
+  ts_end:
+    type: datetime
+    required: false
+    description: "事件结束时间（仅 step_end / llm_call 等有耗时的事件）"
+
+  elapsed_ms:
+    type: float
+    required: false
+    description: "操作耗时（毫秒）"
+
+  result:
+    type: enum
+    required: true
+    default: "ok"
+    values: ["ok", "error", "skip", "retry", "partial"]
+
+  error_msg:
+    type: string
+    required: false
+    description: "result=error 时的错误信息"
+
+  step:
+    type: string
+    required: false
+    description: "所属向导步骤名称（precheck / unit_run / postcheck 等）"
+
+  unit_id:
+    type: string
+    required: false
+    description: "关联的 DAG Unit ID（U1 / U2 等）"
+
+  phase:
+    type: string
+    required: false
+    description: "EP 工作流阶段（planning / execution / verification）"
+
+  # ── LLM 扩展属性（Level 4+，op=llm_call/llm_retry 时填充）────────────────
+
+  model:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "LLM 模型名称（如 qwen3-coder / gemini-2.5-pro）"
+
+  tokens_in:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "输入 Token 数（估算值，基于字符数 / 4）"
+
+  tokens_out:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "输出 Token 数（估算值）"
+
+  llm_attempt:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "当前是第几次尝试（3-Strike 计数，从 1 开始）"
+
+  llm_max_attempts:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "最大尝试次数上限"
+
+  llm_result:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "LLM 调用结果语义（success / parse_fail / arch_fail / test_fail）"
+
+  arch_ok:
+    type: boolean
+    required: false
+    visibility_level: 4
+    description: "架构约束检查是否通过"
+
+  test_ok:
+    type: boolean
+    required: false
+    visibility_level: 4
+    description: "测试是否通过"
+
+  test_summary:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "测试摘要（如 '12 passed, 1 failed'）"
+
+  # ── AIU 扩展属性（EP-129 新增，op=aiu_step_exec/aiu_feedback 时填充）─────────
+
+  aiu_id:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "关联的 AIUStep ID（如 U3-A1）"
+
+  aiu_type:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "AIUType 枚举值（如 ROUTE_ADD_ENDPOINT）"
+
+  aiu_token_budget:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "本 AIUStep 的 token 预算（由 fn_estimate_aiu_cost 计算）"
+
+  aiu_actual_tokens:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "本 AIUStep 实际消耗的 token 数（执行后回填）"
+
+  aiu_feedback_level:
+    type: integer
+    required: false
+    visibility_level: 4
+    description: "AIU Feedback 回退级别（0=未触发, 1~3=回退级别）"
+
+  aiu_error_pattern:
+    type: string
+    required: false
+    visibility_level: 4
+    description: "AIUErrorPattern 分类（如 IMPORT_ERROR / LOGIC_CONFLICT）"
+
+  # ── 文件操作扩展属性（Level 8+，op=file_ops 时填充）────────────────────────
+
+  files_changed:
+    type: list[string]
+    required: false
+    visibility_level: 8
+    description: "成功写入的文件路径列表"
+
+  files_rejected:
+    type: list[string]
+    required: false
+    visibility_level: 8
+    description: "被 Scope Guard 拒绝的文件路径列表"
+
+  lines_added:
+    type: integer
+    required: false
+    visibility_level: 8
+    description: "新增代码行数"
+
+  lines_removed:
+    type: integer
+    required: false
+    visibility_level: 8
+    description: "删除代码行数"
+
+  # ── Full 扩展属性（Level 12+，调试用）────────────────────────────────────
+
+  prompt_preview:
+    type: string
+    required: false
+    visibility_level: 12
+    description: "LLM 输入 prompt 的前 N 字符（N 由 config.yaml trace.preview_chars 控制）"
+
+  response_preview:
+    type: string
+    required: false
+    visibility_level: 12
+    description: "LLM 输出的前 N 字符"
+
+  # ── 开放扩展字段 ────────────────────────────────────────────────────────────
+
+  extra:
+    type: map[string, any]
+    required: false
+    description: |
+      事件级别的自定义扩展字段，类似本体中的 SharedProperty 扩展槽。
+      对应 Python dataclass 中的 extra: Dict[str, Any] 字段。
+    example:
+      commit_hash: "abc1234"
+      generated_units: 5
+
+# ── 可见性策略（类比 RBAC 属性级权限）────────────────────────────────────────
+
+visibility_levels:
+  description: |
+    visibility_level 字段控制该属性在哪个诊断级别下被写入 trace.jsonl。
+    Level 1 = 所有属性（无 visibility_level 标注）
+    Level 4 = visibility_level ≤ 4 的属性
+    Level 8 = visibility_level ≤ 8 的属性
+    Level 12 = 所有属性（含 prompt_preview / response_preview）
+
+# ── 存储规范 ─────────────────────────────────────────────────────────────────
+
+storage:
+  format: "JSONL (append-only)"
+  path_pattern: "docs/memory/private/trace/{EP_ID}/trace.jsonl"
+  max_events: "由 config.yaml trace.max_events_per_ep 控制（默认 5000）"
+  gc_policy: "EP 完成 + distill 后通过 mms trace clean 手动清理"
+
+# ── 关联对象 ─────────────────────────────────────────────────────────────────
+
+related_objects:
+  - id: "DagUnit"
+    relation: "belongs_to"
+    description: "通过 unit_id 关联到 DAG Unit"
+
+related_functions:
+  - fn_compute_ep_health
+  - fn_compute_atomicity
+
+related_actions:
+  - action_trace_enable
+  - action_trace_show
+  - action_trace_clean

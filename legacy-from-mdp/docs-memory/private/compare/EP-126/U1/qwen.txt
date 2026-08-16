@@ -1,0 +1,56 @@
+# qwen 输出 — EP-126 U1
+# 生成时间：2026-04-19T10:15:40.194149+00:00
+# 涉及文件：scripts/mms/task_matcher.py
+
+===BEGIN-CHANGES===
+FILE: scripts/mms/task_matcher.py
+ACTION: replace
+CONTENT:
+"""
+task_matcher.py — 任务相似度匹配器（MMS 三级检索漏斗 · 第一级）
+
+算法：无向量、无全文检索引擎
+  1. 从任务描述中提取标签集（中文词块 + 英文词 + 模板类型 + 记忆层标签）
+"""
+
+from __future__ import annotations
+import json
+import re
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+
+class TaskRecord:
+    """历史任务的持久化格式（task_history.jsonl 中的单行 JSON）。"""
+    def to_dict(self) -> Dict[str, Any]:
+        pass
+    def from_dict(d: Dict[str, Any]) -> "TaskRecord":
+        pass
+
+class MatchResult:
+    """相似任务命中结果。"""
+    pass
+
+class TaskMatcher:
+    """
+    def __init__(
+    def extract_tags(self, task: str, template: Optional[str] = None) -> List[str]:
+        """
+    def find_similar(
+    def append_record(self, record: TaskRecord) -> None:
+        """
+    def build_record(
+    def _load_records(self) -> List[TaskRecord]:
+        """从 task_history.jsonl 加载所有记录，跳过损坏的行。"""
+    def _time_weight(self, ts_str: str, now: datetime) -> float:
+        """根据历史记录时间戳计算衰减权重。"""
+    def _jaccard(self, a: set, b: set) -> float:
+        """计算两个标签集的 Jaccard 相似度。"""
+    def _best_match(
+    def register_template_tag(self, tag_name: str) -> None:
+        """注册新模板标签到匹配系统中。"""
+        # 示例实现：将标签添加到内部映射或缓存中
+        print(f"Registered new template tag: {tag_name}")
+===END-FILE===
+===END-CHANGES===

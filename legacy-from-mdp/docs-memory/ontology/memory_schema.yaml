@@ -1,0 +1,291 @@
+# MemoryNode 字段定义 — MMS-OG v3.0
+#
+# 用途：
+#   定义记忆文件（docs/memory/shared/**/*.md）的 YAML front-matter 字段规范。
+#   v3.0 在 v2.x 基础上新增三个图关系字段：related_to / cites_files / impacts。
+#
+# 向后兼容规则：
+#   - 所有 v3 新增字段均为可选（optional: true）
+#   - 未升级的旧记忆文件不包含这些字段，系统仍可正常读取
+#   - 运行 `mms validate` 会提示哪些 hot tier 记忆尚未包含 v3 字段
+#
+# 版本：v3.0 | 创建于：2026-04-16 | EP-116
+
+version: "3.0"
+created_at: "2026-04-16"
+source_ep: "EP-116"
+
+# ─────────────────────────────────────────────────────────
+# 字段定义（按重要性排序）
+# ─────────────────────────────────────────────────────────
+
+fields:
+
+  # ── 必填字段（v2 继承）─────────────────────────────────
+
+  id:
+    type: string
+    required: true
+    pattern: "^(MEM-L-|AD-|BIZ-|ENV-|MEM-DB-)[0-9A-Z-]+"
+    description: "记忆唯一 ID，格式：MEM-L-XXX / AD-XXX / BIZ-XXX / ENV-XXX / MEM-DB-XXX"
+    example: "MEM-L-021"
+
+  layer:
+    type: string
+    required: true
+    enum:
+      - "L1_platform"
+      - "L2_infrastructure"
+      - "L3_domain"
+      - "L4_application"
+      - "L5_interface"
+      - "CC"
+      - "BIZ"
+    description: "记忆所属架构层"
+
+  module:
+    type: string
+    required: true
+    description: "层内模块（如 api、ontology、messaging、frontend）"
+
+  type:
+    type: string
+    required: true
+    enum: ["lesson", "pattern", "anti-pattern", "decision", "business-flow"]
+    description: "记忆类型"
+
+  tier:
+    type: string
+    required: true
+    enum: ["hot", "warm", "cold", "archive"]
+    description: "记忆热度分级，影响检索优先级和 GC 策略"
+
+  tags:
+    type: list[string]
+    required: true
+    description: "关键词标签，用于 injector.py 关键词检索"
+
+  source_ep:
+    type: string
+    required: true
+    description: "产生本记忆的 EP 编号"
+
+  created_at:
+    type: date
+    required: true
+    format: "YYYY-MM-DD"
+
+  version:
+    type: integer
+    required: true
+    default: 1
+    description: "记忆版本号，内容重大更新时递增"
+
+  # ── 可选字段（v2 继承）─────────────────────────────────
+
+  last_accessed:
+    type: date
+    required: false
+    description: "最后一次被检索引用的日期（GC 依赖此字段）"
+
+  access_count:
+    type: integer
+    required: false
+    default: 0
+    description: "被引用次数（GC LFU 算法依赖此字段）"
+
+  also_in:
+    type: list[string]
+    required: false
+    description: "本记忆同时适用的其他层（软链接）"
+
+  generalized:
+    type: boolean
+    required: false
+    default: false
+    description: "是否已泛化（可跨项目复用）"
+
+  # ── v3 新增图关系字段 ─────────────────────────────────
+
+  related_to:
+    type: list[object]
+    required: false
+    optional: true
+    v3_new: true
+    description: |
+      与本记忆强相关的其他记忆 ID 列表。
+      graph_resolver.py 在检索时会自动沿此字段进行广度优先遍历。
+    item_schema:
+      id:
+        type: string
+        description: "关联记忆的 ID（如 AD-002、MEM-L-003）"
+      reason:
+        type: string
+        description: "关联原因（一句话说明为什么两者相关）"
+    example:
+      - id: "AD-002"
+        reason: "API 必须含 tenant_id 过滤，直接依赖 RLS 基线"
+      - id: "MEM-L-003"
+        reason: "事务异常时 API 信封格式的错误响应结构"
+
+  cites_files:
+    type: list[string]
+    required: false
+    optional: true
+    v3_new: true
+    description: |
+      本记忆直接引用的代码文件路径列表（来自 codemap 快照，必须真实存在）。
+      arch_resolver.py 用此字段做反向查找：给定文件 → 找到引用它的所有记忆。
+    example:
+      - "backend/app/core/response.py"
+      - "backend/app/api/v1/endpoints/ontology.py"
+
+  impacts:
+    type: list[string]
+    required: false
+    optional: true
+    v3_new: true
+    description: |
+      若本记忆内容发生变化，需要同步检查的其他记忆 ID 列表。
+      用于影响传播分析：当 A 改变时，系统提示 "impacts 列表中的记忆可能已过时"。
+    example:
+      - "MEM-L-024"
+      - "BIZ-001"
+
+  # ── EP-130 新增：AST 物理绑定字段 ──────────────────────────────────────────
+
+  ast_pointer:
+    type: object
+    required: false
+    optional: true
+    v3_new: true
+    source_ep: "EP-130"
+    description: |
+      将本体对象/动作绑定到 AST 骨架中的具体代码位置。
+      由 mms bootstrap 阶段自动填充，ast_diff 检测漂移时自动更新 fingerprint。
+
+      ObjectTypeDef → ast_pointer.class_name（对应 ast_index.json 中的 Class 节点）
+      ActionDef     → ast_pointer.function_name（对应 Service 方法签名）
+      FunctionDef   → ast_pointer.function_name（对应实现函数签名）
+
+      当 fingerprint 与 ast_index.json 中实际值不符时，
+      ontology_syncer 标记 drift=true 并输出告警。
+    fields:
+      file_path:
+        type: string
+        description: "实现文件路径（相对于项目根，在 ast_index.json 中的 key）"
+        example: "backend/app/services/control/ontology_service.py"
+      class_name:
+        type: string
+        description: "对应的 Class 名称（ObjectTypeDef 使用）"
+        example: "OntologyService"
+      function_name:
+        type: string
+        description: "对应的函数/方法名称（ActionDef/FunctionDef 使用）"
+        example: "create_object_type"
+      fingerprint:
+        type: string
+        description: "绑定时的 AST 指纹（sha256:前16字符），用于漂移检测"
+        example: "sha256:abc123ef45678901"
+      bound_at:
+        type: datetime
+        description: "绑定时间 ISO 8601"
+        example: "2026-04-18T10:00:00Z"
+      drift:
+        type: boolean
+        description: "是否检测到语义漂移（fingerprint 与当前 AST 不符）"
+        default: false
+
+# ─────────────────────────────────────────────────────────
+# FeedbackRecord 结构定义（EP-129 新增）
+# ─────────────────────────────────────────────────────────
+# 非技术说明：
+#   FeedbackRecord 是 MMS 的"学习日志"，类比数据库查询优化器的统计信息。
+#   每次 AIUStep 执行完成（无论成功或失败），都会追加一条记录到
+#   docs/memory/_system/feedback_stats.jsonl 中，供未来代价估算参考。
+
+feedback_record_schema:
+  version: "1.0"
+  source_ep: "EP-129"
+  storage_path: "docs/memory/_system/feedback_stats.jsonl"
+  storage_format: "JSONL（append-only）"
+  implementation: "scripts/mms/aiu_feedback.py :: AIUFeedbackStore"
+
+  fields:
+    aiu_type:
+      type: string
+      required: true
+      description: "AIUType 枚举值（如 ROUTE_ADD_ENDPOINT）"
+
+    success:
+      type: boolean
+      required: true
+      description: "本次执行是否成功"
+
+    actual_tokens:
+      type: integer
+      required: true
+      description: "实际消耗的 token 数"
+
+    latency_ms:
+      type: float
+      required: true
+      description: "执行耗时（毫秒）"
+
+    feedback_level:
+      type: integer
+      required: true
+      default: 0
+      description: "AIU Feedback 回退级别（0=未触发, 1~3）"
+
+    error_pattern:
+      type: string
+      required: false
+      description: "失败时的 AIUErrorPattern 分类"
+
+    ep_id:
+      type: string
+      required: false
+      description: "关联的 EP 编号（用于分 EP 分析）"
+
+    unit_id:
+      type: string
+      required: false
+      description: "关联的 DagUnit ID"
+
+    aiu_id:
+      type: string
+      required: false
+      description: "关联的 AIUStep ID"
+
+    timestamp:
+      type: datetime
+      required: true
+      description: "记录时间（ISO 8601 UTC）"
+
+  aggregation_functions:
+    success_rate: "成功次数 / 总次数"
+    avg_tokens: "actual_tokens 均值"
+    p95_latency: "latency_ms 第 95 百分位"
+    suggested_budget: "avg_tokens × (1 / success_rate) × clamp_to [TOKEN_MIN, TOKEN_MAX]"
+    suggested_model: "按 suggested_budget 查 MODEL_THRESHOLDS 映射表"
+
+# ─────────────────────────────────────────────────────────
+# 验证规则
+# ─────────────────────────────────────────────────────────
+
+validation:
+  hot_tier_must_have_v3:
+    description: "tier=hot 的记忆文件必须包含 v3 图关系字段（至少 related_to 或 cites_files）"
+    check: "tier == 'hot' → (related_to is not None or cites_files is not None)"
+    severity: "warning"   # 不阻断，但 mms validate 会提示
+
+  cites_files_must_exist:
+    description: "cites_files 中的路径必须在 codemap.md 中存在"
+    check: "all(f in codemap for f in cites_files)"
+    severity: "error"     # 阻断：引用不存在的文件路径无意义
+
+  related_to_must_exist:
+    description: "related_to.id 必须对应存在的记忆文件"
+    check: "all(id in memory_index for id in related_to)"
+    severity: "warning"   # 不阻断：记忆可能还未创建

@@ -1,0 +1,228 @@
+# qwen 输出 — EP-126 U3
+# 生成时间：2026-04-19T10:32:04.127399+00:00
+# 涉及文件：scripts/mms/cli.py
+
+===BEGIN-CHANGES===
+FILE: scripts/mms/cli.py
+ACTION: replace
+CONTENT:
+"""
+
+import argparse
+import os
+from typing import Any, Dict, List
+
+def c(text: str, color: str) -> str:
+    # Implementation omitted for brevity
+    return text
+
+def header(title: str) -> None:
+    # Implementation omitted for brevity
+    print(title)
+
+def ok(msg: str) -> None:
+    # Implementation omitted for brevity
+    print(msg)
+
+def warn(msg: str) -> None:
+    # Implementation omitted for brevity
+    print(msg)
+
+def err(msg: str) -> None:
+    # Implementation omitted for brevity
+    print(msg)
+
+def info(msg: str) -> None:
+    # Implementation omitted for brevity
+    print(msg)
+
+def cmd_help(args: argparse.Namespace) -> int:
+    """help 子命令：彩色命令参考"""
+    return 0
+
+def _print_command_help(cmd_name: str) -> None:
+    """打印单个命令的详细帮助"""
+    pass
+
+def _print_full_help() -> None:
+    """打印完整彩色命令参考"""
+    pass
+
+def cmd_status(args: argparse.Namespace) -> int:
+    return 0
+
+def _print_memory_stats() -> None:
+    """打印记忆库 tier 分布统计"""
+    pass
+
+def cmd_distill(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_gc(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_search(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_list(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_hook(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_incomplete(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_private(args: argparse.Namespace) -> int:
+    return 0
+
+def cmd_reset_circuit(args: argparse.Namespace) -> int:
+    return 0
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description='MMS Command Line Interface')
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # Add new template command
+    template_parser = subparsers.add_parser('template', help='Code template library')
+    template_subparsers = template_parser.add_subparsers(dest='action', help='Template actions')
+
+    create_parser = template_subparsers.add_parser('create', help='Create a new code template')
+    create_parser.add_argument('--name', required=True, help='Name of the template')
+    create_parser.add_argument('--type', required=True, choices=['api', 'service', 'model'], help='Type of template (api/service/model)')
+    create_parser.add_argument('--output', default='./templates/', help='Output directory for the template')
+
+    list_parser = template_subparsers.add_parser('list', help='List available templates')
+    
+    return parser
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """verify 子命令：调用 verify.py 主逻辑"""
+    return 0
+
+def cmd_codemap(args: argparse.Namespace) -> int:
+    """codemap 子命令：生成代码目录快照"""
+    return 0
+
+def cmd_funcmap(args: argparse.Namespace) -> int:
+    """funcmap 子命令：生成函数签名索引"""
+    return 0
+
+def cmd_usage(args: argparse.Namespace) -> int:
+    """usage 子命令：展示模型调用统计报告"""
+    return 0
+
+def cmd_synthesize(args: argparse.Namespace) -> int:
+    """synthesize 子命令：LLM 意图合成，生成结构化 Cursor 起手提示词"""
+    return 0
+
+def cmd_precheck(args: argparse.Namespace) -> int:
+    """precheck 子命令：代码修改前检查门控"""
+    return 0
+
+def cmd_postcheck(args: argparse.Namespace) -> int:
+    """postcheck 子命令：代码修改后测试与后校验"""
+    return 0
+
+def cmd_actions(args: argparse.Namespace) -> int:
+    """actions 子命令：列出或查看 MMS 系统的 ActionDef / FunctionDef 定义"""
+    return 0
+
+def cmd_graph(args: argparse.Namespace) -> int:
+    """graph 子命令：记忆知识图谱查询（探索/反查/影响分析）"""
+    return 0
+
+def cmd_unit(args: argparse.Namespace) -> int:
+    """unit 子命令：DAG 任务编排（EP-117）"""
+    return 0
+
+def _load_inject_manifest() -> dict:
+    """加载 INJECT_MANIFEST.json 配置"""
+    return {}
+
+def _cmd_inject_dispatch(args: argparse.Namespace) -> int:
+    """inject 命令分发，支持 --mode 分层注入"""
+    return 0
+
+def cmd_ep(args: argparse.Namespace) -> int:
+    """ep 子命令：交互式 EP 工作流向导"""
+    return 0
+
+def cmd_dream(args: argparse.Namespace) -> int:
+    """dream 子命令：autoDream 知识萃取"""
+    return 0
+
+def cmd_template(args: argparse.Namespace) -> int:
+    """template 子命令：代码模板库"""
+    if args.action == 'create':
+        template_path = os.path.join(args.output, f"{args.name}.py")
+        with open(template_path, 'w') as f:
+            if args.type == 'api':
+                f.write(f"# {args.name} API Template\n\n"
+                        "from fastapi import APIRouter, Depends, Query\n"
+                        "from pydantic import BaseModel\n"
+                        "\n"
+                        "router = APIRouter()\n"
+                        "\n"
+                        "class {args.name}Response(BaseModel):\n"
+                        "    id: int\n"
+                        "    name: str\n"
+                        "\n"
+                        "@router.get(\"/{args.name.lower()}s\", response_model=List[{args.name}Response])\n"
+                        "async def list_{args.name.lower()}():\n"
+                        "    # Business logic should be in service layer\n"
+                        "    return []\n"
+                        "\n"
+                        "if __name__ == \"__main__\":\n"
+                        "    import uvicorn\n"
+                        "    uvicorn.run(router, host=\"0.0.0.0\", port=8000)")
+            elif args.type == 'service':
+                f.write(f"# {args.name} Service Template\n\n"
+                        "from abc import ABC, abstractmethod\n"
+                        "from typing import List\n"
+                        "\n"
+                        "class {args.name}Service(ABC):\n"
+                        "    @abstractmethod\n"
+                        "    async def get_all(self) -> List[Dict[str, Any]]:\n"
+                        "        pass\n"
+                        "\n"
+                        "class {args.name}ServiceImpl({args.name}Service):\n"
+                        "    async def get_all(self) -> List[Dict[str, Any]]:\n"
+                        "        # Implementation goes here\n"
+                        "        return []")
+            elif args.type == 'model':
+                f.write(f"# {args.name} Model Template\n\n"
+                        "from pydantic import BaseModel\n"
+                        "\n"
+                        "class {args.name}Model(BaseModel):\n"
+                        "    id: int\n"
+                        "    name: str\n"
+                        "    description: str")
+
+        ok(f"Created template '{args.name}' of type '{args.type}' at '{template_path}'")
+    elif args.action == 'list':
+        try:
+            templates_dir = './templates'
+            files = [f for f in os.listdir(templates_dir) if os.path.isfile(os.path.join(templates_dir, f))]
+            if not files:
+                info("No templates found.")
+            else:
+                info("Available templates:")
+                for file in files:
+                    print(f"- {file}")
+        except FileNotFoundError:
+            info("Templates directory not found.")
+    return 0
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    if not hasattr(args, 'command'):
+        parser.print_help()
+        return 1
+    return cmd_template(args)
+===END-FILE===
+===END-CHANGES===

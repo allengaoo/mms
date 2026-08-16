@@ -1,0 +1,74 @@
+# ActionDef: trace_enable — 开启 EP 诊断追踪
+# ──────────────────────────────────────────────────────────────
+# 非技术说明：
+#   为某个 EP 开启诊断记录器，类似 Oracle DBA 在执行复杂查询前开启 10046 Trace。
+#   开启后，MMS 工作流中的每个关键步骤（LLM 调用、文件写入、git 提交）
+#   都会被自动记录到 trace.jsonl，供后续分析。
+#
+# 版本：v3.0 | 创建于：2026-04-18 | EP-128
+
+id: action_trace_enable
+label: "开启诊断追踪"
+type: action
+version: "3.0"
+
+description: |
+  为指定 EP 开启诊断追踪，建立 trace_config.json 配置文件，
+  并写入首个 ep_start 事件到 trace.jsonl。
+  开启后，ep_wizard / unit_runner / unit_compare / unit_generate
+  中的 LLM 调用和关键步骤将自动记录到追踪文件。
+
+  Level 说明（类比 Oracle 10046 Level）：
+    Level 1  Basic    — 只记录步骤耗时和成功/失败
+    Level 4  LLM      — +LLM 调用详情（模型/token/重试/结果）【推荐】
+    Level 8  FileOps  — +文件变更详情（路径/行数/Scope Guard 结果）
+    Level 12 Full     — +LLM 完整 prompt/response 片段（前 200 字符）
+
+inputs:
+  - name: ep_id
+    type: string
+    required: true
+    example: "EP-128"
+
+  - name: level
+    type: integer
+    required: false
+    default: 4
+    enum: [1, 4, 8, 12]
+    description: "诊断级别，默认 4（覆盖 LLM 调用详情）"
+
+outputs:
+  - name: trace_id
+    type: string
+    description: "本次追踪的唯一 ID（格式：MMS-TRACE-YYYYMMDD-XXXXXXXX）"
+
+  - name: storage_path
+    type: string
+    description: "trace.jsonl 存储路径（相对于项目根）"
+
+side_effects:
+  - "在 docs/memory/private/trace/<EP-NNN>/ 创建 trace_config.json 和 trace.jsonl"
+  - "写入 ep_start 事件"
+
+cli_usage: |
+  # 用默认 Level 4 开启
+  python3 scripts/mms/cli.py trace enable EP-128
+
+  # 开启全量追踪（含 LLM IO 内容）
+  python3 scripts/mms/cli.py trace enable EP-128 --level 12
+
+  # 只记录步骤耗时（最小开销）
+  python3 scripts/mms/cli.py trace enable EP-128 --level 1
+
+calls_functions: []
+
+related_actions:
+  - action_trace_show
+  - action_trace_clean
+  - action_precheck
+  - action_postcheck
+
+impacts:
+  - "unit_runner.py 中的 LLM 调用追踪（Level ≥ 4 时生效）"
+  - "ep_wizard.py 中的步骤计时（Level ≥ 1 时生效）"
+  - "unit_compare.py 中的 Gemini 评审追踪（Level ≥ 4 时生效）"

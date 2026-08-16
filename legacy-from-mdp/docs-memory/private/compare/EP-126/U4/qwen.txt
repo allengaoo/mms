@@ -1,0 +1,71 @@
+# qwen 输出 — EP-126 U4
+# 生成时间：2026-04-19T10:44:28.532095+00:00
+# 涉及文件：scripts/mms/tests/test_synthesizer_structure.py
+
+===BEGIN-CHANGES===
+FILE: scripts/mms/tests/test_synthesizer_structure.py
+ACTION: replace
+CONTENT:
+"""
+test_synthesizer_structure.py — 验证 synthesizer.py 输出的结构完整性
+
+核心防漏场景：
+  - mms synthesize 生成的起手提示词必须包含 ## Scope 节（含表格格式说明）
+
+from __future__ import annotations
+import sys
+import textwrap
+import tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+import pytest
+
+
+class TestSynthesizerPromptStructure:
+    """验证 _SYNTHESIS_USER prompt 包含对 Scope/Testing Plan 节的要求"""
+    def test_synthesis_user_contains_scope_requirement(self):
+        """_SYNTHESIS_USER 必须明确要求 EP 文件包含 ## Scope 节"""
+    def test_synthesis_user_contains_testing_plan_requirement(self):
+        """_SYNTHESIS_USER 必须明确要求 EP 文件包含 ## Testing Plan 节"""
+    def test_synthesis_user_contains_scope_table_format(self):
+        """_SYNTHESIS_USER 应包含 Scope 表格格式示例（| Unit | 操作描述 | 涉及文件 |）"""
+    def test_synthesis_user_contains_precheck_warning(self):
+        """_SYNTHESIS_USER 应提示 Scope/Testing Plan 是 precheck 必要结构"""
+
+
+class TestEpDevopsTemplate:
+    """验证 ep-devops 模板已注册且文件存在"""
+    def test_ep_devops_in_supported_templates(self):
+        """ep-devops 必须在 SUPPORTED_TEMPLATES 中注册"""
+    def test_ep_devops_template_file_exists(self):
+        """ep-devops.md 模板文件必须存在于磁盘"""
+    def test_ep_devops_template_contains_scope_section(self):
+        """ep-devops.md 必须包含 ## Scope 节（范例）"""
+    def test_ep_devops_template_contains_testing_plan_section(self):
+        """ep-devops.md 必须包含 ## Testing Plan 节（范例）"""
+    def test_ep_devops_in_codemap_sections(self):
+        """ep-devops 必须在 _TEMPLATE_CODEMAP_SECTIONS 中注册"""
+    def test_ep_devops_in_e2e_keywords(self):
+        """ep-devops 必须在 _TEMPLATE_E2E_KEYWORDS 中注册"""
+
+
+class TestAllTemplatesConsistency:
+    """验证所有已注册模板的 .md 文件存在且包含必要节"""
+    def test_all_registered_templates_have_files(self):
+        """所有 SUPPORTED_TEMPLATES 中的模板必须有对应的 .md 文件"""
+    def test_all_templates_contain_scope_section(self):
+        """所有 EP 模板都应包含 ## Scope 节（引导 LLM 生成标准格式）"""
+    def test_all_templates_contain_testing_plan_section(self):
+        """所有 EP 模板都应包含 ## Testing Plan 节（引导 LLM 生成标准格式）"""
+
+
+class TestEpParserScopeAndTestingPlan:
+    """验证 ep_parser 能正确解析含 Scope + Testing Plan 节的 EP 文件"""
+    def test_parses_scope_units_from_devops_ep(self, tmp_path):
+        """ep_parser 应能从运维类 EP 的 Scope 表格中解析出 Unit 列表"""
+    def test_parses_testing_plan_section_exists(self, tmp_path):
+        """ep_parser 解析后 testing_files 即使为空，Testing Plan 节也应被识别"""
+    def test_standard_ep_with_both_sections_parses_correctly(self, tmp_path):
+        """含完整 Scope 表格和 Testing Plan 文件列表的 EP 应被正确解析"""
+===END-FILE===
+===END-CHANGES===

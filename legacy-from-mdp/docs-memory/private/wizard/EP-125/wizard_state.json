@@ -1,0 +1,17 @@
+{
+  "ep_id": "EP-125",
+  "current_step": 5,
+  "completed_steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "task_desc": "现在的mms 系统章节的内容进行了分类，请首先检查目前的分类是否完备,另外，现在的章节分类缺少了一个others类型，一遍当用户无法确认使用哪一种章节类型时可以使用这个章节，你需要结合当前的mms 系统实现给还需要增加哪些章节类型，以及others章节类型要如何实现。",
+  "template": "ep-backend-api",
+  "ep_file": "docs/execution_plans/EP-125_MMS_Config_Unification.md",
+  "total_units": 0,
+  "completed_units": [],
+  "started_at": "2026-04-19T09:59:19.905420+00:00",
+  "updated_at": "2026-04-19T10:13:20.185719+00:00"
+}

@@ -1,0 +1,102 @@
+{
+  "ep_id": "EP-124",
+  "generated_at": "2026-04-18T18:32:14.638137+00:00",
+  "orchestrator_model": "gemini-2.5-pro",
+  "overall_status": "pending",
+  "units": [
+    {
+      "id": "U1",
+      "title": "MySQL 端口转发：（全程保持）",
+      "layer": "unknown",
+      "files": [
+        "kubectl port-forward svc/mysql -n mdp 3307:3306"
+      ],
+      "depends_on": [],
+      "order": 1,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U2",
+      "title": "创建本地调试环境配置文件，DATABASE_URL 指向 3307 端口",
+      "layer": "unknown",
+      "files": [
+        "backend/.env.local"
+      ],
+      "depends_on": [],
+      "order": 2,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U3",
+      "title": "验证并调整 docker-compose 配置，确认本地调试路径与 K8s 路径互不干扰",
+      "layer": "unknown",
+      "files": [
+        "deploy/docker-compose.app.yml"
+      ],
+      "depends_on": [],
+      "order": 3,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U4",
+      "title": "本地后端热重载启动（uvicorn --reload），验证认证流程可用",
+      "layer": "unknown",
+      "files": [],
+      "depends_on": [],
+      "order": 4,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U5",
+      "title": "本地前端 HMR 启动（Vite dev），确认 proxy 正确路由到本地后端",
+      "layer": "unknown",
+      "files": [
+        "frontend/vite.config.ts"
+      ],
+      "depends_on": [],
+      "order": 5,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    },
+    {
+      "id": "U6",
+      "title": "编写可复用的调试启动脚本",
+      "layer": "unknown",
+      "files": [
+        "scripts/dev-local.sh"
+      ],
+      "depends_on": [],
+      "order": 6,
+      "status": "pending",
+      "model_hint": "16b",
+      "atomicity_score": 0.7,
+      "git_commit": null,
+      "completed_at": null,
+      "test_files": []
+    }
+  ]
+}

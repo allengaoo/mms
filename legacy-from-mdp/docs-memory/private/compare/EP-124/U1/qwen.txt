@@ -1,0 +1,19 @@
+# qwen 输出 — EP-124 U1
+# 生成时间：2026-04-18T18:34:06.488158+00:00
+# 涉及文件：kubectl port-forward svc/mysql -n mdp 3307:3306
+
+===BEGIN-CHANGES===
+FILE: kubectl port-forward svc/mysql -n mdp 3307:3306
+ACTION: create
+CONTENT:
+# This file is a shell script to forward MySQL service port for local development and testing.
+
+#!/bin/bash
+
+echo "Forwarding MySQL service port (3306) from namespace 'mdp' to localhost:3307..."
+
+kubectl port-forward svc/mysql -n mdp 3307:3306
+
+echo "Port forwarding established. You can now connect to MySQL at localhost:3307."
+===END-FILE===
+===END-CHANGES===

@@ -1,0 +1,18 @@
+{
+  "ep_id": "EP-114",
+  "timestamp": "2026-04-15T03:34:51.964927+00:00",
+  "tests": {
+    "status": "SKIPPED",
+    "summary": "用户跳过"
+  },
+  "arch_check": {
+    "status": "PASS",
+    "new_violations": 0,
+    "details": []
+  },
+  "doc_drift": {
+    "status": "WARN",
+    "summary": "\u001b[33m\u001b[1m⚠ 发现 19 处文档漂移，建议手动同步 docs/architecture/ 后重新运行\u001b[0m"
+  },
+  "overall": "WARN"
+}

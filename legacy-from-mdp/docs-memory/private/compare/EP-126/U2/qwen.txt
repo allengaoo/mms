@@ -1,0 +1,61 @@
+# qwen 输出 — EP-126 U2
+# 生成时间：2026-04-19T10:21:59.570166+00:00
+# 涉及文件：scripts/mms/synthesizer.py
+
+===BEGIN-CHANGES===
+FILE: scripts/mms/synthesizer.py
+ACTION: replace
+CONTENT:
+"""
+
+from __future__ import annotations
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional
+
+def _load_synthesize_config() -> dict:
+    """
+def synthesize(
+def _build_history_hit_section(hit: "object") -> str:  # type: ignore[type-arg]
+    """将历史任务命中结果格式化为 prompt 注入段落。"""
+def _load_quickmap(template_name: Optional[str]) -> str:
+    """
+def _extract_quickmap_files(template_name: Optional[str]) -> List[str]:
+    """从 task_quickmap.yaml 提取该任务类型的 must_read_files（供历史记录写入）。"""
+def _extract_quickmap_memories(template_name: Optional[str]) -> List[str]:
+    """从 task_quickmap.yaml 提取该任务类型的 hot_memories（供历史记录写入）。"""
+def _refresh_maps() -> None:
+    """调用 codemap.py 和 funcmap.py 刷新快照文件（--refresh-maps 触发）"""
+def _load_codemap(template_name: Optional[str]) -> str:
+    """
+def _extract_funcmap(task: str, template_name: Optional[str]) -> str:
+    """
+def _extract_e2e_traceability(task: str, template_name: Optional[str]) -> str:
+    """
+def _extract_keywords(task: str, template_name: Optional[str]) -> list:
+    """
+def _inject_memories(task: str, top_k: int, compress: bool = True) -> str:
+    """调用 MemoryInjector 检索相关记忆，返回压缩后的上下文文本"""
+def _load_template(template_name: Optional[str]) -> str:
+    """加载指定的 EP 类型模板内容"""
+def _call_llm(user_prompt: str) -> str:
+    """调用 qwen-plus 生成合成结果"""
+def interactive_extra_requirements() -> str:
+    """交互式补充用户自定义要求"""
+def list_templates() -> None:
+    """打印所有可用模板"""
+    
+# 新增模板描述注册逻辑
+def register_new_template_description(template_name: str, description: str) -> None:
+    """
+    将新模板的描述信息注册到系统中。
+    
+    参数:
+        template_name (str): 模板名称.
+        description (str): 模板描述信息.
+    """
+    # 这里可以添加具体的注册逻辑，比如保存到配置或数据库
+    print(f"Template '{template_name}' registered with description: {description}")
+===END-FILE===
+===END-CHANGES===
